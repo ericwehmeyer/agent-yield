@@ -959,6 +959,17 @@ def _day_of(iso: str) -> dt.date | None:
         return None
 
 
+def _utc_midnight(day: dt.date) -> str:
+    # A bare "YYYY-MM-DD" is parsed by git's approxidate in the LOCAL timezone,
+    # which drops commits at exactly the day boundary -- verified on git
+    # 2.53.0.windows.3 under America/New_York, where a commit stamped
+    # 2026-08-24T12:00:00Z fell outside `--since 2026-08-24`. Anchoring to UTC
+    # midnight makes the window mean the same thing as `CallRecord.day`, which
+    # is also bucketed in UTC. The two halves of the join must agree on what a
+    # day is, or the numerator and denominator come from different calendars.
+    return day.strftime("%Y-%m-%d 00:00:00 +0000")
+
+
 def daily_outcomes(
     repo: Path,
     since: dt.date,
@@ -967,8 +978,8 @@ def daily_outcomes(
 ) -> list[DailyOutcome]:
     repo = Path(repo)
     branch = default_branch(repo)
-    window = ["--since", since.isoformat(),
-              "--until", (until + dt.timedelta(days=1)).isoformat()]
+    window = ["--since", _utc_midnight(since),
+              "--until", _utc_midnight(until + dt.timedelta(days=1))]
 
     merges: dict[dt.date, int] = {}
     for line in _git(repo, "log", branch, "--merges", "--first-parent",
@@ -1005,7 +1016,7 @@ def daily_outcomes(
     if test_command:
         for day in merges:
             sha = _git(repo, "log", branch, "--first-parent", "-1", "--pretty=%H",
-                       "--until", (day + dt.timedelta(days=1)).isoformat()).strip()
+                       "--until", _utc_midnight(day + dt.timedelta(days=1))).strip()
             if sha:
                 tests[day] = test_count_at(repo, sha, test_command)
 
