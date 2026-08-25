@@ -1,0 +1,122 @@
+import json
+
+from agent_yield.ingest import (
+    context_per_call,
+    ingest,
+    load_ingested,
+    load_records,
+    median_agent_total,
+)
+
+
+def _line(**kw):
+    """Build a transcript line in the verified real shape."""
+    return json.dumps({
+        "type": "assistant",
+        "timestamp": kw.get("ts", "2026-08-24T12:00:00.000Z"),
+        "sessionId": kw.get("session", "s1"),
+        "isSidechain": kw.get("sub", False),
+        "agentId": kw.get("agent"),
+        "requestId": kw["req"],
+        "message": {
+            "id": kw["msg"],
+            "model": "claude-opus-5",
+            "usage": {
+                "input_tokens": kw.get("inp", 0),
+                "output_tokens": kw.get("out", 0),
+                "cache_creation_input_tokens": kw.get("cw", 0),
+                "cache_read_input_tokens": kw.get("cr", 0),
+            },
+        },
+    })
+
+
+def test_duplicate_message_and_request_pairs_are_counted_once(tmp_path):
+    path = tmp_path / "s.jsonl"
+    path.write_text(
+        _line(req="r1", msg="m1", cr=100) + "\n"
+        + _line(req="r1", msg="m1", cr=100) + "\n",
+        encoding="utf-8",
+    )
+    assert len(load_records([path])) == 1
+
+
+def test_records_without_ids_are_kept_not_dropped(tmp_path):
+    path = tmp_path / "s.jsonl"
+    line = json.dumps({
+        "type": "assistant", "timestamp": "2026-08-24T12:00:00.000Z",
+        "message": {"usage": {"cache_read_input_tokens": 50}},
+    })
+    path.write_text(line + "\n" + line + "\n", encoding="utf-8")
+    assert len(load_records([path])) == 2
+
+
+def test_empty_and_corrupt_files_do_not_abort_the_walk(tmp_path):
+    (tmp_path / "empty.output").write_text("", encoding="utf-8")
+    (tmp_path / "junk.output").write_text("{not json\n", encoding="utf-8")
+    good = tmp_path / "good.jsonl"
+    good.write_text(_line(req="r1", msg="m1", cr=7) + "\n", encoding="utf-8")
+    records = load_records(
+        [tmp_path / "empty.output", tmp_path / "junk.output", good]
+    )
+    assert len(records) == 1
+
+
+def test_reproduces_the_case_study_context_per_call(tmp_path):
+    """docs/case-study.md 2026-08-24: 942,865,149 cache-read over 6,910 calls."""
+    path = tmp_path / "s.jsonl"
+    per_call = 942_865_149 // 6_910
+    remainder = 942_865_149 - per_call * 6_910
+    lines = [
+        _line(req=f"r{i}", msg=f"m{i}", cr=per_call + (remainder if i == 0 else 0))
+        for i in range(6_910)
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+    records = load_records([path])
+    assert len(records) == 6_910
+    assert round(context_per_call(records)) == 136_449
+
+
+def test_reproduces_the_case_study_median_agent(tmp_path):
+    """docs/case-study.md: 77 subagents, median 12,385,765."""
+    path = tmp_path / "subs.jsonl"
+    totals = ([1_000_000] * 38) + [12_385_765] + ([68_475_554] * 38)
+    lines = [
+        _line(req=f"r{i}", msg=f"m{i}", sub=True, agent=f"a{i}", cr=total)
+        for i, total in enumerate(totals)
+    ]
+    path.write_text("\n".join(lines), encoding="utf-8")
+    records = load_records([path])
+    assert median_agent_total(records) == 12_385_765
+
+
+def test_ingest_persists_and_reloads_identically(tmp_path):
+    src = tmp_path / "s.jsonl"
+    src.write_text(_line(req="r1", msg="m1", cr=5, out=2), encoding="utf-8")
+    dest = tmp_path / ".agent-yield" / "calls.jsonl"
+    assert ingest(dest, [src]) == 1
+    reloaded = load_ingested(dest)
+    assert reloaded[0].usage.cache_read_tokens == 5
+    assert reloaded[0].usage.output_tokens == 2
+
+
+def test_ingest_is_idempotent_across_runs(tmp_path):
+    src = tmp_path / "s.jsonl"
+    src.write_text(_line(req="r1", msg="m1", cr=5), encoding="utf-8")
+    dest = tmp_path / ".agent-yield" / "calls.jsonl"
+    ingest(dest, [src])
+    ingest(dest, [src])
+    assert len(load_ingested(dest)) == 1
+
+
+def test_ingest_is_idempotent_for_unkeyed_records_too(tmp_path):
+    src = tmp_path / "s.jsonl"
+    line = json.dumps({
+        "type": "assistant", "timestamp": "2026-08-24T12:00:00.000Z",
+        "message": {"usage": {"cache_read_input_tokens": 50}},
+    })
+    src.write_text(line + "\n", encoding="utf-8")
+    dest = tmp_path / ".agent-yield" / "calls.jsonl"
+    ingest(dest, [src])
+    ingest(dest, [src])
+    assert len(load_ingested(dest)) == 1
