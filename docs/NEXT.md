@@ -1,55 +1,77 @@
 # Start here after a session restart
 
-**Written 2026-08-25 06:52 EDT, immediately before a deliberate restart.**
+**Written 2026-08-25 07:05 EDT, after the restart that settled task 1.**
 
-## Do this first, before anything else
+## What the restart answered
 
-**Settle whether a `PreToolUse` hook fires on the subagent-dispatch tool.**
-Step 1 of `design.md` §8. Everything downstream is provisional until it is
-answered, and it cannot be answered without a restart — which is why the restart
-happened.
-
-A probe is already wired up and waiting, in **both** repos, matched on `*` so a
-negative result is interpretable rather than ambiguous:
+**A `PreToolUse` hook does fire on the main thread's dispatch call.** The gate is
+viable. Measured, not assumed:
 
 ```
-C:/Users/ewehm/repos/agent-yield/.claude/hooks/probe.py
-C:/Users/ewehm/repos/mk-main/.claude/hooks/probe.py
+{"event":"PreToolUse","tool":"Agent",
+ "dispatch_keys":["description","model","prompt","subagent_type"],
+ "subagent_type":"general-purpose","model":"haiku"}
 ```
 
-Both log to `probe-log.jsonl` beside themselves. **Both logs were deleted before
-the restart, so any entry you find was produced by the new session.**
+So a gate can read the requested model and subagent type *before* the spend. It
+also fired for a **background** dispatch, so the async path is gated the same.
+Read an absent key as "not passed", not "unavailable" — the probe call omitted
+`isolation` and it is correspondingly absent. Recorded in `design.md` §4.5, and
+§8 step 1 is struck through.
 
-The check, in order:
+## What is still open, and why
 
-1. Run any tool at all (a `Bash` echo will do), then look for
-   `.claude/hooks/probe-log.jsonl`. **If it does not exist, hooks are not
-   loading** — stop and diagnose that before concluding anything about the
-   dispatch tool.
-2. If it does exist, dispatch one trivial Haiku agent that does nothing.
-3. Read the log. An entry with `"tool": "Agent"` (or `"Task"`) means **the gate
-   is viable** — and `dispatch_keys` tells you exactly which fields a real gate
-   may read.
-4. No such entry, while other tools *are* logged, means **the gate is not
-   viable**. §4.5 becomes advisory, and `design.md` must be re-reviewed rather
-   than silently downgraded.
+**Does exit code 2 actually block the dispatch?** Firing is not blocking, and
+§4.5 claims a refuse band. Testing it means installing a hook that denies a tool
+call — the auto-mode classifier refused that three times, correctly. **This needs
+your approval, not the session's.** It is Task 9 of the plan, written out
+step-by-step and marked do-not-attempt-autonomously.
 
-Record the answer in `design.md` §4.5 either way. A negative is a real result and
-is worth as much as a positive — it is the difference between a tool that claims
-enforcement and one that honestly cannot.
+Until it is settled the gate is honestly a **warn**, and the plan builds it that
+way. A negative here is a real result: it would make §4.5 permanently advisory
+and earn `README.md` a sentence it does not currently have.
 
-**Then remove or narrow the probe.** It matches `*`, so it pays a Python startup
-on every tool call. It is a measuring instrument, not a fixture.
+## Two edits the session could not make
+
+The classifier blocks all hook-config changes, so these are yours:
+
+**1. Narrow the probe.** It still matches `*` and pays a Python startup on every
+tool call. In **both** `agent-yield/.claude/settings.local.json` and
+`mk-main/.claude/settings.local.json`:
+
+```
+"matcher": "*"   ->   "matcher": "Agent|Task"
+```
+
+Or delete the `hooks` block entirely — the measurement it existed for is made,
+except the refuse path, and Task 9 re-installs what it needs anyway. Either way
+this takes effect at the *next* session start, not this one.
+
+**2. Nothing else.** `probe.py` is unmodified and committed.
 
 ## Then
 
-Write the implementation plan (`superpowers:writing-plans`) against
-`design.md` §8, with step 1's answer in hand rather than assumed.
+Execute `docs/superpowers/plans/2026-08-25-agent-yield.md` — eleven tasks,
+TDD throughout, via `superpowers:subagent-driven-development` or
+`superpowers:executing-plans`. Task 11 is the acceptance test: ingest the real
+transcripts and confirm ~136K context-per-call falls out. **If it does not, the
+parser is wrong — do not adjust the expected number.**
+
+Two things found while writing the plan, both already in it:
+
+- **Subagent transcripts live in the OS temp directory** —
+  `<temp>/claude/<slug>/<session>/tasks/<agentId>.output`, marked
+  `"isSidechain": true`. Of 352 such files on this machine, **249 were already
+  empty**. This is why the plan persists an ingest instead of reading live; the
+  alternative is a tool whose history shrinks every time temp is cleaned.
+- **`usage.iterations`** repeats the same numbers per inference iteration. Sum
+  the top-level fields only, or you double-count.
 
 ## State of the board
 
-**agent-yield** — `5d31693`, clean, pushed, private.
-README, `docs/design.md`, `docs/case-study.md`. No code yet, deliberately.
+**agent-yield** — clean, pushed, private. README, `docs/design.md`,
+`docs/case-study.md`, `docs/NEXT.md`, and now the plan. Still no code, which is
+correct: the plan is the next artefact, not the first module.
 
 **Two review routines armed**, both one-shot, cloud, reading only committed
 files:
@@ -80,4 +102,4 @@ number; that rots at every merge.
 **`subagent_tokens` is not the cost.** It counts output and uncached input, not
 the cache reads that are 97.4% of consumption. It is off by roughly 80×. This
 already misled one live dispatch decision. `docs/case-study.md` §4 has the
-numbers.
+numbers. If any code in this repo ever reads that field, it is a bug.

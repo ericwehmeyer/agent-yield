@@ -93,11 +93,27 @@ spread is 3× (62 → 188 calls), so this is a warning aid, not a forecast.
 A `PreToolUse` hook that injects the current burn before a dispatch and can
 refuse past a ceiling. Three bands: silent, warn, refuse-with-named-override.
 
+**Measured 2026-08-25 (task 1).** A `PreToolUse` matcher **does** fire on the
+main thread's dispatch call, so the gate is viable. The matched `tool_name` is
+`Agent`. The payload carries a `tool_input` dict holding the arguments the caller
+passed — observed on a real dispatch: `description`, `model`, `prompt`,
+`subagent_type`. A gate may therefore read the requested model and subagent type
+*before* the spend happens, which is exactly what the three bands need. Read
+absent keys as "not passed" rather than "unavailable": the probe call omitted
+`isolation`, and it is correspondingly absent, so a gate must default rather than
+assume presence. The hook also fired for a **background** dispatch, so the async
+path is gated on the same footing as a blocking one.
+
+**Still unverified: the refuse path.** That the hook *fires* is not that exit 2
+*blocks*. Testing that requires installing a hook which denies a tool call, which
+is a privileged act and was correctly refused when this session tried to
+self-approve it. **Until it is verified under human approval, this component is
+honestly a `warn`, not a gate** — build the silent and warn bands first, and do
+not ship refuse-with-named-override on the assumption that exit 2 works here.
+
 **Two harness constraints this must state, not hide:** hooks do not fire for tool
 calls made inside a subagent ([#34692], closed as not planned), and hooks load at
-session start, so a policy change takes effect at the *next* session. Whether a
-`PreToolUse` matcher fires on the main thread's dispatch call is **unverified**
-and is task 1.
+session start, so a policy change takes effect at the *next* session.
 
 ### 4.6 `report` — the answer
 Yield per mode over time, with interventions marked, and a before/after for each
@@ -147,9 +163,11 @@ Stated here so no reader has to discover it:
 
 ## 8. Order of work
 
-1. Verify whether a `PreToolUse` matcher fires on the dispatch tool — requires a
-   session restart. If it does not, §4.5 becomes advisory and this design is
-   re-reviewed rather than silently downgraded.
+1. ~~Verify whether a `PreToolUse` matcher fires on the dispatch tool.~~
+   **Done 2026-08-25: it fires, on `Agent`, with the dispatch arguments
+   readable.** §4.5 stands. One piece carries forward: the refuse path (does
+   exit 2 actually block?) is untested and needs human approval to test, so
+   §4.5 ships as `warn` until it is settled. Fold that test into step 5.
 2. `transcripts` + `outcomes`, with the case-study figures as the regression
    fixture: the tool must reproduce 12.4M median and 136K context-per-call from
    real data, or it is wrong.
