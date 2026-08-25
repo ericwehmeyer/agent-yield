@@ -60,14 +60,17 @@ by dividing spend by what got shipped, and noticing the ratio is absurd.
 | **Predicts a dispatch's cost before you spend it** | no | no | **yes** |
 | **Context-per-call as a leading indicator** | no | no | **yes** |
 
-The gate is deliberately modest in scope, because the harness limits it:
-[claude-code#55144](https://github.com/anthropics/claude-code/issues/55144)
-(a `PreAgentSpawn` cost-policy hook) and
+The gate reaches the dispatch and stops there. A `PreToolUse` hook can refuse an
+agent dispatch outright — measured, not assumed — so the *decision* to spend is
+governable, and the requested model and agent type are readable before the spend
+happens. The spending that follows that decision is not governable:
 [claude-code#34692](https://github.com/anthropics/claude-code/issues/34692)
-(hooks not firing for subagent tool calls) were both **closed as not planned**.
-So spend governance at dispatch time is a documented gap that will not be closed
-upstream. `agent-yield` works within what hooks actually do, and says plainly
-where it cannot reach.
+(hooks not firing for tool calls inside a subagent) and
+[claude-code#55144](https://github.com/anthropics/claude-code/issues/55144)
+(a dedicated `PreAgentSpawn` cost-policy hook) were both **closed as not
+planned**. An agent waved through at a projected 5M that then burns 60M is
+invisible until it finishes. `agent-yield` works within what hooks actually do,
+and says plainly where it cannot reach.
 
 ## Status
 

@@ -1731,9 +1731,11 @@ git commit -m "report: join spend to outcomes per mode, with intervention before
 
 ---
 
-### Task 8: `gate` — the warn bands only
+### Task 8: `gate` — all three bands
 
-**The refuse band is deliberately not built in this task.** Task 1 of `design.md` §8 established that a `PreToolUse` hook *does* fire on the `Agent` dispatch with `subagent_type` and `model` readable. It did **not** establish that exit code 2 blocks that dispatch. Task 9 settles that under human approval; until it passes, this component warns.
+**Enforcement is real, measured 2026-08-25 under human approval.** A `PreToolUse` hook fires on the main thread's `Agent` dispatch with `subagent_type` and `model` readable, and **exit code 2 refuses the dispatch** — the agent never runs, and the hook's stderr reaches the caller as `PreToolUse:Agent hook error: <text>`. This is a gate, not a warning.
+
+**The hazard this task exists to handle:** a hook that crashes is indistinguishable from one that refuses. An unhandled exception, a missing ingest file, or a timeout would block *every* dispatch for the rest of the session. So the gate **fails open** — it catches everything and exits 0 unless it has actually decided to refuse. An unreadable data file must not become an outage.
 
 **Files:**
 - Create: `src/agent_yield/gate.py`
@@ -1741,7 +1743,7 @@ git commit -m "report: join spend to outcomes per mode, with intervention before
 
 **Interfaces:**
 - Consumes: `load_ingested` (Task 3), `project`, `Projection` (Task 6), `band_for_day`, `REFERENCE_CONTEXT` (Task 6).
-- Produces: `DISPATCH_TOOLS: tuple[str, ...]`; `DispatchRequest(subagent_type, model, description)`; `read_dispatch(payload: dict) -> DispatchRequest | None`; `gate_message(day_total: int, projection: Projection) -> str | None`; `main(argv=None, stdin=None) -> int`.
+- Produces: `DISPATCH_TOOLS: tuple[str, ...]`; `OVERRIDE_ENV: str`; `DispatchRequest(subagent_type, model, description)`; `read_dispatch(payload: dict) -> DispatchRequest | None`; `gate_message(day_total: int, projection: Projection) -> str | None`; `main(argv=None, stdin=None) -> int` returning 2 only on a deliberate refusal.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1798,14 +1800,47 @@ def test_warn_band_names_the_burn_and_the_projection():
     assert "M tokens" in message
 
 
-def test_over_ceiling_still_exits_zero_because_refuse_is_unverified():
+def test_warn_band_does_not_block():
+    payload = {**DISPATCH, "_day_total": DAILY_WARN}
+    assert main(stdin=io.StringIO(json.dumps(payload))) == 0
+
+
+def test_over_ceiling_refuses_the_dispatch(monkeypatch):
+    monkeypatch.delenv(OVERRIDE_ENV, raising=False)
+    payload = {**DISPATCH, "_day_total": DAILY_CEILING}
+    assert main(stdin=io.StringIO(json.dumps(payload))) == 2
+
+
+def test_named_override_lets_it_through(monkeypatch):
+    monkeypatch.setenv(OVERRIDE_ENV, "1")
     payload = {**DISPATCH, "_day_total": DAILY_CEILING}
     assert main(stdin=io.StringIO(json.dumps(payload))) == 0
 
 
-def test_hook_never_exits_nonzero_on_a_malformed_payload():
+def test_malformed_payload_never_blocks():
     assert main(stdin=io.StringIO("not json")) == 0
     assert main(stdin=io.StringIO("")) == 0
+
+
+def test_internal_error_fails_open(monkeypatch):
+    """A crashing gate would refuse every dispatch. Only a decision may block."""
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("ingest is a directory today")
+
+    monkeypatch.setattr("agent_yield.gate._day_total", boom)
+    assert main(stdin=io.StringIO(json.dumps(DISPATCH))) == 0
+```
+
+The import line at the top of this test module must include `OVERRIDE_ENV`:
+
+```python
+from agent_yield.gate import (
+    OVERRIDE_ENV,
+    DispatchRequest,
+    gate_message,
+    main,
+    read_dispatch,
+)
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1818,26 +1853,33 @@ Expected: FAIL — `ModuleNotFoundError: No module named 'agent_yield.gate'`
 Create `src/agent_yield/gate.py`:
 
 ```python
-"""PreToolUse hook: say what this dispatch is about to cost.
+"""PreToolUse hook: price a dispatch before it happens, and refuse past a ceiling.
 
-VERIFIED 2026-08-25: a PreToolUse matcher fires on the main thread's `Agent`
-dispatch, and `tool_input` carries the arguments the caller passed -- observed:
-description, model, prompt, subagent_type. Keys the caller omitted are simply
-absent, so every read here defaults instead of assuming presence. The hook also
-fires for a background dispatch.
+MEASURED 2026-08-25, both halves:
 
-NOT VERIFIED: that exit code 2 refuses the dispatch. Until it is, this hook
-always exits 0. A gate that claims enforcement it does not have is worse than
-one that admits it warns.
+  - A PreToolUse matcher fires on the main thread's `Agent` dispatch, including
+    background dispatches. `tool_input` carries the arguments the caller passed
+    -- observed: description, model, prompt, subagent_type. Keys the caller
+    omitted are simply absent, so every read here defaults rather than assuming
+    presence.
+  - Exit code 2 REFUSES the dispatch. The agent does not run and this hook's
+    stderr reaches the caller.
+
+Which makes the failure mode the thing to design around: a hook that crashes
+looks exactly like one that refused, and would block every dispatch for the rest
+of the session. So this fails OPEN. Everything is caught; only a decision
+returns 2.
 
 Two harness constraints, restated because they bound what this can ever do:
-hooks do not fire for tool calls made inside a subagent (#34692), and hook
+hooks do not fire for tool calls made inside a subagent (#34692), so what is
+gated is the decision to dispatch and not the spending that follows it; and hook
 config loads at session start, so a policy change lands in the NEXT session.
 """
 from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -1848,6 +1890,10 @@ from .thresholds import REFERENCE_CONTEXT, band_for_day
 
 DISPATCH_TOOLS = ("Agent", "Task")
 DEFAULT_CALLS_PATH = Path(".agent-yield") / "calls.jsonl"
+
+# Named, per section 4.5's "refuse-with-named-override". Never a silent bypass:
+# an override that leaves no trace is indistinguishable from no gate at all.
+OVERRIDE_ENV = "AGENT_YIELD_OVERRIDE"
 
 
 @dataclass(frozen=True)
@@ -1888,28 +1934,41 @@ def _day_total(calls_path: Path) -> int:
     return sum(r.usage.total for r in load_ingested(calls_path) if r.day == today)
 
 
-def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
-    """Always returns 0. See the module docstring for why."""
-    stream = stdin if stdin is not None else sys.stdin
-    try:
-        payload = json.loads(stream.read() or "{}")
-    except (ValueError, OSError):
-        return 0
-    if not isinstance(payload, dict):
-        return 0
-
+def _decide(payload: dict) -> tuple[int, str | None]:
+    """Return (exit_code, message). Exit 2 means refuse this dispatch."""
     if read_dispatch(payload) is None:
-        return 0
+        return 0, None
 
     # `_day_total` in the payload is a test seam; real runs read the ingest.
     day_total = payload.get("_day_total")
     if not isinstance(day_total, int):
-        try:
-            day_total = _day_total(DEFAULT_CALLS_PATH)
-        except (OSError, ValueError):
-            day_total = 0
+        day_total = _day_total(DEFAULT_CALLS_PATH)
 
     message = gate_message(day_total, project(REFERENCE_CONTEXT))
+    if message is None:
+        return 0, None
+
+    if band_for_day(day_total) == "over" and not os.environ.get(OVERRIDE_ENV):
+        return 2, f"{message} Set {OVERRIDE_ENV}=1 to dispatch anyway."
+    return 0, message
+
+
+def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
+    stream = stdin if stdin is not None else sys.stdin
+    try:
+        payload = json.loads(stream.read() or "{}")
+        if not isinstance(payload, dict):
+            return 0
+        code, message = _decide(payload)
+    except Exception:
+        # Deliberately broad. A gate that raises refuses every dispatch in the
+        # session and the caller cannot tell that apart from a real refusal.
+        # Only a decision blocks; a bug never does.
+        return 0
+
+    if code == 2:
+        print(message, file=sys.stderr)
+        return 2
     if message:
         print(json.dumps({
             "hookSpecificOutput": {
@@ -1927,76 +1986,18 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `python -m pytest tests/test_gate.py -v`
-Expected: PASS, 7 passed
+Expected: PASS, 10 passed
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add src/agent_yield/gate.py tests/test_gate.py
-git commit -m "gate: warn bands on a verified dispatch payload; refuse stays unbuilt"
+git commit -m "gate: all three bands on a verified dispatch payload, failing open"
 ```
 
 ---
 
-### Task 9: Settle the refuse path (**requires human approval**)
-
-**Do not attempt this task autonomously.** It installs a hook that denies a tool call. An agent session that self-approves that is doing something it should not; the correct move when blocked is to stop and ask, which is what happened on 2026-08-25.
-
-**Files:**
-- Modify: `docs/design.md` §4.5
-- Modify: `src/agent_yield/gate.py` (only if the deny path is confirmed)
-- Modify: `README.md` (only if it is not)
-
-- [ ] **Step 1: Ask the operator to approve the experiment**
-
-State plainly: "To finish §4.5 I need to temporarily make a `PreToolUse` hook return exit code 2 on `Agent` dispatches, dispatch one throwaway agent, and observe whether it is refused. It reverts immediately. May I?"
-
-- [ ] **Step 2: With approval, add the deny path to the probe**
-
-In `.claude/hooks/probe.py`, immediately before `return 0`:
-
-```python
-    if tool in ("Agent", "Task"):
-        print("agent-yield: deny-path test", file=sys.stderr)
-        return 2
-```
-
-The probe's matcher must cover the dispatch tool. Note that hook *config* loads at session start — if the matcher was narrowed to `Agent|Task` and that narrowing has not taken effect yet, the `*` matcher from the previous session is what is live.
-
-- [ ] **Step 3: Dispatch one trivial agent and record what happens**
-
-Expected if the refuse path is real: the dispatch is blocked and the stderr text is surfaced. Expected if not: the agent runs normally and only the log line appears.
-
-- [ ] **Step 4: Revert the probe immediately**
-
-```bash
-git checkout -- .claude/hooks/probe.py
-```
-
-- [ ] **Step 5: Record the result in `docs/design.md` §4.5**
-
-Replace the "Still unverified: the refuse path" paragraph with what was measured. **A negative is a real result** — if exit 2 does not block, §4.5 is permanently a warn, `README.md` must say so rather than implying a gate, and §6's "It does not guarantee enforcement" earns a second, sharper sentence.
-
-- [ ] **Step 6: Only if confirmed, add the refuse band to `gate.py`**
-
-```python
-    if band_for_day(day_total) == "over" and not os.environ.get("AGENT_YIELD_OVERRIDE"):
-        print(message, file=sys.stderr)
-        return 2
-```
-
-The override must be a **named** environment variable, per §4.5's "refuse-with-named-override" — never a silent bypass. Update `test_over_ceiling_still_exits_zero_because_refuse_is_unverified` to match the new behaviour rather than deleting it.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add docs/design.md src/agent_yield/gate.py README.md
-git commit -m "gate: settle the refuse path against a measured result"
-```
-
----
-
-### Task 10: `cli` — wire the subcommands together
+### Task 9: `cli` — wire the subcommands together
 
 **Files:**
 - Create: `src/agent_yield/cli.py`
@@ -2185,7 +2186,7 @@ git commit -m "cli: ingest, outcomes, report, predict, gate"
 
 ---
 
-### Task 11: Prove it against real data
+### Task 10: Prove it against real data
 
 The regression fixtures in Task 3 are synthetic replicas of the case-study numbers — they prove the arithmetic, not the parser's grip on real files. This task runs the tool against the actual transcripts on the machine and checks the constant falls out.
 
@@ -2238,7 +2239,7 @@ The ingest is machine-local data, not source.
 
 ## Notes for whoever executes this
 
-**Where §8's steps landed.** Step 1 is done (settled 2026-08-25). Step 2 is Tasks 1–4. Step 3 is Tasks 5 and 7. Step 4 is Task 6. Step 5 is Tasks 8–9. Task 11 is the acceptance test for the whole thing.
+**Where §8's steps landed.** Step 1 is done (settled 2026-08-25). Step 2 is Tasks 1–4. Step 3 is Tasks 5 and 7. Step 4 is Task 6. Step 5 is Task 8. Task 10 is the acceptance test for the whole thing.
 
 **One addition to §8, made deliberately:** ingest persists to `.agent-yield/calls.jsonl` rather than reading transcripts live. Subagent transcripts live in the OS temp directory and are being deleted continuously. This is not scope creep; without it the tool's own history shrinks every time the machine cleans temp.
 

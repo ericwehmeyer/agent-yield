@@ -1,11 +1,10 @@
 # Start here after a session restart
 
-**Written 2026-08-25 07:05 EDT, after the restart that settled task 1.**
+**Written 2026-08-25 17:10 EDT, after task 1 was settled in full.**
 
-## What the restart answered
+## Task 1 is answered, both halves
 
-**A `PreToolUse` hook does fire on the main thread's dispatch call.** The gate is
-viable. Measured, not assumed:
+**The hook fires on the dispatch, and exit 2 refuses it.** Measured, not assumed.
 
 ```
 {"event":"PreToolUse","tool":"Agent",
@@ -13,49 +12,61 @@ viable. Measured, not assumed:
  "subagent_type":"general-purpose","model":"haiku"}
 ```
 
-So a gate can read the requested model and subagent type *before* the spend. It
-also fired for a **background** dispatch, so the async path is gated the same.
-Read an absent key as "not passed", not "unavailable" — the probe call omitted
-`isolation` and it is correspondingly absent. Recorded in `design.md` §4.5, and
-§8 step 1 is struck through.
-
-## What is still open, and why
-
-**Does exit code 2 actually block the dispatch?** Firing is not blocking, and
-§4.5 claims a refuse band. Testing it means installing a hook that denies a tool
-call — the auto-mode classifier refused that three times, correctly. **This needs
-your approval, not the session's.** It is Task 9 of the plan, written out
-step-by-step and marked do-not-attempt-autonomously.
-
-Until it is settled the gate is honestly a **warn**, and the plan builds it that
-way. A negative here is a real result: it would make §4.5 permanently advisory
-and earn `README.md` a sentence it does not currently have.
-
-## Two edits the session could not make
-
-The classifier blocks all hook-config changes, so these are yours:
-
-**1. Narrow the probe.** It still matches `*` and pays a Python startup on every
-tool call. In **both** `agent-yield/.claude/settings.local.json` and
-`mk-main/.claude/settings.local.json`:
+Then, with a deny path added to the probe under human approval:
 
 ```
+PreToolUse:Agent hook error: agent-yield: deny-path test
+```
+
+The agent never ran. So a gate can read the requested model and subagent type
+before the spend, and can refuse. §4.5 stands in full — all three bands are
+buildable. The hook fires for **background** dispatches too, and an absent key
+means "not passed", not "unavailable" (`isolation` was absent only because the
+probe call omitted it).
+
+`design.md` §4.5 and §8 record this. §6 and `README.md` were both corrected: they
+claimed dispatch-time enforcement was a gap that would not close, and that is no
+longer true.
+
+**What is still genuinely out of reach:** hooks do not fire for tool calls made
+*inside* a running subagent (#34692). An agent approved at a projected 5M that
+then burns 60M is invisible until it finishes. The gate is a doorway, not a
+meter — and the plan says so in the module docstring.
+
+**The design consequence that fell out of this**, now in `design.md` §4.5 and
+Task 8: a hook that crashes is indistinguishable from one that refuses, so a
+buggy gate would block every dispatch for the rest of the session. The gate must
+fail **open** — catch everything, exit 0, and return 2 only on an actual
+decision. An unreadable ingest file must not become an outage.
+
+## One edit still yours
+
+The classifier blocks hook-config changes, so this one is not something the
+session can do. The probe still matches `*` and pays a Python startup on every
+tool call, in **both** repos:
+
+```
+agent-yield/.claude/settings.local.json
+mk-main/.claude/settings.local.json
+
 "matcher": "*"   ->   "matcher": "Agent|Task"
 ```
 
-Or delete the `hooks` block entirely — the measurement it existed for is made,
-except the refuse path, and Task 9 re-installs what it needs anyway. Either way
-this takes effect at the *next* session start, not this one.
+Or delete the `hooks` block outright — the measurement it existed for is
+complete. Either way it takes effect at the *next* session start.
 
-**2. Nothing else.** `probe.py` is unmodified and committed.
+`probe.py` is back to observe-only; the deny path was removed and the revert was
+confirmed by a dispatch that ran normally. Note it is **gitignored, not tracked**
+— `git checkout` will not restore it.
 
 ## Then
 
-Execute `docs/superpowers/plans/2026-08-25-agent-yield.md` — eleven tasks,
-TDD throughout, via `superpowers:subagent-driven-development` or
-`superpowers:executing-plans`. Task 11 is the acceptance test: ingest the real
-transcripts and confirm ~136K context-per-call falls out. **If it does not, the
-parser is wrong — do not adjust the expected number.**
+Execute `docs/superpowers/plans/2026-08-25-agent-yield.md` — ten TDD tasks, via
+`superpowers:subagent-driven-development` or `superpowers:executing-plans`.
+
+Task 10 is the acceptance test: ingest the real transcripts and confirm ~136K
+context-per-call falls out. **If it does not, the parser is wrong — do not adjust
+the expected number.**
 
 Two things found while writing the plan, both already in it:
 
@@ -64,14 +75,14 @@ Two things found while writing the plan, both already in it:
   `"isSidechain": true`. Of 352 such files on this machine, **249 were already
   empty**. This is why the plan persists an ingest instead of reading live; the
   alternative is a tool whose history shrinks every time temp is cleaned.
-- **`usage.iterations`** repeats the same numbers per inference iteration. Sum
-  the top-level fields only, or you double-count.
+- **`usage.iterations`** repeats the top-level numbers per inference iteration.
+  Sum the top-level fields only, or you double-count.
 
 ## State of the board
 
-**agent-yield** — clean, pushed, private. README, `docs/design.md`,
-`docs/case-study.md`, `docs/NEXT.md`, and now the plan. Still no code, which is
-correct: the plan is the next artefact, not the first module.
+**agent-yield** — README, `docs/design.md`, `docs/case-study.md`, this file, and
+the plan. Still no code, which is correct: the plan was the next artefact, not
+the first module. **Commits are local — not yet pushed.**
 
 **Two review routines armed**, both one-shot, cloud, reading only committed
 files:
@@ -82,7 +93,8 @@ files:
 | Week 2 | 2026-09-08 13:00 UTC | recalibration, and whether interventions did what they predicted |
 
 Each opens a GitHub issue on this repo. Both are told a null result is a real
-result and that recommending we stop is a legitimate output.
+result and that recommending we stop is a legitimate output. **They read only
+committed files — push before 09-01 or week 1 reviews an empty repo.**
 
 **model-migration-kit** — `77dd372`, clean, pushed, seven gates green, 2357
 tests. Work there is **paused** by request. One thing dangling:
