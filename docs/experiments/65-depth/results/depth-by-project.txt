@@ -1,0 +1,8 @@
+project                                               n  median    p90   max   >=35
+-Users-ericw-IdeaProjects-model-migration-kit        62    57.5   88.8   118     52
+-Users-ericw-IdeaProjects-agent-yield                29     5.0   22.0    30      0
+-Users-ericw-Pictures                                 7    27.0  108.0   108      3
+-private-tmp-claude-501--Users-ericw-IdeaProjects-    2    13.5   15.0    15      0
+-private-tmp-claude-501-agent-yield-65-corpus         2    23.0   36.0    36      1
+POOLED                                              102    44.0   81.1   118     56
+{"breakeven": 35, "bands": {"trimmed": [35, 97], "standard": [72, 196]}, "projects": {"-Users-ericw-IdeaProjects-model-migration-kit": {"n": 62, "median": 57.5, "p90": 88.8, "max": 118, "at_or_over_breakeven": 52}, "-Users-ericw-IdeaProjects-agent-yield": {"n": 29, "median": 5, "p90": 22.0, "max": 30, "at_or_over_breakeven": 0}, "-Users-ericw-Pictures": {"n": 7, "median": 27, "p90": 108, "max": 108, "at_or_over_breakeven": 3}, "-private-tmp-claude-501--Users-ericw-IdeaProjects-agent-yield-b87046ab-1d77-46eb-8014-870cc270d8c9-scratchpad-ay47": {"n": 2, "median": 13.5, "p90": 15, "max": 15, "at_or_over_breakeven": 0}, "-private-tmp-claude-501-agent-yield-65-corpus": {"n": 2, "median": 23.0, "p90": 36, "max": 36, "at_or_over_breakeven": 1}, "POOLED": {"n": 102, "median": 44.0, "p90": 81.1, "max": 118, "at_or_over_breakeven": 56}}}

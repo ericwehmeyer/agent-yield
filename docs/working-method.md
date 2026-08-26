@@ -869,8 +869,10 @@ uses both estimates and both quartiles of the growth term:
 |---|---|
 | break-even depth, standard tool schema | **72-196 calls** |
 | break-even depth, trimmed brief and schema | **35-97 calls** |
-| median real dispatch | **52 calls** |
-| p90 / longest | 79 / **118** |
+| median dispatch, **pooled across projects** | **52 calls** |
+| p90 / longest, pooled | 79 / **118** |
+| **median dispatch in THIS repo** | **5 calls** |
+| **p90 / longest in this repo** | **22 / 30** |
 
 **So the rule is:**
 
@@ -890,6 +892,48 @@ argues for splitting, not for packing.**
 (§11.1's 5, §11.4.1's 13.5). Both bands are extrapolations of 3-13x beyond any
 depth that has been compared. The rule is measured where it is measured, and
 above ~15 calls it is arithmetic.
+
+### The 52-call median is another project's, and this one never reaches the band (issue #65)
+
+**Measured 2026-08-26, `docs/experiments/65-depth/depth.py`, 102 subagent
+transcripts.** The Limits section below has always said 62 of the 84 runs come
+from one project's audit fleet. Broken out, that caveat is the whole story:
+
+| project | n | median | p90 | max | at or over 35 calls |
+|---|---|---|---|---|---|
+| model-migration-kit | 62 | **57.5** | 88.8 | 118 | **52** |
+| **agent-yield** | 29 | **5.0** | 22.0 | **30** | **0** |
+| Pictures | 7 | 27.0 | 108.0 | 108 | 3 |
+| pooled | 102 | 44.0 | 81.1 | 118 | 56 |
+
+**Zero of this repo's 29 dispatches reach the FLOOR of the cheaper band**, and
+the longest it has ever made — 30 calls — is short of it. So the paragraph above
+is wrong about which fleet it describes: *"dispatching the way this repo's fleet
+dispatches, cost never argues for splitting the median dispatch"* is true, and
+it is true by a margin of 7x rather than the near-thing the table implied. And
+the trimmed-schema band does not straddle **this repo's** median; it sits an
+order of magnitude above it.
+
+**What that does to #65.** The ticket asked for an arm at a packed depth of 50
+because the rule is *applied* at a 52-call median. It is not applied at 52 here.
+Where the rule could be wrong is model-migration-kit's fleet, and an experiment
+that wants to find out has to be run there. In this repo the rule is not an
+untested extrapolation — it is untestable, because the depth that would test it
+does not occur.
+
+**Depth is a property of the work, not of the brief.** Within agent-yield,
+`agents` reports briefed n=10 at a median of 4 calls against un-briefed n=17 at
+5. The 62-188 call range `thresholds.OBSERVED_CALL_RANGE` calls "un-briefed" is
+the other project's fleet, not this repo's un-briefed dispatches.
+
+**And an audit task cannot be sized up to depth 50 to manufacture the test.**
+One packed pilot, 23 slices over 46 of this repo's 49 python files, issued **49
+Read blocks in 15 calls — 3.27 files per call**, for a clean depth of ~24. Slices
+share files, so cutting the same 49 files into 49 slices or 100 adds no file to
+open and therefore no call: **the packed arm's depth scales with unique artifacts
+opened over the batch width, not with the slice count.** A task that decomposes
+into k independent slices is exactly the task whose packed agent batches — which
+is not a flaw in the task, it is the thing packing buys, measured.
 
 ## 11.4.1 The orientation term, measured a second time (issue #63)
 
@@ -966,12 +1010,16 @@ is the second reason the depth experiment below is the one worth running.
   2.62 on a second task at a different k, against 3.50; the band above uses
   both. Orientation is now the narrow term and the **arrival price** is the wide
   one, at 2x between tool schemas.
-- **The depth experiment (#65), and it is now the only thing that can move this
-  section.** No arm has ever been run at a packed depth over 15 calls, against a
-  52-call median dispatch and a break-even quoted at 35-196. One agent over k
-  slices against k agents, sized so the packed arm takes **at least 50 calls**,
-  scored in list dollars and defects found. If the packed arm loses there, the
-  rule holds only below ~15 calls and must say so.
+- ~~**The depth experiment (#65), and it is now the only thing that can move
+  this section**~~ — **measured, and it cannot be run here**; see *The 52-call
+  median is another project's* above. The median it was filed against is
+  model-migration-kit's fleet. This repo's median is 5, its longest is 30, and
+  **none of its 29 dispatches reach the 35-call floor of the cheaper band**.
+  The experiment is built and sized (`docs/experiments/65-depth/`) and would
+  have to run in that other fleet, where the depth exists. What
+  survives as a falsifier for the rule AS APPLIED HERE is much weaker and should
+  be stated as such: at a packed depth of 5, nothing about the break-even matters,
+  and the packing rule stands on the defect result rather than on cost.
 - **If re-entry stops being mostly cache read** — a different agent type, a
   cold parent, a first call that actually reads — arrival gets dearer than a
   later call and the amortisation argument comes back.
@@ -980,7 +1028,8 @@ is the second reason the depth experiment below is the one worth running.
 
 One machine. **62 of the 84 runs come from a single project's audit fleet**, so
 "the median dispatch is 52 calls" describes that fleet more than it describes
-dispatching. These are also the survivors: subagent transcripts evaporate
+dispatching — now counted rather than warned about, above: that fleet's median
+is 57.5 and this repo's is 5. These are also the survivors: subagent transcripts evaporate
 (§11.2), so the sample is biased toward recent runs. And every dollar here is a
 **list-price equivalent**: on a plan the ranking survives and the absolute
 figure does not.

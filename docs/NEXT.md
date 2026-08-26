@@ -2179,3 +2179,92 @@ share stops counting the band it names. 585 tests.
 then nobody has changed a decision because of a number in this table, it is
 instrumentation for its own sake and the table should be deleted rather than
 extended.
+## [macOS 2026-08-26] #65 is answered from the corpus, and its premise is retracted
+
+`agent-yield handoff` before you restart. Then read this.
+
+**#65 asked for an arm at a packed depth of 50 calls, because the packing rule
+is applied to dispatches with a 52-call median. That median is another
+project's.** `docs/experiments/65-depth/depth.py` breaks 102 subagent transcripts
+out by the project the session ran in — the split §11.4's own Limits section has
+always warned about and nobody had counted:
+
+| project | n | median | p90 | max | at or over 35 calls |
+|---|---|---|---|---|---|
+| model-migration-kit | 62 | **57.5** | 88.8 | 118 | **52** |
+| **agent-yield** | 29 | **5.0** | 22.0 | **30** | **0** |
+| Pictures | 7 | 27.0 | 108.0 | 108 | 3 |
+| pooled | 102 | 44.0 | 81.1 | 118 | 56 |
+
+**Zero of this repo's 29 dispatches reach the FLOOR of the cheaper break-even
+band**, and its longest ever — 30 calls — falls short of the 35 the trimmed band
+starts at. The standard-schema band starts at 72. So here the rule *never split
+on cost* is not an untested extrapolation; **it is untestable, because the depth
+that would test it does not occur.** Where it could be wrong is the other
+fleet, and a depth experiment has to be run there.
+
+**Depth is a property of the work, not of the brief.** Within agent-yield,
+`agents` reports briefed n=10 at a median of 4 calls against un-briefed n=17 at
+5. The 62-188 range `thresholds.OBSERVED_CALL_RANGE` calls "un-briefed" is the
+other project's fleet.
+
+### The task cannot be sized up to manufacture the test, and that is measured
+
+One packed pilot ran — 23 slices over 46 of this repo's 49 python files. It
+issued **49 Read blocks in 15 calls: 3.27 files per call**, 2.42 tool uses per
+API call, for a clean depth of **~24**. **Slices share files.** Cutting the same
+49 files into 49 slices, or 100, adds no file to open and therefore no call:
+**the packed arm's depth scales with unique artifacts opened over the batch
+width, not with the slice count.** A task that decomposes into k independent
+slices is exactly the task whose packed agent batches — the thing packing buys,
+not a flaw in the task.
+
+### What was built, and it is runnable where the depth exists
+
+`docs/experiments/65-depth/` is complete: corpus builder with **14 seeded
+docstring defects**, each contradicted by a named constant in its own module and
+each verified to sit inside a module docstring and to leave the suite passing;
+both arm briefs; `measure.py` in **list dollars and `packed_depth`**; `score.py`
+for seeds, coverage and compliance; `table.py` for the 1.25x bar. The scorer was
+**validated before any arm ran** (`tests/test_arms_65.py`): 14/14 on an arm that
+quotes every seed, 0 on an arm that finds nothing, and 0 on plausible findings
+that are not the seeds. 566 tests.
+
+**The ground truth is seeded, not found, and that is the limit to quote.** #47's
+bar rested on two hand-verified defects — too thin to separate two arms, since
+one arm finding one more is a 50% swing. Fourteen seeds fix the power and cost
+realism: a seeded defect is not drawn from the distribution of real docstring
+drift, and 14 across 23 slices is denser than any real audit.
+
+### The pilot cost $6.79 and found two defects that would have voided the matrix
+
+- **Every python invocation is refused headless.** Not the `.venv` symlink — a
+  bare `python3 -V` returns `This command requires approval` under `claude -p`.
+  16 of the packed agent's 36 calls went on diagnosing it. Fixed with
+  `--allowedTools Bash`, a permission rule that leaves the tool schema — the
+  thing the arms vary — untouched.
+- **The packed agent dispatched an agent of its own**, at `spawnDepth: 2`, to
+  run the test commands. A packed agent that fans out is not packed. Both briefs
+  now forbid it, and the detector is checked against the real violation
+  (`sub_dispatches: 1, ok: False`) rather than a constructed one.
+
+**Do not read the $6.79 as the cost of a run.** It is the cost of a run that
+spent 16 calls fighting a permission wall and then split itself in two.
+
+### What this changes about what to do next
+
+**§11.4's rule stands, and the reason it stands is now different.** At a packed
+depth of 5 nothing about the break-even matters, so the packing rule rests on
+the defect result (#47) rather than on cost. The cost arithmetic in §11.4 is
+about a fleet this repo is not.
+
+**Ranked, and reconciled against what the Windows machine landed while this was
+being written — #44, #48 and #46 S1 are all closed above.** (1) **The obligation
+#45 created is still open and is now the oldest one**: the daily report's "24%
+worse" MUST be re-run, because this machine's 08-26 denominator falls 108 → 63
+commits and its tokens-per-commit is ~1.7x worse than published. #44 shipped
+`UNSCORABLE`, which is the mechanism; the re-run itself has not been done. Do
+not quote the old number. (2) **#46 beyond S1** — S1 landed the day's yield as
+one table with a 2026-09-09 falsifier date on it. (3) **#65 stays open only as
+*run it in model-migration-kit's fleet***, and it is no longer the thing that
+moves §11.4 here. Also open: #36 #37 #38 #39 #24 #27 #20 #21 #13 #28 #43.

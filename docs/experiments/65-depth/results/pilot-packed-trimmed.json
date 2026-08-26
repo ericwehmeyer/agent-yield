@@ -1,0 +1,53 @@
+{
+ "run": "packed / trimmed / pilot",
+ "why_it_is_a_pilot_and_not_a_replicate": "Killed before it returned, and it would have been VOID anyway: its packed agent spawned a child of its own (compliance.sub_dispatches = 1), and 16 of its 36 calls went on a permission failure the harness has since fixed. It is kept because its SIZING measurement is what #65 turned on, and that measurement is unaffected by either defect.",
+ "measured": {
+  "parent_calls": 4,
+  "parent_tokens": 111759,
+  "parent_dollars": 0.268197,
+  "agent_count": 2,
+  "agent_calls": 46,
+  "agent_calls_each": [
+   36,
+   10
+  ],
+  "packed_depth": 36,
+  "agent_tokens": 4042227,
+  "agent_dollars": 6.525821,
+  "total_calls": 50,
+  "total_tokens": 4153986,
+  "total_dollars": 6.794018,
+  "unpriced_models": []
+ },
+ "compliance": {
+  "parent_reads_source": 0,
+  "parent_test_runs": 0,
+  "dispatches": 1,
+  "dispatches_expected": 1,
+  "sub_dispatches": 1,
+  "writes_anywhere": 0,
+  "ok": false
+ },
+ "per_agent": {
+  "agent-a9b6c6326f07eebfc.jsonl": {
+   "calls": 36,
+   "tool_uses": 87,
+   "read_blocks": 49,
+   "calls_containing_a_read": 15
+  },
+  "agent-abcb0dce46a1ad03a.jsonl": {
+   "calls": 10,
+   "tool_uses": 31,
+   "read_blocks": 0,
+   "calls_containing_a_read": 0
+  }
+ },
+ "the_sizing_result": {
+  "slices": 23,
+  "unique_files_the_slices_cover": 46,
+  "read_blocks_per_call_containing_a_read": 3.27,
+  "tool_uses_per_api_call": 2.42,
+  "clean_depth_estimate": "~24 calls: 15 read calls + ~4 batched test runs + setup and return",
+  "why_more_slices_does_not_help": "Slices share files. The 23 slices cover 46 of this repo's 49 python files, and the agent read 49 file blocks in 15 calls. Cutting the same 49 files into 49 slices, or into 100, adds no file to open, so it adds no call. The packed arm's depth scales with UNIQUE ARTIFACTS OPENED divided by the batch width, not with the slice count -- which is why an audit task cannot be sized to a packed depth of 50 on this corpus."
+ }
+}
