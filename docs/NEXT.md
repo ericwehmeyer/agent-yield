@@ -2500,3 +2500,59 @@ obvious guard and it is not built.
 the one surface that costs zero tokens to look at. That is the whole argument
 for pointing `statusLine` at it, and it is now the recommendation on #66.
 
+## [macOS 2026-08-26 21:05] #66's wrapper: it could not be a wrapper script, and the repo's own guards caught two defects while it was built
+
+**`statusLine` takes ONE command and a project `settings.json` replaces the
+user one, so composition cannot come from configuration.** The obvious answer
+was a shell script that runs both and joins the output. It is the wrong answer
+twice: the payload arrives on stdin **exactly once**, so any wrapper has to
+buffer it and hand each consumer its own copy — pipe it through and the second
+command reads an empty stream — and a shell wrapper has to be written **twice**,
+once per machine, which is how the two clones ended up with two unrelated
+status lines in the first place. So the join went into the tool, which already
+runs on both.
+
+```
+agent-yield statusline --with 'sh "$HOME/.claude/statusline-command.sh"'
+
+agent-yield  main*  ⚠ py3.12(.venv)  ·  ay 150K 15% 3.3x GROWING
+```
+
+**Segments go in FRONT.** The band marker — `EXPENSIVE`, `GROWING`,
+`-- handoff + restart` — is the reason the line exists, and the end of the line
+is where a marker is seen. Putting this tool's output first would bury its
+marker mid-line behind whatever the other command printed.
+
+**Composition can only ADD.** A segment that exits nonzero, does not exist,
+writes only to stderr, prints nothing, or overruns `--with-timeout` contributes
+**nothing at all** — no placeholder, no error text. All five verified. A status
+line is not a place to report that a status line broke, and the segments that
+did work are still worth showing; same reasoning as `QUIET`, one level up. The
+default timeout is **1.5s**, which is the figure the other machine's PowerShell
+line already chose for its git calls — composition is exactly where latency
+starts adding, since this tool shells out to nothing but the lines it may be
+composed with shell out to git with no timeout of their own.
+
+**Two defects, both caught by guards this repo already had, and that is the
+result worth recording.** Neither was found by thinking about the feature.
+
+1. `subprocess.run(..., text=True)` with **no `encoding=`** — cp1252 on
+   Windows, UTF-8 everywhere else, silently. `test_portability_guard.py` failed
+   the first version by line number (#41). A status line assembled from another
+   program's output is precisely where that default mangles a glyph on one
+   machine and nowhere else.
+2. **An ASCII fallback for the separator that could never fire.** The sh script
+   picks its `⚠` by sniffing `LC_ALL`/`LC_CTYPE`/`LANG` and carries a comment
+   about that glyph crashing a Windows console at chcp 437, so the first
+   version copied the idea. But that script writes raw bytes to whatever the
+   console is and **this tool does not**: `cli.main` forces stdout to UTF-8
+   with `errors="replace"` (#43). The console's code page cannot reach it. The
+   branch was deleted and the reason is in the source, because a safety feature
+   that can never be taken is worse than none — it is read as coverage.
+
+**What is NOT done: nothing has been rendered on Windows.** `--with` is Python
+and runs there, but the string that machine needs is its own
+(`--with "pwsh -File $HOME/.claude/statusline.ps1"`, and `shell=True` is
+`cmd.exe` there, not `sh`), and no one has run it. #66's acceptance stays open
+for that. 616 tests, up from 608.
+
