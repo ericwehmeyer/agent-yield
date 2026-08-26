@@ -20,6 +20,14 @@ exit 2 refuses the prompt** (#22, closed), **the status line is live** (#18
 Part B), **and the cost thresholds you are about to read are in the wrong
 units** — #23 is right and answered, and implementing it is the next action.
 
+**[macOS 2026-08-26 22:30] The restart loop is wired shut, and this page is no
+longer the only thing that survives a restart.** `SessionStart` now loads the
+handoff into the next session automatically (#26) — the session reading this
+may already have been handed one. `agent-yield resume` prints it without
+consuming it. **The dispatch rubric is written down (§12) and `gate` warns when
+a brief lacks its markers** (#27). Open next: **#18 Part C**, which is now the
+only thing that can score either rubric.
+
 **[macOS 2026-08-26] #23 is implemented and closed; the cost family is in
 absolute tokens.** Anything below this line still quoting `COST_KNEE = 0.20`
 or a "steep band" is describing the previous units — `thresholds.py` and
@@ -102,6 +110,9 @@ both are corrected.
 | | |
 |---|---|
 | ~~**#23**~~ | **Closed 2026-08-26.** Cost is absolute tokens now — `COST_DISPATCH = 300_000` (p65) / `COST_RESTART = 500_000` (p87) / `COST_STOP = 700_000` (p93), each carrying the share of main-thread calls it fires on, and a test that fails if a constant loses its percentile. `window` is off the cost path: `cost_band` and `cost_advice` raise `TypeError` if handed one. Three bands because there are three actions; `cost_band` is main-thread only. design.md §5 rewritten. |
+| **#26** | ~~SessionStart loads the handoff~~ — **shipped 22:20, hook installed on this machine.** The falsification test is live and unscored: the next session must show the archive consumed, open under 60,000 context/call, and cost under 1.42M over its first ten calls. `interventions.toml` holds the prediction. |
+| **#27** | **Dispatch rubric enforcement. Stage 1 shipped**, warning only, `Explore`/`Plan` exempt. **Stage 2 — the compound refusal — is blocked on #18 Part C**, which has the per-dispatch call counts it needs. `--enforce-brief` exists and stays off; it is the eager form, and the eager form gets the hook disabled. |
+| **#28** | What a scheduler can and cannot do, measured: no session can replace itself, `claude -p` works non-interactively, **interactive launch from cron is undocumented**, routines run in Anthropic's cloud. Filed so the assumption stops being repeated without its caveat. Three things worth measuring are listed there. |
 | **#18** | Three levers. Parts A, B and D **done**; **C (agent-length audit) and E (the falsification test) are open.** E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
 | **#24** | The status line could carry `rate_limits.seven_day.used_percentage` — measured, free on every render, and on a subscription it is the operator's *real* currency. The design question is whether an allowance percentage counts as "money" under the tokens-never-money rule. **Retitle it: it says "Task 23" and collides with #23.** |
 | ~~**#22**~~ | **Closed 21:55.** Exit 2 refuses the prompt, stderr reaches the operator, and the harness echoes the prompt back. |
@@ -397,6 +408,66 @@ Once the units differ that comparison is meaningless, which is #23's point in
 test form. What is left in its neighbourhood is the *aggressiveness* of
 300K/500K/700K, which is a policy choice nobody has evidence for — the
 percentile beside each constant is what makes it arguable later.
+
+## [macOS 2026-08-26 22:30] What this session added
+
+**Four commits, 37 new tests (187 → 224), three issues filed, everything
+pushed.** #23 closed, #26 shipped, #27 half-shipped by design.
+
+**The restart loop is wired shut except for the keystroke.** `boundary` makes
+continuing expensive to ignore → `handoff` makes leaving cheap → **`SessionStart`
+makes arriving cheap** → a human types the restart. That last step is not
+laziness: no hook kills and respawns a session, and `SessionStart` *cannot block
+a session from starting* — exit 2 there only surfaces stderr. It is a loader,
+never a gate, which is the opposite of `UserPromptSubmit` and worth remembering
+before designing anything else on it.
+
+**Staleness is solved by consuming rather than checking.** The hook archives the
+handoff as it injects it, so injection is exactly-once **with no state file
+anywhere**. Older than 24h it is neither injected nor archived — readable by
+hand, never loaded. A handoff describing a dead session is worse than none,
+because it is confidently wrong rather than absent. Measured: **3,892 chars,
+~973 tokens, ~95K over a 100-call session**, against ~10.3M spent here.
+
+**The dispatch rubric, §12 of `working-method.md`.** One asymmetry generates all
+of it: **the child pays for what it reads once; the parent pays for what it
+reads on every call afterwards.** Four parent rules, four brief parts. §11's
+1.07× null result had exactly one cause — the parent read every diff and ran
+every suite itself.
+
+**The rubric splits along an observability line, and that is what makes it
+enforceable.** Three markers are visible in the dispatch prompt (line range
+**and** "do not explore" — one marker, since the range without the prohibition
+is not what was measured; a named output path; a return contract). The ~10-call
+cap is only knowable afterwards, because hooks do not fire inside a subagent.
+So `gate` warns on the first three and #18 Part C must carry the fourth.
+
+**Two live data points against the rubric, both from this session, and one is
+embarrassing:**
+
+- **A briefed implementation agent with a stated 14-call cap ran 36 calls.**
+  Stating a cap does not enforce it — which is the argument for Part C existing,
+  and evidence that the pre-dispatch half cannot cover part (b).
+- **That same agent reported "236 tests passed" when the real number was 224.**
+  Agent-reported numbers were verified rather than trusted, and the commit
+  carries the verified one. **Verify a subagent's numbers before quoting them.**
+- I also briefed two Fable agents to write their memos to the **scratchpad**,
+  which evaporates — rubric part (c) violated by its own author within an hour.
+  Both memos were reconstructed into issues #26 and #27, which is where they
+  should have been written. **A "named output path" means a durable one.**
+
+**Fable earned its cost twice, on questions where being wrong is expensive.**
+The enforcement split above is Fable's, not mine — I offered three mechanisms
+and it rejected all three for a fourth. The consume-on-injection design is
+Fable's too. Both are the kind of answer that is cheap to get wrong and
+expensive to discover wrong.
+
+**#23 shipped as measured, not as proposed.** The ticket's 150K/250K/400K fires
+on 60%/42%/25% of main-thread calls; the shipped 300K/500K/700K fires on
+35%/13%/7%, and each constant now carries that share in its comment because
+**there is no knee to anchor to** — a threshold here is a policy choice about
+what fraction of calls should trip it, and a threshold at the median fires on
+half of everything.
 
 ## Two review routines still armed
 
