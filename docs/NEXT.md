@@ -1052,3 +1052,79 @@ it says the long-unit regime is **untested** and that what it retracted was
 through each slice's own test command — pass, fail, or never run — because
 silently skipped slices are invisible in a token count. **If the 12-agent arm
 wins, the 10-call cap should be un-retracted rather than left quietly retired.**
+
+## [Windows 2026-08-26 08:30] The first daily report, and what it says about progress
+
+**The honest answer to "are we getting more effective" is: not measurably yet,
+and the number that says we are is a mixture shift.** This is the first time
+the daily question has been asked against the real corpus (20,757 calls,
+re-ingested this morning), scoped to this project's `cwd` and bucketed by
+**UTC** day, which is what the corpus timestamps are. Bucket git any other way
+and the join silently misaligns — a bare `git log --since=<date>` does exactly
+that, and it is the same approxidate trap already recorded against `outcomes.py`.
+
+```
+agent-yield only, UTC days
+day        tokens   calls  commits    ins  code-ins  docs-ins  main ctx/call  >300K  sub ctx/call
+2026-08-25  17.79M   146      10    4,203    1,127     2,931       177,068     20%      45,766
+2026-08-26  52.80M   398      66   12,979    7,960     4,716       142,095      4%      48,480
+
+tokens/commit        1,778,703 -> 800,033   2.22x "better"
+tokens/code-line        15,784 ->   6,633   2.38x "better"
+tokens/line-of-any-kind  4,232 ->   4,068   FLAT
+```
+
+**The first two ratios are the third one wearing a costume.** 08-25 was
+doc-heavy (2,931 doc lines against 1,127 of code); 08-26 was code-heavy (7,960
+against 4,716). Tokens per line of any kind did not move. Nothing got cheaper —
+the work changed shape. This is `design.md` §3.1 recurring exactly: **the
+aggregate dissolves under decomposition**, and this time it dissolved a headline
+that would have been reported as a win.
+
+**What does survive the decomposition, with its caveat attached.** Main-thread
+context/call fell 177,068 → 142,095 and the share of main calls above
+`COST_DISPATCH` fell **20% → 4%**, with nothing above `COST_RESTART` on either
+day. Machine-wide the same tail has been shrinking for five days: calls above
+500K ran 34% (08-21) → 8% → 1% → 6% → **0%** (08-26). That is the cost-threshold
+family's own pre-registered prediction — *"the two leave bands fire on under 15%
+of main-thread calls"* — and it passes. **The caveat is not small: the restart
+discipline produces many short sessions, and a fresh session is cheap for
+reasons that have nothing to do with any threshold.** It is the #26 confound
+again, and two days is n=2.
+
+**One prediction is failing and should be said out loud.** brief-pack expected
+subagent context/call under 30,000, from a measured 89,721. It is **48,480**,
+and it went *up* between the two days (45,766 → 48,480). Halfway, stalled, and
+not yet retractable at n=2 — but it is not passing.
+
+**The corpus is per-machine; the git history is shared.** Only Windows calls are
+in this corpus while both machines commit. This morning that was 4 of 66 commits
+and nearly harmless. It will not stay that way, and every tokens-per-commit
+figure carries it.
+
+### The scorer that was supposed to answer all this cannot (#44)
+
+Running the report properly for the first time found three defects, and the
+third is the one that matters. `report` sums tokens **machine-wide** and divides
+by commits **in this repo** — 447,948,034 over 10 commits on 08-25, a
+**25x** error against the true 1,778,703. The default metric is
+`tokens_per_merge`, and this repo commits to `main` and never merges, so every
+intervention has printed `- -> -` since the scorer was written. And under the
+brief-pack prediction, which names *subagent* context/call, the scorer prints an
+**aggregate**: `context_per_call: 139,580 -> 133,996`, a number that cannot rise
+or fall with the thing predicted, with nothing saying so.
+
+**The third one is the worst because it prints a plausible number.** #29's
+loader declined every session, #42's archive reported `no_handoff` for a real
+loss, and now a scorer reports a figure for a prediction it cannot evaluate.
+Three times, and every one failed in the direction that looks like it is
+working. `UNSCORABLE` needs to be a visible outcome, distinct from VOID.
+
+### Two Windows-only bugs, both found by asking a question of the tool
+
+| | |
+|---|---|
+| ~~**#31**~~ | **Closed.** The real `SessionStart` payload here carries six keys — `cwd`, `hook_event_name`, `model`, `session_id`, `source`, `transcript_path` — captured by a session that did not install the hook. The synthetic line had three and was missing half of it. `REASON_KEY = "source"` is confirmed against live Windows data. `agent_type` is in the binary's constructor but **absent** from the live payload; do not branch on it. `transcript_path` is the interesting one: it makes injection correlatable to the session that received it, which is what #26 lacked. |
+| ~~**#42**~~ | **NEW, found, fixed, closed.** The handoff written at 23:48 never reached the 23:50 session; it is still on disk. `Path.rename` is `os.rename`, which **raises on Windows when the destination exists** and silently overwrites on POSIX. Once a machine has archived one handoff, every later `consume` hit the existing `.loaded`, raised, was swallowed by `except OSError`, and returned `None` — reported as `no_handoff`. Not the first handoff: **every handoff after the first, on this platform, forever.** `os.replace` fixes it. The old double-consume test never reached the rename, because the first consume moves the file away. |
+| ~~**#41**~~ | **Closed, and the macOS diagnosis was right to find nothing.** The file layer was never wrong — the shipped `§` round-trip test **passes on Windows**. Every `subprocess.run` in the package passed `text=True` with no `encoding=`, which decodes with the locale code page: cp1252 here. Git speaks UTF-8, so `git log --format=%s` returned `Â§12` where the same call with `encoding="utf-8"` returns `§12`, both real subjects from this history. **The "two write paths" were never two write paths — they were two *source* paths**, git-derived notes against literals, mixed into one payload by `build()`. Five call sites fixed. |
+| **#43** | **NEW, open, split out of #41.** `sys.stdout` is cp1252 here, so `agent-yield --help` emits a bare `0xA7` that is **not valid UTF-8** — a consumer decoding the stream gets an invalid start byte, not a replacement glyph. The `SessionStart` injection is safe **by accident**: `json.dumps` defaults to `ensure_ascii=True` and escapes the payload before it reaches the stream. Protected-by-accident is not a property to rely on; anything added later that prints outside a `json.dumps` inherits the bug silently. |
