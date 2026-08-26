@@ -266,9 +266,10 @@ const THRESHOLDS = {
      cost = base(model) x (input + 0.10*cache_read + 1.25*cw_5m
                            + 2.00*cw_1h + 5.00*output) */
 const PRICING = {
-  baseRatePerMTok: { "claude-opus-5": 5.00, "claude-haiku-4-5": 1.00 },
+  baseRatePerMTok: { "claude-opus-5": 5.00, "claude-fable-5": 10.00,
+                     "claude-sonnet-5": 2.00, "claude-haiku-4-5": 1.00 },
   cacheRead: 0.10, cacheWrite5m: 1.25, cacheWrite1h: 2.00, output: 5.00,
-  source: "src/agent_yield/pricing.py, read 2026-08-26",
+  source: "src/agent_yield/pricing.py, re-read 2026-08-26 after #81",
   basis: "list",
 };
 
@@ -453,11 +454,31 @@ function triple(s) {
    Every scope strip prints both, so a reader can see which unit is in play. */
 function crShareTok(s) { return s.tokens ? s.crTok / s.tokens : null; }
 function crShareUsd(s) { return s.dollars ? s.crUsd / s.dollars : null; }
+/* The lower-bound clause, and it asks PRICING rather than asserting -- #74's
+   lesson, that a figure stated as a string literal goes on claiming something
+   its own data stopped supporting. `unpricedModels` records what was unpriced
+   WHEN THIS LEAF WAS CAPTURED, which is a fact about the capture and does not
+   change. Whether a rate exists NOW is a different fact, read off the table, so
+   #81 landing two rates flips the second half of this sentence with no edit
+   here. The figure stays a lower bound either way: repricing needs the
+   per-model component split, and this capture carries only raw token totals. */
 function unpricedNote(s) {
   if (!s.unpricedModels.length) return "";
-  return " \u2014 " + fmt0(s.unpricedTok) + " tokens on " + s.unpricedModels.length +
-    " model" + (s.unpricedModels.length > 1 ? "s" : "") + " pricing.py has no reconciled rate for (" +
-    esc(s.unpricedModels.join(", ")) + ") sit outside it, so the figure is a lower bound";
+  const since = s.unpricedModels.filter((m) => PRICING.baseRatePerMTok[m] !== undefined);
+  const still = s.unpricedModels.filter((m) => PRICING.baseRatePerMTok[m] === undefined);
+  let note = " \u2014 " + fmt0(s.unpricedTok) + " tokens on " + s.unpricedModels.length +
+    " model" + (s.unpricedModels.length > 1 ? "s" : "") +
+    " (" + esc(s.unpricedModels.join(", ")) + ") were unpriced when this leaf was" +
+    " captured, so the figure is a lower bound";
+  if (still.length) {
+    note += "; pricing.py still has no reconciled rate for " + esc(still.join(", "));
+  }
+  if (since.length) {
+    note += "; pricing.py has since reconciled " + esc(since.join(", ")) +
+      " (#81), but repricing needs the per-model component split this capture" +
+      " does not carry \u2014 raw token totals cannot be priced";
+  }
+  return note;
 }
 function inWindow(days, fromIdx) {
   const lo = dayISO(fromIdx[0]), hi = dayISO(fromIdx[1]);
