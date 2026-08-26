@@ -1,5 +1,8 @@
 import io
 import json
+import pathlib
+
+import pytest
 
 from agent_yield.gate import (
     OVERRIDE_ENV,
@@ -183,3 +186,75 @@ def test_day_ceiling_and_brief_messages_both_reach_the_caller():
 
 def test_garbage_input_still_exits_0_even_with_enforce_brief():
     assert main(["--enforce-brief"], stdin=io.StringIO("not json")) == 0
+
+
+# --- #32: the marker detector, against dispatches nobody wrote for it -------
+
+# Captured verbatim from the parent transcript of session
+# 6e63edd1-b7b5-4b98-a90f-ce5e2d79a995 (the five issue #18 Part E dispatches,
+# 2026-08-25). These are not fixtures written to match the code -- that is the
+# #26 failure, one file over, and it is exactly how #32 survived: the old
+# fixtures agreed with the old regexes, so the suite was green while the
+# detector scored all three markers missing on all five of these.
+PART_E = json.loads(
+    (pathlib.Path(__file__).parent / "fixtures" / "part_e_dispatches.json").read_text()
+)
+
+
+@pytest.mark.parametrize("dispatch", PART_E, ids=lambda d: d["description"])
+def test_captured_part_e_briefs_carry_every_marker(dispatch):
+    request = DispatchRequest(
+        subagent_type=dispatch["subagent_type"], prompt=dispatch["prompt"]
+    )
+    assert missing_markers(request) == ()
+
+
+def test_there_are_five_captured_briefs_and_none_is_paraphrased():
+    assert len(PART_E) == 5
+    for dispatch in PART_E:
+        assert dispatch["prompt"].startswith("Fixture-reality audit of ")
+        assert "RETURN CONTRACT:" in dispatch["prompt"]
+
+
+# The three ways #32 failed, each reduced to the smallest prompt that shows it.
+# Every one of these scored a missing marker before the fix.
+
+
+def test_a_prohibition_stronger_than_the_word_explore_still_counts():
+    prompt = (
+        "Read resume.py (lines 1-260). PROHIBITED: do not grep or search the "
+        "repository, do not read any other file. Write it to /tmp/o.json. "
+        "Return at most 3 lines."
+    )
+    request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
+    assert "line ranges" not in missing_markers(request)
+
+
+def test_an_output_path_on_its_own_line_still_counts():
+    inline = "Read x.py lines 1-9. Do not explore. write it to: /tmp/x.json. Return only that."
+    across = inline.replace("to: /tmp", "to:\n  /tmp")
+    for prompt in (inline, across):
+        request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
+        assert "output path" not in missing_markers(request), prompt
+
+
+def test_at_most_n_lines_is_the_same_contract_as_under_n_lines():
+    stem = "Read x.py lines 1-9. Do not explore. Write it to /tmp/x.json. "
+    for contract in (
+        "Return under 3 lines.",
+        "RETURN CONTRACT: your final message must be at most 3 lines.",
+        "Return no more than 3 lines, nothing else.",
+    ):
+        request = DispatchRequest(subagent_type="general-purpose", prompt=stem + contract)
+        assert "return contract" not in missing_markers(request), contract
+
+
+def test_an_exploratory_dispatch_still_carries_no_markers():
+    # §12: "an exploratory dispatch is supposed to have none of these markers."
+    # Loosening the regexes for the property must not make everything a brief.
+    prompt = (
+        "Find every place the repo joins a dispatch to its child transcript. "
+        "Search broadly; report what you find and where."
+    )
+    request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
+    assert missing_markers(request) == ("line ranges", "output path", "return contract")

@@ -111,6 +111,16 @@ BRIEFED_CALL_RANGE = (4, 27)              # observed spread across the hand-iden
 # within agent-yield the un-briefed range is 3-27 against briefed 3-30. True
 # of eight hand-picked dispatches, false of the twelve measured here.
 #
+# THIRD, 2026-08-25 (#32): the detector that produced the n=4/n=8 split was
+# itself broken -- it tested for wording, not for the property, and scored
+# 0 of 3 markers on all five briefs this repo wrote to its own rubric. Fixed,
+# and the same twelve dispatches re-scored: briefed n=5 median 3.0 calls,
+# un-briefed n=7 median 9.0. ONE dispatch was reclassified and both medians
+# moved three calls. That does not resurrect the effect -- it shows the
+# comparison is one row wide at n=12. The ranges still overlap (3-30 vs 3-27)
+# and ctx/call is still flat (29,356 vs 31,108). "No evidence the markers
+# predict length" stands; working-method.md 12.2 has the full re-score.
+#
 # The constants below are left alone. Part C reports, it does not retune, and
 # it has less to retune with than it appeared to an hour ago.
 

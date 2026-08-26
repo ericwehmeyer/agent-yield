@@ -90,18 +90,65 @@ def read_dispatch(payload: dict) -> DispatchRequest | None:
 # agents held 17,580-67,123 context/call; un-briefed ones on the same machine
 # sat at a median 85,195.
 _LINE_RANGE_RE = re.compile(
-    r"(sed -n '\d+,\d+p')|(lines?\s+\d+\s*[-–]\s*\d+)|(:\d+-\d+\b)", re.IGNORECASE
+    r"(sed -n '\d+,\d+p')|(lines?\s+\d+\s*[-\u2013]\s*\d+)|(:\d+-\d+\b)", re.IGNORECASE
 )
+
+# #32: every one of these three used to test for particular *wording*, and all
+# three then scored zero on five dispatches written to this section verbatim.
+# They test for the property now. The rule that produced the bug, and the rule
+# these are held to: a marker asks "does the brief bound this?", never "does
+# the brief say it the way the author of the regex would have said it."
+#
+# (a)'s second half -- the prohibition. The property is "do not go looking":
+# a negation applied to any way a child discovers files for itself, or a
+# read directive that closes the list it just gave.
 _NO_EXPLORE_RE = re.compile(
-    r"(do not|don't|never)\s+explore|no exploration", re.IGNORECASE
+    r"""(?:
+          (?:do \s+ not | don't | never | no) \s+ (?:\w+ \s+){0,3}
+          (?: explor\w* | search\w* | grep\w* | glob\w* | browse\w* | discover\w*
+            | hunt\w* | wander\w* | look \s+ (?:around|for)
+            | read \s+ (?:any \s+)? (?:other|another|more|additional|further)
+            | open \s+ (?:any \s+)? (?:other|another)
+            )
+        | no \s+ (?:exploration|searching|grepping|discovery)
+        | read \s+ (?:exactly|only|nothing \s+ but)\b
+        | read\w* [\s\S]{0,80}? nothing \s+ else
+        | if \s+ you \s+ need \s+ [\s\S]{0,60}? not \s+ listed
+        )""",
+    re.IGNORECASE | re.VERBOSE,
 )
+
+# (c) -- a named output path. The old pattern used `.` without DOTALL, so a
+# brief that put the path on its own line ("write it to:\n  /path/x.json")
+# scored zero while the identical words on one line scored one. Verified both
+# ways before the fix.
 _OUTPUT_PATH_RE = re.compile(
-    r"""(write|save|output|append)\b.{0,60}(/[^\s'"]+|[\w./-]+\.(md|json|jsonl|py|txt|csv|html))""",
+    r"(write|save|output|append|produce|emit|dump|put)\b"
+    r"[\s\S]{0,80}?"
+    r"(/[^\s'\"]+|[\w./-]+\.(md|json|jsonl|py|txt|csv|tsv|html|ya?ml))",
     re.IGNORECASE,
 )
+
+# (d) -- a bound on what comes back. "at most 3 lines" is the same property as
+# "under 3 lines"; only the vocabulary differed, and only the vocabulary was
+# tested.
 _RETURN_CONTRACT_RE = re.compile(
-    r"return\w*\b.{0,80}(only|nothing else|under \d+ lines|one (line|verdict)|file:line)",
-    re.IGNORECASE,
+    r"""(?:
+          return \s+ contract
+        | (?: return\w* | repl(?:y|ies) | respond\w* | report \s+ back
+            | final \s+ (?:message|answer|output|response|line)
+            ) \b
+          [\s\S]{0,100}?
+          (?: only\b | nothing \s+ else | just\b
+            | (?:at \s+ most | no \s+ more \s+ than | under | fewer \s+ than
+              | at \s+ the \s+ outside) \s+ \d+
+            | \d+ \s+ lines?\b
+            | one \s+ (?:line|verdict|sentence|paragraph|word)
+            | file:line
+            | do \s+ not \s+ (?:paste|summari[sz]e|include|explain|quote)
+            )
+        )""",
+    re.IGNORECASE | re.VERBOSE,
 )
 
 _BRIEF_REMEDY = {

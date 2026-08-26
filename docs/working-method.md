@@ -613,9 +613,10 @@ asserting the tempting number never appears.
   un-briefed populations "do not overlap at all" (4-27 vs 62-188). Within
   agent-yield: un-briefed 3-27 against briefed 3-30. True of eight hand-picked
   dispatches, false of twelve measured ones. Retired.
-- **4 of 73 dispatches carried all three markers; 60 of 73 exceeded the
-  10-call cap** (longest 118). The rubric is followed about 5% of the time, in
-  the repo whose subject is the rubric.
+- ~~**4 of 73 dispatches carried all three markers**~~ — **that was a detector
+  floor, not a briefing rate. Re-scored 2026-08-25 after #32; see §12.2.**
+  **60 of 73 exceeded the 10-call cap** (longest 118), which is unaffected —
+  the cap is counted from the child's transcript, not from the prompt.
 - **§12's asymmetry is untouched.** "The child pays for what it reads once; the
   parent pays on every call afterwards" is per-call economics, measured
   elsewhere. What is unsupported is the narrower claim that *these three
@@ -635,6 +636,60 @@ asserting the tempting number never appears.
    it was checked, because it was a *good* result, and good results do not
    invite scrutiny. The interval between measuring and quoting is where this
    kind of error gets expensive.
+
+### 12.2 The detector was the floor (issue #32, 2026-08-25)
+
+Every number in §12.1 that counts markers was produced by three regexes that
+**tested for particular wording rather than for the property they name.** Five
+dispatches written to this section deliberately — the issue #18 Part E audits,
+each carrying an explicit line range, a prohibition on reading anything else, a
+named output path and a stated return contract — scored **0 of 3 markers, all
+five**. Diagnosed per regex, not guessed:
+
+| marker | why it failed | the property it should have asked for |
+|---|---|---|
+| line ranges | the range matched; the *prohibition* demanded the literal word "explore", so `"do not grep or search the repository, do not read any other file"` — strictly stronger — scored zero | is discovery bounded, by whatever words |
+| output path | `.{0,60}` without `DOTALL`, so `write it to:\n  /path/x.json` missed while the same words on one line matched. Verified both ways | is a path named for the child to write to |
+| return contract | `at most 3 lines` is not `under \d+ lines` | is what comes back bounded |
+
+**What the fix changes, and what it does not.** Run against the same
+Part-C-era population, the old regexes reproduce §12.1's published rows
+exactly — briefed n=4 median 6.0 calls, un-briefed n=8 median 6.5 — so the two
+detectors are comparable on the same twelve dispatches:
+
+| agent-yield, same 12 dispatches | briefed | median calls | un-briefed | median calls |
+|---|---|---|---|---|
+| old detector (§12.1 as published) | 4 | 6.0 | 8 | 6.5 |
+| fixed detector | 5 | **3.0** | 7 | **9.0** |
+
+Across the whole corpus the floor was much lower than it was here: **4 briefed
+of 87 non-exempt dispatches becomes 10 of 87** — the old detector missed six of
+every ten briefs it was shown.
+
+**Read the second table the way it deserves and it says nothing about the
+rubric.** Exactly **one** dispatch was reclassified — a 3-call one — and it
+moved both medians by three calls. A comparison whose answer inverts on a
+single row at n=12 cannot support either answer. The ranges are still
+3–30 briefed against 3–27 un-briefed, still fully overlapping; median
+context/call is still 29,356 against 31,108. **§12.1's conclusion stands
+unchanged: there is no evidence that the three detectable markers predict
+dispatch length.** What #32 changes is that the marker *population* can now be
+trusted; what it does not change is that the population is far too small.
+
+**The general lesson, and it is not about regexes.** The five briefs that
+scored zero were written by the same repo, to the same section, in the same
+week. A detector that its own author's textbook example fails is not
+mis-tuned — it is measuring a different thing than it claims to. And it stayed
+green because `test_gate.py`'s fixtures were *written to match the regexes*:
+the same failure as #26 one file over, where a hook read a payload key the
+harness never sends and 226 tests agreed with it. The five Part E prompts are
+now pinned verbatim in `tests/fixtures/part_e_dispatches.json` as captured
+positive cases, because **a fixture you wrote cannot falsify a pattern you
+wrote.**
+
+**#27 Stage 2 stays off.** A better detector is still not a licence to refuse
+dispatches: the marker-only rule now fires on 77 of 87, and §12 says an
+exploratory dispatch is *supposed* to carry none of these markers.
 
 **The join is a heuristic and says so.** There is no structural link from a
 dispatch to its child: the parent's `tool_use` id appears nowhere in the
