@@ -15,7 +15,8 @@
 # Measuring only the audit turn would measure the wrong half of the claim.
 set -euo pipefail
 
-ARM="${1:?arm: baton|reader}"
+ARM="${1:?arm: baton|reader|baton1|baton1v}"
+PY="${PY:-python3}"
 REP="${2:?replicate: 1|2}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
 REPO="$(cd "$HERE/../../.." && pwd)"
@@ -24,7 +25,8 @@ case "$ARM" in
   baton)  ARMNUM=1 ;;
   reader) ARMNUM=2 ;;
   baton1) ARMNUM=3 ;;   # #47: the baton, but ONE agent for all 19 modules
-  *) echo "arm must be baton, reader or baton1" >&2; exit 2 ;;
+  baton1v) ARMNUM=4 ;;  # #47: baton1, plus a required second pass in the agent brief
+  *) echo "arm must be baton, reader, baton1 or baton1v" >&2; exit 2 ;;
 esac
 SID="33333333-0000-4000-8000-00000000${ARMNUM}0${REP}0"
 
@@ -42,7 +44,7 @@ COMMON=(--output-format json --model opus --setting-sources user
         --max-budget-usd 25)
 
 snap () {  # $1 = turn label
-  python3 "$HERE/measure.py" "$SID" --cwd "$REPO" \
+  "$PY" "$HERE/measure.py" "$SID" --cwd "$REPO" \
       --snapshot-dir "$OUT/snapshots" --label "$1" > "$OUT/cumulative-$1.json"
   echo "  cumulative after $1: $(cat "$OUT/cumulative-$1.json")"
 }
