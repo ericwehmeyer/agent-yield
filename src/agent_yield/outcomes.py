@@ -63,9 +63,21 @@ def _when(iso: str) -> dt.datetime | None:
 
 
 def _split(line: str) -> tuple[str, str]:
-    """`<sha> <iso>` -> (sha, iso). Both walks below print the pair."""
+    """`<sha> <iso>` -> (sha, iso)."""
     sha, _, iso = line.strip().partition(" ")
     return sha, iso
+
+
+def _split3(line: str) -> tuple[str, str, str]:
+    """`<sha> <iso> <parents...>` -> (sha, iso, parents).
+
+    The parent list is how a merge is recognised without a second walk: a
+    commit with more than one parent is a merge, and `--first-parent` has
+    already put it in the population being counted.
+    """
+    sha, _, rest = line.strip().partition(" ")
+    iso, _, parents = rest.partition(" ")
+    return sha, iso, parents
 
 
 def _utc_midnight(day: dt.date) -> str:
@@ -108,25 +120,34 @@ def daily_outcomes(
             unattributable[day] = unattributable.get(day, 0) + 1
         return verdict == LOCAL
 
-    merges: dict[dt.date, int] = {}
-    for line in _git(repo, "log", branch, "--merges", "--first-parent",
-                     "--pretty=%H %cI", *window).splitlines():
-        sha, iso = _split(line)
-        day = _day_of(iso)
-        if day and mine(sha, iso, day):
-            merges[day] = merges.get(day, 0) + 1
-
+    # ONE walk for both counts, and it is the walk `lines` below already used.
+    #
+    # `commits` came from `git log --all --no-merges` with the merge count
+    # folded back in, so a merged branch's work was counted twice -- once as
+    # the branch commit and once as the merge that shipped it -- while `lines`
+    # counted it once. The two then sat on one row of the report and were
+    # divided into each other over different universes (#46 review, finding 3).
+    #
+    # First-parent on the default branch is "what shipped", which is what this
+    # tool divides spend by. A commit that exists only on a side branch is
+    # written work and not landed work; it appears when a merge brings it in,
+    # once, through the merge. On a linear history -- this repo's -- the two
+    # walks agree exactly, so no published figure moves.
+    #
+    # One walk also means `mine` is called once per commit. Two walks over
+    # overlapping populations counted the same unattributable commit twice,
+    # which is why the `lines` walk below re-implements the machine check
+    # instead of calling it.
     commits: dict[dt.date, int] = {}
-    for line in _git(repo, "log", "--all", "--no-merges", "--pretty=%H %cI",
-                     *window).splitlines():
-        sha, iso = _split(line)
+    merges: dict[dt.date, int] = {}
+    for line in _git(repo, "log", branch, "--first-parent",
+                     "--pretty=%H %cI %P", *window).splitlines():
+        sha, iso, parents = _split3(line)
         day = _day_of(iso)
         if day and mine(sha, iso, day):
             commits[day] = commits.get(day, 0) + 1
-    # Merge commits are commits too. `--no-merges` above kept the two walks
-    # independent, so fold the merges back in rather than walking twice.
-    for day, count in merges.items():
-        commits[day] = commits.get(day, 0) + count
+            if len(parents.split()) > 1:
+                merges[day] = merges.get(day, 0) + 1
 
     lines: dict[dt.date, int] = {}
     current: dt.date | None = None

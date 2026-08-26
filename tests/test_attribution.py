@@ -53,8 +53,17 @@ def two_clones(tmp_path: Path) -> tuple[Path, Path, str, str]:
     """(here, there, sha written here, sha written there and fetched in).
 
     `there` is a second clone standing in for the other machine. Its commit
-    reaches `here` by a fetch, exactly as the other machine's does, so `here`'s
-    reflog sees it arrive and never sees it written.
+    reaches `here` by a fetch and then sits ON `here`'s main, exactly as the
+    other machine's commits do -- both push to main and pull, so the history
+    is linear and a foreign commit is an ordinary first-parent commit here.
+
+    The fetch happens BEFORE `here` writes its own commit, so main
+    fast-forwards and every sha keeps its identity. An earlier version left
+    `theirs` on a remote-tracking ref only; that was enough while
+    `daily_outcomes` walked `--all`, and it stopped demonstrating anything
+    once the walk became first-parent -- a commit that has not landed is
+    correctly not counted, foreign or not, so the fixture would have been
+    testing the walk instead of the attribution.
     """
     here = tmp_path / "here"
     here.mkdir()
@@ -62,11 +71,12 @@ def two_clones(tmp_path: Path) -> tuple[Path, Path, str, str]:
     _commit(here, "base.txt", "base\n")
 
     there = tmp_path / "there"
-    _git(tmp_path, "clone", "-q", str(here), str(there))
+    _git(tmp_path, "clone", "-q", str(there.parent / "here"), str(there))
     foreign = _commit(there, "theirs.txt", "theirs\n")
 
-    mine = _commit(here, "mine.txt", "mine\n")
     _git(here, "fetch", "-q", str(there), "main:refs/remotes/there/main")
+    _git(here, "merge", "--ff-only", "-q", "refs/remotes/there/main")
+    mine = _commit(here, "mine.txt", "mine\n")
     return here, there, mine, foreign
 
 
@@ -129,9 +139,11 @@ def test_the_verb_is_read_and_the_subject_is_not():
 
 
 def test_daily_outcomes_counts_only_what_this_clone_wrote(two_clones):
-    """`daily_outcomes` walks `--all`, so the other machine's commit is in the
-    count the moment it is fetched -- branch or no branch. That is the 25x
-    denominator #44 found, in three commits."""
+    """A foreign commit sits on main here, so the walk counts it and only
+    attribution can take it out again. That is the 25x denominator #44
+    found, in three commits: the tokens are one machine's and the commits
+    are two machines' until someone says which is which.
+    """
     here, _, _, _ = two_clones
     everything = {o.day: o for o in daily_outcomes(here, DAY, DAY)}
     scoped = {o.day: o for o in daily_outcomes(here, DAY, DAY, machine=Machine(here))}
