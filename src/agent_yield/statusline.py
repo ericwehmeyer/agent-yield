@@ -63,10 +63,10 @@ Tokens, never money -- there is no rate in here and no `$`.
 from __future__ import annotations
 
 import json
-import sys
 from pathlib import Path
 from typing import TextIO
 
+from .hookio import read_payload
 from .records import parse_line
 from .session import SessionStats, resolve_transcript, session_stats
 from .thresholds import (
@@ -361,8 +361,7 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
     line = QUIET
     payload: dict = {}
     try:
-        stream = stdin if stdin is not None else sys.stdin
-        raw = stream.read()
+        raw = read_payload(stdin)
         loaded = json.loads(raw or "{}")
         if isinstance(loaded, dict):
             payload = loaded

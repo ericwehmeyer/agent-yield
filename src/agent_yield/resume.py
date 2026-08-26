@@ -43,7 +43,6 @@ from __future__ import annotations
 
 import datetime as dt
 import json
-import sys
 from pathlib import Path
 from typing import TextIO
 
@@ -54,6 +53,7 @@ from .handoff import (
     consume,
     read,
 )
+from .hookio import read_payload
 
 __all__ = [
     "INJECT_REASONS",
@@ -214,9 +214,8 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
     args = list(argv or [])
     out = _parse_out(args)
     probing = "--probe" in args
-    stream = stdin if stdin is not None else sys.stdin
     try:
-        raw = stream.read()
+        raw = read_payload(stdin)
     except Exception:
         return 0
 

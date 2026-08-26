@@ -40,6 +40,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
+from .hookio import read_payload
 from .predict import Projection, project
 from .thresholds import REFERENCE_CONTEXT, band_for_day
 
@@ -241,9 +242,8 @@ def _decide(payload: dict, enforce_brief: bool = False) -> tuple[int, str | None
 def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
     enforce_brief = "--enforce-brief" in args
-    stream = stdin if stdin is not None else sys.stdin
     try:
-        payload = json.loads(stream.read() or "{}")
+        payload = json.loads(read_payload(stdin) or "{}")
         if not isinstance(payload, dict):
             return 0
         code, message = _decide(payload, enforce_brief=enforce_brief)

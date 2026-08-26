@@ -63,6 +63,7 @@ from pathlib import Path
 from typing import TextIO
 
 from .handoff import DEFAULT_HANDOFF_PATH
+from .hookio import read_payload
 from .session import (
     SessionStats,
     cost_crossings,
@@ -288,9 +289,8 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
     args = list(argv or [])
     enforce = "--enforce" in args
     probing = "--probe" in args
-    stream = stdin if stdin is not None else sys.stdin
     try:
-        payload = json.loads(stream.read() or "{}")
+        payload = json.loads(read_payload(stdin) or "{}")
         if not isinstance(payload, dict):
             return 0
         # The armed one-shot refusal outranks everything below it, including

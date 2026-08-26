@@ -153,3 +153,40 @@ def test_every_symlink_in_the_suite_is_guarded(path):
             "catches OSError nor skips by name -- that is a red suite on any "
             "Windows box without Developer Mode."
         )
+
+
+_STDIN_READER = "hookio.py"
+
+
+@pytest.mark.parametrize("path", _SOURCES, ids=_rel)
+def test_no_hook_reaches_for_sys_stdin_directly(path):
+    """N3: `sys.stdin` decodes with the console code page on Windows.
+
+    Hook payloads are UTF-8 JSON from node. Windows hands CPython a stdin
+    whose encoding is cp1252 and whose errors are `surrogateescape`, so a
+    payload naming a path with any non-ASCII character in it arrives corrupt
+    and *nothing raises* -- the hook then measures nothing and exits 0.
+
+    This is the one rule here that names a module rather than a primitive,
+    because the fix is not a keyword argument: the stream has to be
+    reconfigured before the first read, which is a thing to do rather than a
+    thing to spell. Routing every hook through one reader is what makes the
+    next hook correct by default -- `resume.py` has no observable corruption
+    path today and would never have grown a test.
+    """
+    if path.name == _STDIN_READER:
+        return
+    tree = ast.parse(_read(path), filename=str(path))
+    offenders = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Attribute)
+        and node.attr == "stdin"
+        and isinstance(node.value, ast.Name)
+        and node.value.id == "sys"
+    ]
+    assert not offenders, (
+        f"{_rel(path)}:{offenders} reads sys.stdin directly -- on Windows that "
+        "decodes UTF-8 hook payloads as cp1252, silently (#59, audit N3). Read it "
+        f"through agent_yield.{_STDIN_READER[:-3]}.read_payload instead."
+    )
