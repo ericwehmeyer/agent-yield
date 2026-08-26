@@ -1254,3 +1254,41 @@ its own code comment says four of five outcomes are silences.
 
 **Both were missed by the baton arm in both replicates. That is #47 in its
 smallest concrete form.**
+
+### The two planning tracks, both reviewed, both RETHINK (#45, #46, #48)
+
+**Method, because it is the point as much as the output.** Each track was planned
+by a Fable subagent briefed to §12 — line ranges, a prohibition on exploring, a
+named output path, a three-line return contract — and then reviewed by an **Opus**
+agent with no shared context and no sight of the planner's reasoning. Different
+model on purpose: an independent review is worth nothing if it is the author
+agreeing with itself. All four documents are committed under
+`docs/superpowers/specs/2026-08-26-*`, because a plan that lives only in a
+session tree is the thing §12(c) exists to prevent.
+
+**Both reviews came back RETHINK** — 4 blocking findings on the dashboard, 5 on
+the baton — and **the dashboard review caught this page's own headline before
+anything was built on it.** That is the strongest argument for the practice that
+has come out of it so far: the review paid for itself on its first run, against
+the session that commissioned it.
+
+| | |
+|---|---|
+| **#45** | **Attribute every commit to the machine that made it.** Blocks everything else. Windows call timestamps against committer time, ±6 min. `unknown` must be a real outcome — a commit in a gap where neither machine has calls is not attributable, and pretending otherwise is how the first number went wrong. The window can only misattribute macOS commits *to* Windows, so the Windows denominator is an upper bound and **24% worse is a floor**. |
+| **#46** | **Dashboard v1: two stories, not seven.** The plan proposed 9 metrics, 3 modules and a rules engine; the review's scope finding is the one to act on. The blocking finding to carry: the scorecard **would have printed PASS this morning** — `tokens_per_code_insertion` moves 2.38x "better" on a day nothing got more efficient, a *larger* apparent win than the 2.22x the design exists to reject. A display convention is not an enforcement mechanism: **if a metric must not be read alone, it must not be reachable alone.** Contains #44. |
+| **#48** | **The baton's 28x is a units error.** Marginal re-billing compared against an absolute one-shot, with the baton parent's own carry (800K, not zero), its brief-writing output, and arm B's own children (~665K) all set to zero. Symmetrically it is **~6.5x**, and its admissible band bottoms out at 2.5x. **6.5x is the magnitude §11 predicted before measuring 1.07x.** Do not carry 28x into `interventions.toml` or §12. |
+
+**The line the review held, and this page should too.** *Measured:* the parent
+went 58,475 → 126,522 context/call; the parent was 81% of a 3.5M session;
+re-entry ~19,800 (n=4, one run — #34). *Inferred:* that the 68,047 delta is
+**removable**. The baton does not remove it — it relocates it to children who read
+the same material and pay ~19,800 each to arrive. What it removes is the
+**re-billing** of those reads on later parent calls. One term. The whole case
+rests on it, and #33 is still the only thing that can settle it.
+
+**#39 and #36 both took a comment rather than a ticket.** The plan reasoned about
+`Workflow` from #39's text instead of running it, then sequenced the evaluation
+*after* the hand-written loop it was meant to precede — and #36's first slice
+would have written the practice into §12 two slices before #33 reports. That is
+lever 1's exact path into policy. **Prose is cheaper to write than code and no
+cheaper to retract.**
