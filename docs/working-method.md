@@ -585,6 +585,141 @@ history is invisible. 62 of the 79 rows come from a single project.
 
 ---
 
+
+## 11.3 The end-to-end number (issue #33)
+
+**The comparison the baton actually makes, and the one nothing on this page had
+run.** §11.1 compared one agent against three agents — both arms dispatched. It
+says nothing about a parent that reads everything, which is what the baton
+claims to replace. Per-call arithmetic had by then predicted the wrong sign
+twice (§11's 6.2× measured 1.07×, §11.1's 1.5× measured 0.65×), so this one got
+its bars written into `interventions.toml` and committed *before the first
+call*: `3017519`.
+
+**The task**, identical in both arms: audit the module docstring of all 19
+modules in `src/agent_yield` against their own code, return one JSON object.
+**Then five identical follow-up turns**, because the mechanism being tested is
+an asymmetry — re-entry is paid once per agent, parent growth is paid on *every
+parent call afterwards* — and an experiment that stops at the audit turn
+measures the wrong half of it.
+
+- **BATON**: the parent may not open a single file under `src/`; it dispatches
+  and assembles. Packing is its own choice.
+- **READER**: the parent does the whole audit itself and may not dispatch.
+
+Same model, same flags, same task text, same tail. The arm paragraph is the only
+difference — deliberately, since allowing `Agent` in one arm and not the other
+would change the tool schema, and this experiment is a token count.
+
+### The result
+
+Cumulative tokens, parent plus every agent the session started:
+
+| turn | baton-r1 | baton-r2 | reader-r1 | reader-r2 | reader/baton |
+|---|---|---|---|---|---|
+| t1 (the audit) | 781,703 | 535,616 | 733,466 | 846,760 | 1.20 |
+| t2 | 819,441 | 565,221 | 859,290 | 971,519 | 1.32 |
+| t3 | 857,657 | 595,548 | 985,702 | 1,097,098 | 1.43 |
+| t4 | 896,407 | 626,466 | 1,112,703 | 1,223,293 | 1.53 |
+| t5 | 935,639 | 658,152 | 1,240,132 | 1,349,746 | 1.62 |
+| **t6** | **975,338** | **690,323** | **1,368,208** | **1,476,964** | **1.71** |
+
+**1.71×, and it passes** — the bar was 1.25×. **Every baton run cost less than
+every reader run** (worst baton 975,338 against best reader 1,368,208), which is
+the strongest simple statement the data supports and does not depend on
+averaging.
+
+**The first time in three tries that per-call reasoning got the sign right.**
+
+### The tail is not decoration, and the numbers say so
+
+**At the audit turn alone the arms are 1.20× apart — under the bar.** Had this
+experiment stopped where §11.1 stopped, it would have returned "no effect", and
+in one pair (r1) the *reader* was ahead at t1 and behind by t2. The whole result
+lives in the five turns afterwards, which is what the pre-registration predicted
+and the reason they were part of the protocol rather than an afterthought.
+
+Per call, the mechanism is not inferred, it is visible:
+
+```
+reader parent   22,424  22,862  42,622  56,852  64,287  77,937  95,199 ... 127,510
+baton parent    22,515  28,362  29,296  29,691  30,412  31,026  31,767
+```
+
+**A reader tail turn costs ~127,600 tokens. A baton tail turn costs ~35,900.**
+That ratio, 3.55×, is what the advantage tends to as a session gets longer, and
+it is the honest form of the extrapolation: at six turns 1.71×, without bound in
+the number of turns, asymptotically 3.55× *on this task*.
+
+### The 28× is retracted as an end-to-end number
+
+`NEXT.md` claimed the baton "still wins by roughly 28×", from a parent carrying
+68,047 extra tokens over another 100 calls (6.8M) against twelve re-entries
+(238K). **That is a ratio of two different quantities — growth avoided against
+arrival paid — and it is not an end-to-end ratio.** Measured end to end the
+number is 1.71× at six turns and 3.55× in the limit. The direction was right;
+the magnitude was overstated by about eight-fold. Do not quote 28× again.
+
+### The cheap arm found half the defects, and the bar did not catch it
+
+| | claims counted | mismatches found | tokens per mismatch |
+|---|---|---|---|
+| baton | 121 / 123 | **4 / 4** | 208,208 |
+| reader | 111 / 100 | **8 / 8** | 177,823 |
+
+Coverage was equal — all 19 modules, exactly once, in all four runs, and the
+claim counts are 13.5% apart against a 25% VOID bar. **But the reader found
+twice the defects, in both replicates, and its extra findings are close to a
+superset of the baton's rather than a different judgment call.** Two of the four
+the baton missed in *both* runs were verified by hand afterwards and are real:
+`discovery`'s "only `tasks/*.output` under that tree is a transcript" (agent
+transcripts now also live under `~/.claude/projects/<slug>/<session>/subagents/`,
+with the `.output` entries as symlinks to them), and `resume`'s "the silences
+... there are five of them" against its own code comment saying four of the five
+outcomes are silences.
+
+**Per defect found, the reader is 1.17× cheaper, and the headline reverses.**
+
+**The bar was written on the wrong quantity.** It counted *claims* — the
+denominator, which is a measure of coverage — when the task's output is
+*mismatches*. A volume bar has to be on the finding, not on the thing the
+finding is found in, and this one would have passed a baton arm that returned
+zero defects with a full set of claim counts. That is the reusable error here,
+and it is the same shape as #26 and #32: **the test was written to match the
+shape of the work rather than the point of it.**
+
+So: **#33 passes on cost and opens a question it cannot answer** — whether
+splitting a task across agents systematically finds less. n=2 per arm, one task.
+That is #42.
+
+### Bar 4, the noise clause, scored rather than skipped
+
+| | spread | cause |
+|---|---|---|
+| within baton | **1.41×** (690,323 .. 975,338) | the parent's own call count: 14 calls against 7 |
+| within reader | 1.08× (1,368,208 .. 1,476,964) | — |
+
+The pre-registration said that if the within-arm spread exceeded the gap between
+arms, the result is noise. It does not — 1.41× against 1.71× — but the margin is
+thin and the honest reading is that **the baton arm is the volatile one.** All of
+its spread is the parent: the two baton runs' *agents* cost 484,256 and 479,629,
+1% apart, over identical 24 calls. The parent of r1 spent seven extra calls
+before dispatching (a `ToolSearch`, a `ListAgents`, and a slower assembly) and
+that alone is 280,388 tokens, 41% of a whole run. **A parent that does not read
+is not automatically a parent that is cheap** — what it costs is how many calls
+it takes to decide, and nothing in the baton design bounds that.
+
+### Limits
+
+One task, one machine, 19 files that batch cleanly, five tail turns, n=2 an arm.
+The tail was driven by `claude -p --resume`, one process per turn, so each turn
+pays a cache re-creation the same session would not pay uninterrupted; it is
+charged to both arms in proportion to what they carry, which is the quantity
+under test, but it flatters the absolute numbers in both. Total cost of the four
+runs: **$11.54**.
+
+---
+
 ## 12. The dispatch rubric: what a brief must contain
 
 §11 measured the levers. This section is the operating instruction that falls
