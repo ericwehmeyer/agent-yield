@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime as dt
+import io
 import json
 import os
 import pathlib
@@ -287,3 +289,33 @@ def test_build_supersedes_and_an_empty_note_list_is_untouched():
 
 def test_a_blank_note_is_not_a_duplicate_of_everything():
     assert supersede(["", DISTINCT_NOTES[0], ""]) == ["", DISTINCT_NOTES[0], ""]
+
+
+# --- #41: section marks come back mojibaked, and not from here ------------
+
+
+def test_a_section_mark_survives_write_then_inject(tmp_path):
+    # #41 measured "Â§12" and "§7" in the SAME injected payload on Windows,
+    # and asked for the write path that omits encoding="utf-8". There is not
+    # one -- every write_text/read_text/open in the package names it, and this
+    # asserts the whole file->injection round trip rather than the file alone.
+    # If this passes on Windows too, the corruption enters BEFORE the file:
+    # through argv, the console code page, or the harness, not through here.
+    note = "See working-method.md §12 and design.md §3.1 -- en dash – too."
+    out = tmp_path / "handoff.md"
+    text = render(build(Path("."), None, notes=[note]))
+    write(out, text)
+
+    assert note in out.read_text(encoding="utf-8")
+    assert "Â§" not in out.read_text(encoding="utf-8")
+
+    # ...and out through the hook, the way SessionStart actually receives it.
+    from agent_yield import resume as resume_module
+
+    stdout = io.StringIO()
+    payload = {"session_id": "s", "source": "startup", "cwd": str(tmp_path)}
+    with contextlib.redirect_stdout(stdout):
+        resume_module.main(["--out", str(out)], stdin=io.StringIO(json.dumps(payload)))
+    injected = json.loads(stdout.getvalue())["hookSpecificOutput"]["additionalContext"]
+    assert note in injected
+    assert "Â§" not in injected
