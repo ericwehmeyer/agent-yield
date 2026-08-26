@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import datetime as dt
 import statistics
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Iterable
 
 from .interventions import Intervention
@@ -27,6 +27,10 @@ class YieldRow:
     commits: int
     lines: int
     tests: int | None = None
+    main_calls: int = 0
+    subagent_calls: int = 0
+    main_usage: Usage = field(default_factory=Usage.zero)
+    subagent_usage: Usage = field(default_factory=Usage.zero)
 
     @property
     def tokens_per_merge(self) -> float | None:
@@ -38,7 +42,25 @@ class YieldRow:
 
     @property
     def context_per_call(self) -> float | None:
+        """The blended figure. Kept, but read the two below instead.
+
+        Main sessions and subagents carry context of a different order --
+        measured 3.5x apart on the corpus -- so one mean over both populations
+        describes neither.
+        """
         return self.usage.cache_read_tokens / self.calls if self.calls else None
+
+    @property
+    def main_context_per_call(self) -> float | None:
+        if not self.main_calls:
+            return None
+        return self.main_usage.cache_read_tokens / self.main_calls
+
+    @property
+    def subagent_context_per_call(self) -> float | None:
+        if not self.subagent_calls:
+            return None
+        return self.subagent_usage.cache_read_tokens / self.subagent_calls
 
 
 def build_rows(
@@ -62,13 +84,25 @@ def build_rows(
     rows: list[YieldRow] = []
     for (day, mode), calls in sorted(buckets.items()):
         usage = Usage.zero()
+        main_usage = Usage.zero()
+        subagent_usage = Usage.zero()
+        main_calls = 0
+        subagent_calls = 0
         for call in calls:
             usage = usage + call.usage
+            if call.is_subagent:
+                subagent_usage = subagent_usage + call.usage
+                subagent_calls += 1
+            else:
+                main_usage = main_usage + call.usage
+                main_calls += 1
         outcome = outcome_by_day.get(day, DailyOutcome(day))
         rows.append(YieldRow(
             day=day, mode=mode, usage=usage, calls=len(calls),
             merges=outcome.merges, commits=outcome.commits,
             lines=outcome.lines, tests=outcome.tests,
+            main_calls=main_calls, subagent_calls=subagent_calls,
+            main_usage=main_usage, subagent_usage=subagent_usage,
         ))
     return rows
 
@@ -126,16 +160,27 @@ def _fmt(value: float | None) -> str:
 
 
 def render_table(rows: Iterable[YieldRow]) -> str:
+    """One line per (day, mode), context split main vs subagent.
+
+    `commits` stays. It is a denominator, and this tool exists to divide spend
+    by what shipped -- dropping the count while offering a `tokens_per_commit`
+    metric would hide the very number that metric is built on. The split costs
+    width instead: 100 columns, which needs a 120-wide terminal. The blended
+    `context_per_call` is off the table but stays on the row.
+    """
     header = (
-        f"{'day':<12}{'mode':<10}{'tokens':>16}{'calls':>8}"
-        f"{'merges':>8}{'commits':>9}{'tok/merge':>14}{'ctx/call':>11}"
+        f"{'day':<12}{'mode':<9}{'tokens':>15}{'calls':>7}"
+        f"{'merges':>8}{'commits':>9}{'tok/merge':>13}"
+        f"{'main ctx/call':>14}{'sub ctx/call':>13}"
     )
     lines = [header, "-" * len(header)]
     for row in rows:
         lines.append(
-            f"{row.day.isoformat():<12}{row.mode:<10}"
-            f"{row.usage.total:>16,}{row.calls:>8,}"
+            f"{row.day.isoformat():<12}{row.mode:<9}"
+            f"{row.usage.total:>15,}{row.calls:>7,}"
             f"{row.merges:>8,}{row.commits:>9,}"
-            f"{_fmt(row.tokens_per_merge):>14}{_fmt(row.context_per_call):>11}"
+            f"{_fmt(row.tokens_per_merge):>13}"
+            f"{_fmt(row.main_context_per_call):>14}"
+            f"{_fmt(row.subagent_context_per_call):>13}"
         )
     return "\n".join(lines)
