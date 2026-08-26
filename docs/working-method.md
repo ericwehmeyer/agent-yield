@@ -69,9 +69,43 @@ bullet — "if agents given self-contained briefs still explore the repo, the
 line-range economy is imaginary" — coming back with a number attached: the
 economy is real, and it is conditional.
 
-One caveat on the sample: n=1 for the briefed agent, over 4 calls. The 62 are a
-different project's work. The gap is large enough to report and too thin to
-treat as calibrated.
+### Re-measured at n=4, same day
+
+The n=1 above was too thin, and three more briefed dispatches moved the answer.
+Four agents, all briefed by line range on real #14/#15/#16 work:
+
+| agent | calls | context/call | `subagent_tokens` understates by |
+|---|---|---|---|
+| doc edits | 4 | 17,580 | 3.7× |
+| report split | 9 | 27,241 | 8.0× |
+| CLI tag | 15 | 35,995 | 12.9× |
+| HTML dashboard | 27 | 67,123 | 20.3× |
+| **median** | | **31,618** | |
+
+**§1's ~30,000 is right.** The median briefed agent came in at 31,618 — the
+original figure, reproduced on different hardware and different work. My n=1
+reading of 17,580 was the low end of the range, not the centre, and the
+correction above overstated the case on the strength of it.
+
+**And the 7× largely holds, for briefed agents.** 194,566 ÷ 31,618 = **6.2×**.
+What does not hold is 7× for dispatch in general: against the 62 un-briefed
+agents at 85,195, briefing is worth 2.7× and dispatch alone is worth 2.3×. So
+the conditional claim stands; the number attached to the well-briefed case is
+close to what §1 said all along.
+
+**The new finding is that context/call scales with how long the agent runs.**
+17,580 at 4 calls, 67,123 at 27 — a 3.8× spread across briefed agents doing the
+same kind of work under the same discipline. The brief controls where an agent
+*starts*, not where it ends up; every tool call adds to what the next one
+re-reads. "A fresh agent costs ~30K per call" is true of short agents. Split a
+long task rather than briefing a long agent, and the economy holds; let one
+agent run 27 calls and it drifts toward parent territory on its own.
+
+**`subagent_tokens` understates by a factor that scales the same way** — 3.7×
+at 4 calls, 20.3× at 27, monotonic across all four. The case study's ~80× is
+that curve continued, not a different phenomenon. This is why no correction
+factor can be applied to that field: the error is a function of how much cache
+the agent read, which is exactly what the field does not report.
 
 **`subagent_tokens` was wrong again, by a different factor.** The dispatch above
 reported 25,874; its transcript totals 94,602, a 3.7× understatement. The case
