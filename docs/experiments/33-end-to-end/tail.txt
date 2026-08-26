@@ -1,0 +1,5 @@
+Of the mismatches you reported, which single one would most mislead a new contributor to this repository, and why? At most 5 lines.
+Group the mismatches you reported into at most four kinds of docstring rot. Name each kind and give its count. At most 10 lines.
+Which three of the audited modules are most at risk of further docstring rot, and what property of each module makes it so? At most 6 lines.
+Write the one rule that, had it been followed, would have prevented the largest number of the mismatches you found -- one sentence -- then say how many of your mismatches it would have prevented. At most 4 lines.
+What did this audit NOT check that someone reading these docstrings would wrongly assume it did? At most 5 lines.
