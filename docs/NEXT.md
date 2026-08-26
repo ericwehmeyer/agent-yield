@@ -1630,3 +1630,116 @@ privilege; and the **table** is the only mechanism that catches a slug bug at
 all. The one the audit ranked lowest is still the substrate the other three
 run on, and the one it ranked highest is the only one that fires without
 somebody first imagining the bug.
+## [macOS 2026-08-26] #52 is closed, and closing it found a defect in the instrument
+
+`agent-yield handoff` before you restart. Then read this.
+
+**The 22% weighted-tokens-per-dollar spread was never a missing term in the
+physics. It was three measurement errors, and two of them biased toward
+dispatching.** #52 asked why weighted tokens per dollar was tight within an arm
+and varied 22% across them. The answer:
+
+1. **A cache write has two prices, and dispatching picks the cheaper one.**
+   `usage.cache_creation` splits `ephemeral_1h` (2.00x base input) from
+   `ephemeral_5m` (1.25x). **Subagents write 5m; the parent writes 1h.**
+   Measured 5m share of cache writes: reader **0.0% / 0.0%**, baton **65.0% /
+   90.9%**, baton1 **89.6% / 95.8%**. That mix is most of the spread on its own.
+2. **The ingest was undercounting output tokens by up to 5.3x.** Claude Code
+   writes one transcript record per CONTENT BLOCK, all sharing
+   `(message.id, requestId)` and byte-identical cache figures, with
+   `output_tokens` correct only on the terminal record. `load_records` deduped
+   keep-FIRST. baton-r1 held **7,912** where the CLI billed **42,292**. Cache
+   read and creation are identical across the copies, which is why every number
+   anyone checked reconciled and this survived four experiments.
+3. **A "single-model" session is never one model.** Every arm ran `--model opus`
+   and every arm also billed `claude-haiku-4-5`, ~$0.0015 each.
+
+**The price model, exact to the cent on all four archived arms:**
+
+```
+cost = SUM over models: base(m) x (input + 0.10*read + 1.25*write_5m
+                                   + 2.00*write_1h + 5.00*output)
+claude-opus-5 $5.00/M        claude-haiku-4-5 $1.00/M
+```
+
+$2.9123, $2.1818, $3.1987, $3.2540 -- all four, exact. `pricing.py`.
+
+### The corrected table
+
+| | baton, 5 agents | baton1, 1 agent | reader |
+|---|---|---|---|
+| output tokens, AS PUBLISHED | 7,910 | 3,986 | 19,758 |
+| **output tokens, corrected** | **38,144** | **23,076** | **19,758** |
+| raw total, corrected | 863,064 | 1,064,700 | 1,422,586 |
+| 5m share of cache writes | 65-91% | 90-96% | **0%** |
+| **dollars (unchanged, from the archive)** | **2.55** | **1.81** | **3.23** |
+
+**Dispatching produces MORE output tokens, not fewer** -- roughly double the
+reader's, because each agent writes its own fragment. The published table said
+the opposite, and said it in the direction that flattered dispatching.
+
+### #33 was reported in the wrong unit. The right number was in the archive.
+
+This is not "offsetting errors shrank the headline". **Nothing about #33's
+dollar ranking was ever in doubt.** `total_cost_usd` has sat in
+`.agent-yield/experiments/33/*/turn-*.json` since the day the arms ran and has
+not moved. What was wrong was the proxy quoted instead of it:
+
+| | raw tokens | weighted (retracted) | **dollars** |
+|---|---|---|---|
+| #33 headline, reader/baton | 1.65x | 1.53x | **1.27x** |
+| #47 packing, baton1/baton | 1.23x | 0.82x | **0.71x** |
+
+**Retract the weighted-token columns** -- 257,901 / 315,922 / 484,730. They were
+dollars divided by a base rate, computed three ways wrong. #33's direction
+survives at roughly half the claimed magnitude. #47's packing secondary hardens:
+the one-agent baton is *cheaper* still, and **#35's premise is more supported,
+in the unit that is now anchored.**
+
+`usage.py`'s "cache reads are 97.4% of what is consumed" stays true as a token
+fact and needs its dollar shadow: those reads are **~10-30% of the bill**.
+
+### What the instrument now refuses to do
+
+The residual that #52 left open is **explained, not tolerated**. The
+transcript-only shortfall is confined entirely to calls whose terminal record
+was never written: **2 such calls on baton-r1, 2 on baton-r2, 0 on both reader
+arms** -- and the shortfall is non-zero on precisely the arms that have them.
+Priced, those calls plus the untranscribed Haiku spend close the gap to the
+cent on every arm. So a future discrepancy is a NEW defect, not a wider error
+bar.
+
+The reader arms are asserted **exact**; the baton arms are **pinned** to their
+known gap. A >=90% floor -- which is what the plan for this work originally
+proposed -- would have passed baton-r1 at 89.7% or at 100% and said which
+neither time. #26, #32 and #44 each shipped an instrument that could not tell
+the known cases apart.
+
+**Both halves of the ground truth are now committed** (`tests/fixtures/arms-33/`).
+The live transcripts are volatile and #47's baton1 arm has already lost its
+`-p` output; a check against data that evaporates is not a check.
+
+### On subscriptions, and why there is no tier table
+
+`costBasis: "list"`. Every dollar this repo prints is a **list-price
+equivalent** -- on a plan, the *ranking* of two ways of working survives and the
+absolute figure does not, and no report may claim otherwise.
+
+What a plan actually rations IS observable:
+`rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}` is in the
+statusline payload. The line now carries `7d NN%` and snapshots both windows.
+**The plan's size is calibrated, never declared** --
+`delta-dollars / delta-points x 100`, from one snapshot pair. It is a **lower
+bound** on the plan, because only this tool's sessions move the dollars while
+every session on the account moves the points; that makes it an **upper bound
+on the fraction a piece of work consumed**, which is the conservative direction.
+A declared per-plan tier table was refused: it would be a hardcoded price table
+with no `costUSD` to check itself against, which is the exact failure
+`pricing.py` is built to avoid.
+
+**Filed and closed as #53-#58.** The ticket-numbering lesson held for a fourth
+time: this page would have guessed #49.
+
+**Limits.** One task, n=2 per arm, two packings. The Haiku share is measured on
+four arms only. The plan calibration has one snapshot and cannot yet say
+anything -- `agent-yield allowance` prints exactly that rather than a number.
