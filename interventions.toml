@@ -27,3 +27,13 @@ expect = "the number of subagent transcripts readable for a past day stops falli
 date   = "2026-08-25"
 name   = "self-contained plan: every task carries literal code, exact paths, and its own interfaces"
 expect = "dispatched agents make under 20 tool calls each, against the 62-188 range on record"
+
+[[intervention]]
+date   = "2026-08-26"
+name   = "handoff before boundary: agent-yield handoff written at every session end, and the boundary cleared by writing it"
+expect = "a session started from a handoff opens under 60,000 context/call and its first ten calls cost less than the last ten of the session it replaced"
+
+[[intervention]]
+date   = "2026-08-26"
+name   = "cost thresholds: a level family at 20%/40% of window, separate from the capacity family"
+expect = "the share of calls made above 200K context falls below the measured 20%, and the share of the cache-read bill above 200K falls below the measured 47%"

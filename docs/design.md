@@ -280,6 +280,55 @@ The two families coexist: capacity protects the window, cost protects the
 bill. Capacity thresholds above are unchanged and still correct for what they
 measure; the correction recorded here is that they were the only family.
 
+### The session boundary (added 2026-08-26)
+
+The cost family above is advice, and advice was measured as insufficient twice
+in one day: `session.restart_advice` printed its line on the macOS session at
+6.6x growth and that session ran for another twenty minutes. Two machines, two
+operators, the same failure. **Measurement without enforcement changes
+nothing** — and it is not a discipline problem, because both operators had
+just written the measurement.
+
+Nothing in Claude Code can restart a session. So enforcement decomposes into a
+**boundary** (make continuing refuse to work) and a **handoff** (make
+restarting nearly free), and the handoff has to land first. A restart is
+expensive only because everything not written down is lost — one fleet lost
+eleven agents' findings with ten having written nothing. Install a boundary
+before the handoff exists and the operator disables it, correctly.
+
+**The boundary fires on "expensive AND nothing written down", never on
+"expensive".** That distinction is the whole design:
+
+- It cannot fire twice for the same reason. One `agent-yield handoff` clears
+  it for the session, so it is a status change, not a siren.
+- It is cleared by doing the thing the boundary exists to protect, which makes
+  compliance and the remedy the same action.
+- It cannot lock anyone out. The escape is one command, and there is a named
+  override (`AGENT_YIELD_BOUNDARY_OVERRIDE`) besides.
+
+"Written down" means *written during this session*, not *written recently*: a
+handoff from yesterday describes a session that no longer exists, and any
+freshness rule tied to the last call goes stale one call later and makes the
+boundary unclearable.
+
+**A blanket hard stop on prompts was considered and rejected.** #19 asked for
+one above a hard growth factor. A bug in `gate` blocks dispatches; a bug in a
+prompt gate locks an operator out of their own session, including out of the
+commands that would end it cleanly. Against that, the benefit of an
+unconditional stop over a clearable one is a single nudge — the operator who
+has already written the handoff is exactly the one who does not need to be
+stopped. The conditional boundary keeps the enforcement and removes the
+failure mode.
+
+**And the mechanism it would need is unmeasured.** Whether `UserPromptSubmit`
+exit 2 blocks a prompt is not verified in this repository, and **cannot be
+verified by the session that installs the hook**: hook config loads at session
+start. So `boundary` advises by default, refuses only under `--enforce`, and
+ships `--probe`, which records what arrives and always exits 0. If the probe
+shows exit 2 does not block, `--enforce` is not buildable and the status line,
+`status`, and the advisory are the whole answer. That is a legitimate outcome,
+recorded in advance so it cannot be quietly skipped.
+
 ## 6. What this tool does not do
 
 Stated here so no reader has to discover it:
@@ -306,6 +355,10 @@ Stated here so no reader has to discover it:
   findings; the tool must report the null result rather than bury it.
 - **If the gate is overridden routinely**, the ceiling is wrong, not the work. The
   override rate is recorded and is itself a measurement.
+- **If a fresh session that reads the handoff is not cheaper than the session
+  it replaced**, the boundary is cruelty rather than efficiency and the whole
+  restart lever is wrong. The test is stated so it can fail: compare the first
+  ten calls of the new session against the last ten of the old one.
 
 ## 8. Order of work
 
