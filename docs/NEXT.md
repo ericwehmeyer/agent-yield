@@ -907,3 +907,95 @@ only structure does — that the discipline has to be built into how work is cut
 and dispatched, not shown to whoever is dispatching. Record that outcome as
 legitimate in advance, the way #22 recorded "exit 2 does not block" in advance,
 so it cannot be quietly skipped when the number disappoints.
+
+---
+
+## Reconciled against #18 Part E, which landed while this was being written
+
+**The Mac ran the falsification test this document assumed the answer to, and it
+went the other way.** `4413ea1`, pushed at roughly the hour this spec was drafted:
+
+```
+split   3 agents  12 calls  385,109 tokens
+single  1 agent    5 calls  282,568   (replicate 1)
+single  1 agent    5 calls  217,321   (replicate 2)
+```
+
+**0.65x. Splitting one task three ways cost 54% more**, against a predicted
+>=1.5x saving. The arms did equal work, so it is a result and not a void run.
+Two causes, both of which this spec ignored:
+
+1. **Every agent pays ~19,800 tokens of re-entry before it reads anything.** A
+   three-way split pays that three times — 38% of the gap.
+2. **Splitting does not divide the call count.** One agent batched six files into
+   5 calls; three agents needed 12. Superlinear growth inside an agent is real
+   (1.9x over four calls, 3.6x over five) and simply too small to pay for
+   re-entering three times.
+
+A second retraction landed with it (`45e9c62`): the claim that the brief's
+detectable markers predict dispatch length was **pooled across projects**. Within
+the one project holding both groups, the call difference vanishes and the briefed
+dispatches carry *more* context per call. There is currently no evidence that
+those markers predict anything.
+
+### What this kills in this document
+
+**"Why the 10-call cap becomes enforceable" is now arguing for a cap whose
+benefit has been measured and is negative.** The `calls^1.54` fit it rests on is
+real but was never the whole cost: it omitted re-entry, exactly as this spec's
+80-tokens-a-step figure omitted scaffolding. Both errors have the same shape —
+counting the part that varies and ignoring the fixed part underneath.
+
+Naively, the baton looks worse than what it replaces. Twelve steps is twelve
+re-entries, about **237,600 tokens** of pure arrival, to avoid roughly 68,000 of
+parent growth.
+
+### What survives, and why the baton is not dead
+
+**Re-entry is paid once per agent. Parent growth is paid on every parent call for
+the rest of the session.** That asymmetry is what the arithmetic above leaves
+out, and it is the one thing the retraction commit says explicitly is untouched.
+
+A parent carrying 68,047 extra tokens over another 100 calls has spent 6.8M on
+carrying it. Twelve re-entries cost 238K. **The baton still wins by roughly 28x
+— but on the asymmetry, not on the split**, and this document should never again
+claim the split itself saves anything.
+
+The independent support is the attribution measured here: 55.4% of main-thread
+growth is the parent reading. Part E says nothing about that number. It compared
+one agent against three agents. **It did not compare N agents against a parent
+that reads everything**, which is the comparison the baton actually makes.
+
+### The design change this forces
+
+**Slice thin for verification. Batch fat for dispatch.**
+
+The slicer should cut on testability — a slice is still the smallest piece with a
+command that proves it, and that part was right. But the parent should then hand
+**as many adjacent, dependency-free slices to one agent as that agent can carry**,
+because re-entry is charged per agent and not per slice. The index does not
+change; what changes is that a row is a unit of *verification*, not a unit of
+dispatch.
+
+So: the 10-call cap is retired as a target. What replaces it is **the fewest
+agents that still leave every slice independently checkable**. An agent running
+20 calls over six slices is now the expected shape, not a violation — and
+`60 of 73` real dispatches already exceeded the old cap, which should have been
+read as evidence about the cap rather than about the dispatchers.
+
+### What this does to the falsifiers
+
+- **The parent-stays-flat falsifier stands** and becomes the primary one. It
+  tests the asymmetry, which is what survived.
+- **A new one is needed and is the sharper test:** total tokens for a baton run
+  against the same work done by a reading parent, end to end. Per-call economics
+  has now predicted the wrong sign twice — §11 promised 6.2x and measured 1.07x,
+  Part E promised >=1.5x and measured 0.65x. **Nothing in this document should be
+  believed until the end-to-end number exists.**
+- **Any falsifier resting on the markers is void** until `45e9c62`'s retraction
+  is addressed, including the enforcement ladder's compliance score. `discipline`
+  can still count markers; it may not claim they predict cost.
+
+**Status of this spec after reconciliation: the mechanism stands, the
+justification is half retracted, and the end-to-end test has not been run.**
+Do not build from it yet.
