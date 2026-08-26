@@ -114,6 +114,11 @@
   .chip-synth { color: var(--synth-ink); background: var(--synth-bg); border: 1px dashed var(--synth-ink); }
   .chip-real  { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); }
   .chip-unsc  { color: var(--unsc-ink); background: var(--unsc-bg); border: 1px solid var(--unsc-border); }
+  /* PARTIAL borrows UNSCORABLE's palette on purpose (#73): a day that was
+     still accruing when the capture ran is not wrong, but it carries the same
+     "do not read this as settled" weight, and giving it a quieter style would
+     be deciding for the reader that it matters less. */
+  .chip-part  { color: var(--unsc-ink); background: var(--unsc-bg); border: 1px dashed var(--unsc-border); }
 
   /* ------------------------------------------------------------- breadcrumb */
   .crumbs {
@@ -273,25 +278,31 @@ const PRICING = {
   basis: "list",
 };
 
-/* The real leaf: `agent-yield report --since 2026-08-25 --machine` and
-   `agent-yield outcomes --since 2026-08-25 --machine`, run 2026-08-26 on the
-   Windows clone. Numerator: calls whose recorded cwd is this repo. Denominator:
-   commits and insertions this clone's reflog wrote. Same work on both sides. */
+/* The real leaf. BOTH BLOCKS BELOW ARE GENERATED -- do not hand-edit them.
+   `docs/experiments/org-dashboard/dashboard-data.py` writes them from the
+   corpus and this clone's reflog in ONE invocation, stamps that one instant
+   on `REAL_SCOPE.captured`, and re-reads them with `--check`. They are JSON
+   rather than the hand-authored JS the rest of this file uses precisely so
+   that they can be read back.
+
+   #73 is why. The page used to hold a numerator from one run of `report` and
+   a denominator from a later run of `outcomes`, printed neither capture time,
+   and disagreed with the CLI three ways on its second day. 0.3%, no
+   conclusion changed -- and no reader had anything with which to notice.
+
+   Numerator: calls whose recorded cwd is this repo. Denominator: commits and
+   insertions this clone's reflog wrote. Same work on both sides, and now the
+   same instant. A day that had not ended when the capture ran carries
+   `partial: true` and is chipped PARTIAL wherever its row appears. */
 const REAL_SCOPE = {
-  calls: "1,096 of 4,114 calls on this machine, made in C:\\Users\\ewehm\\repos\\agent-yield",
-  outcomes: "commits and insertions from this clone's reflog (--machine); unattributable: 0 on both days",
-  captured: "captured 2026-08-26; the second day was still running",
-  numerator: "list-price equivalents from pricing.py over those same 1,096 calls, priced per model",
+  "calls": "1,365 of 4,419 calls this machine made 2026-08-25..2026-08-26 -- those whose recorded cwd is C:\\Users\\ewehm\\repos\\agent-yield (21,614 calls in the corpus overall)",
+  "outcomes": "commits and insertions from this clone's reflog (--machine); unattributable: 0 across the window",
+  "captured": "captured 2026-08-26 22:53 UTC -- numerator and denominator from one invocation of dashboard-data.py, at that one instant; 2026-08-26 had not ended and is marked PARTIAL",
+  "numerator": "list-price equivalents from pricing.py over those same 1,365 calls, priced per model"
 };
 const REAL_DAYS = [
-  { day: "2026-08-25", tokens: 17787031, calls: 146, commits: 10, merges: 0,
-    code: 1127, docs: 3025, other: 51, mainCtx: 178226, subCtx: 42095, bands: [20, 0, 0],
-    dollars: 14.0976, crUsd: 7.0399, crTok: 16900225,
-    unpricedTok: 3018736, unpricedModels: ["claude-sonnet-5"] },
-  { day: "2026-08-26", tokens: 138660430, calls: 950, commits: 50, merges: 0,
-    code: 3208, docs: 4273, other: 1012, mainCtx: 155668, subCtx: 58705, bands: [4, 0, 0],
-    dollars: 102.1609, crUsd: 65.9404, crTok: 135569943,
-    unpricedTok: 4064607, unpricedModels: ["claude-fable-5", "claude-sonnet-5"] },
+  {"day": "2026-08-25", "partial": false, "tokens": 17787031, "calls": 146, "commits": 10, "merges": 0, "code": 1127, "docs": 3025, "other": 51, "mainCtx": 178226, "subCtx": 42095, "bands": [20, 0, 0], "dollars": 15.1814, "crUsd": 7.604, "crTok": 16900225, "unpricedTok": 0, "unpricedModels": []},
+  {"day": "2026-08-26", "partial": true, "tokens": 180503595, "calls": 1219, "commits": 56, "merges": 0, "code": 3911, "docs": 4723, "other": 2181, "mainCtx": 156900, "subCtx": 70918, "bands": [3, 0, 0], "dollars": 147.8334, "crUsd": 89.763, "crTok": 176300681, "unpricedTok": 0, "unpricedModels": []}
 ];
 const REAL_MACHINES = [
   { name: "windows (this clone)", real: true },
@@ -493,6 +504,10 @@ function fmt0(v) { return v == null ? "-" : Math.round(v).toLocaleString("en-US"
 function pct(v) { return v == null ? "-" : (v >= 0 ? "+" : "") + (v * 100).toFixed(0) + "%"; }
 function pct1(v) { return v == null ? "-" : (v * 100).toFixed(1) + "%"; }
 const UNSC = '<span class="chip chip-unsc">UNSCORABLE</span>';
+const PART = '<span class="chip chip-part" title="this day had not ended when the leaf was captured; its figures are a floor and will have moved since">PARTIAL</span>';
+/* A day's chip, or nothing. Generated days carry `partial`; the synthetic
+   generator does not set it, and an absent flag means the day was closed. */
+function dayChip(d) { return d.partial ? " " + PART : ""; }
 /* Returns HTML, and UNSCORABLE -- never a dash, never a token figure -- when
    the unit cannot be produced. Its output is digits, so it needs no escaping. */
 function usdText(v) {
@@ -874,14 +889,16 @@ function renderTeam(node) {
   // per-day ledger
   html += '<div class="section-h">The ledger, day by day</div>' +
     '<p class="section-sub">Every figure above is recomputable from this table. $/1k ins any/code/docs is one rendered triple; the halves have no column of their own. ' +
-    "Raw tokens are carried so the dollar column can be checked against them, and their ratio is in the secondary table below.</p>";
+    "Raw tokens are carried so the dollar column can be checked against them, and their ratio is in the secondary table below. " +
+    'A day chipped <span class="chip chip-part">PARTIAL</span> had not ended when the leaf was captured: every figure on that row is a floor, ' +
+    "and it is in the rollups above unmarked, because excluding it would be a different silence.</p>";
   html += '<div class="tblwrap"><table><thead><tr>' +
     "<th>day</th><th>$</th><th>tokens</th><th>calls</th><th>commits</th><th>code</th><th>docs</th><th>other</th>" +
     "<th>$/1k ins any/code/docs</th><th>main ctx/call</th><th>sub ctx/call</th><th>cost bands</th>" +
     "</tr></thead><tbody>";
   for (const d of shown.slice().reverse()) {
     const s = sumDays([d]);
-    html += "<tr><td>" + esc(d.day) + "</td>" +
+    html += "<tr><td>" + esc(d.day) + dayChip(d) + "</td>" +
       "<td>" + usd(d.dollars) + "</td>" +
       "<td>" + fmt0(d.tokens) + "</td><td>" + fmt0(d.calls) + "</td><td>" + fmt0(d.commits) + "</td>" +
       "<td>" + fmt0(d.code) + "</td><td>" + fmt0(d.docs) + "</td><td>" + fmt0(d.other) + "</td>" +
@@ -917,7 +934,12 @@ function renderTeam(node) {
       '<p class="section-sub"><b>' + usdText(firstY) + " \u2192 " + usdText(lastY) + " per 1,000 inserted lines, " +
       dayDelta.toFixed(2) + "x worse in one day \u2014 and one day is not a verdict.</b> " +
       "The first day ran " + esc(fmt0(first.calls)) + " calls; the second ran " + esc(fmt0(last.calls)) +
-      " and was still running when this was captured. A day that runs six experiments and an audit is not the same task as the day before it. " +
+      // Asked of the data, not asserted: this sentence used to say the second
+      // day was still running, and would have gone on saying it after the day
+      // closed. `partial` is the fact; the prose reads it. (#73, #74's lesson.)
+      (last.partial ? " and had not ended when this leaf was captured, so every figure on it is a floor. "
+                    : ". ") +
+      "A day that runs six experiments and an audit is not the same task as the day before it. " +
       "The number is real; the comparison needs more days before it means anything.</p>";
   }
   html += secondaryTokens(shown.slice().reverse().map((d) => [d.day, sumDays([d])])

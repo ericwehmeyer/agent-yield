@@ -1,10 +1,21 @@
 # The org dashboard has one measured cell
 
-$116.26 of list-price equivalent over 12,696 inserted lines -- $9.16 per
+$163.01 of list-price equivalent over 15,018 inserted lines -- $10.85 per
 thousand lines -- across two days, one machine, one repo, priced per model by
-`pricing.py` over the same 1,096 calls. The 156,447,461 raw tokens behind that
+`pricing.py` over the same 1,365 calls. The 198,290,626 raw tokens behind that
 are still on the page, in a table that says they are secondary. That is every
 real number in `dashboard.html`.
+
+Those figures are a capture, and the page names the instant it was taken.
+`dashboard-data.py --write` produces them; `dashboard-data.py` alone re-derives
+them and exits non-zero if a closed day has moved, which is what
+`tests/test_org_dashboard_unit.py` runs. The second day had not ended when the
+capture was taken and is chipped `PARTIAL` on its row: its figures are a floor,
+they are in the totals above unmarked, and excluding them would be a different
+silence. Numbers quoted from an earlier capture -- $116.26 over 12,696 lines,
+1,096 calls -- moved for two reasons and neither is a correction: the day kept
+running, and #81 landed rates for `sonnet-5` and `fable-5`, so tokens that
+priced to nothing before now price.
 
 The other six teams, their eight weeks of history, and the rollup's aggregate
 are generated, and the page says so on the banner, on every tile, and on every
@@ -92,7 +103,7 @@ otherwise.
   dollars inside them, raw tokens and the cache-read tokens inside them, the
   tokens no rate could price and the models they were on, calls, commits,
   inserted lines split code/docs/other, main and subagent context per call,
-  cost-band counts.
+  cost-band counts, and whether the day had ended when it was captured.
 - A parent's day is the sum of its children's days; nothing exists at a
   parent that is not a sum over leaves.
 - A leaf's numerator comes from its members' `calls.jsonl`; its denominator
