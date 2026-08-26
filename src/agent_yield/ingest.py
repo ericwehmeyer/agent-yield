@@ -88,6 +88,13 @@ def _to_json(record: CallRecord) -> str:
             "output_tokens": record.usage.output_tokens,
             "cache_creation_input_tokens": record.usage.cache_creation_tokens,
             "cache_read_input_tokens": record.usage.cache_read_tokens,
+            # Nested, matching the transcript shape `Usage.from_payload` parses.
+            # A flat-only line loses the TTL split on every round trip, and the
+            # loss is invisible: the total still adds up.
+            "cache_creation": {
+                "ephemeral_5m_input_tokens": record.usage.cache_creation_5m,
+                "ephemeral_1h_input_tokens": record.usage.cache_creation_1h,
+            },
         },
     })
 

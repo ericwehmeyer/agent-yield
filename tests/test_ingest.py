@@ -191,3 +191,39 @@ def test_deeply_nested_json_does_not_abort_the_walk(tmp_path):
     )
     records = load_records([path])
     assert [r.request_id for r in records] == ["req_deep"]
+
+
+def test_the_ttl_split_survives_the_persisted_round_trip(tmp_path):
+    """A flat-only persisted line loses the split, and the total still adds up.
+
+    That is what makes the loss dangerous: nothing looks wrong afterwards. The
+    persisted shape has to be the nested shape `Usage.from_payload` parses.
+    """
+    src = tmp_path / "s.jsonl"
+    src.write_text(json.dumps({
+        "type": "assistant",
+        "timestamp": "2026-08-26T12:00:00.000Z",
+        "sessionId": "s1",
+        "requestId": "r1",
+        "message": {
+            "id": "m1",
+            "model": "claude-opus-5",
+            "usage": {
+                "input_tokens": 2,
+                "output_tokens": 4_634,
+                "cache_creation_input_tokens": 7_071,
+                "cache_read_input_tokens": 15_435,
+                "cache_creation": {
+                    "ephemeral_5m_input_tokens": 4_071,
+                    "ephemeral_1h_input_tokens": 3_000,
+                },
+            },
+        },
+    }) + "\n")
+
+    dest = tmp_path / "calls.jsonl"
+    ingest(dest, [tmp_path])
+    (held,) = load_ingested(dest)
+    assert held.usage.cache_creation_5m == 4_071
+    assert held.usage.cache_creation_1h == 3_000
+    assert held.usage.cache_creation_unattributed == 0

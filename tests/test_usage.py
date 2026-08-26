@@ -48,3 +48,66 @@ def test_from_payload_reads_the_real_field_names():
 
 def test_from_payload_tolerates_missing_fields():
     assert Usage.from_payload({}) == Usage.zero()
+
+
+# -- The TTL split -----------------------------------------------------------
+#
+# A cache write has two prices. Measured on the four archived #33 arms, the 5m
+# share of cache writes is 0.0% on both reader replicates and 65.0% / 90.9% on
+# the baton ones: subagents write 5m, the parent writes 1h. A `Usage` that drops
+# the split prices a dispatching arm as though it were a reading one.
+
+BATON_R1_WRITES = Usage(
+    cache_creation_tokens=193_932,
+    cache_creation_5m=126_128,
+    cache_creation_1h=67_804,
+)
+
+
+def test_the_split_survives_addition():
+    # The regression that motivated keyword construction in `__add__`. A
+    # positional call there keeps compiling when a field is appended and drops
+    # it in silence -- and a dropped 5m share reads as "all writes are 1h",
+    # which is the reading parent's profile and the more expensive one.
+    doubled = BATON_R1_WRITES + BATON_R1_WRITES
+    assert doubled.cache_creation_5m == 252_256
+    assert doubled.cache_creation_1h == 135_608
+    assert doubled.cache_creation_tokens == 387_864
+
+
+def test_the_split_adds_up_to_the_total_on_a_real_arm():
+    assert (BATON_R1_WRITES.cache_creation_5m
+            + BATON_R1_WRITES.cache_creation_1h
+            == BATON_R1_WRITES.cache_creation_tokens)
+    assert BATON_R1_WRITES.cache_creation_unattributed == 0
+
+
+def test_from_payload_reads_the_nested_ttl_split():
+    payload = {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 7_071,
+        "cache_read_input_tokens": 15_435,
+        "output_tokens": 4_634,
+        "cache_creation": {
+            "ephemeral_1h_input_tokens": 7_071,
+            "ephemeral_5m_input_tokens": 0,
+        },
+    }
+    usage = Usage.from_payload(payload)
+    assert usage.cache_creation_1h == 7_071
+    assert usage.cache_creation_5m == 0
+    assert usage.cache_creation_unattributed == 0
+
+
+def test_a_payload_with_no_split_reports_the_writes_as_unattributed():
+    # Older transcripts, and the flat shape this tool used to persist. The
+    # tokens are not lost and they are not guessed a price: they are named.
+    usage = Usage.from_payload({"cache_creation_input_tokens": 15_711})
+    assert usage.cache_creation_tokens == 15_711
+    assert usage.cache_creation_5m == 0 and usage.cache_creation_1h == 0
+    assert usage.cache_creation_unattributed == 15_711
+
+
+def test_a_split_larger_than_the_total_does_not_go_negative():
+    malformed = Usage(cache_creation_tokens=10, cache_creation_5m=99)
+    assert malformed.cache_creation_unattributed == 0
