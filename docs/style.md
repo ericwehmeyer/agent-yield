@@ -81,10 +81,15 @@ decoration. Cut it.
 The distinction is the whole value of this repo, and it belongs in the prose,
 not in a separate section of epistemic throat-clearing.
 
-> The medians are measured. The limits — 150,000, 250,000, 400,000 — are
-> chosen, anchored to the 31,618 a well-briefed agent costs.
+> The medians are measured. The limits (150,000, 250,000, 400,000) are chosen,
+> anchored to the 31,618 a well-briefed agent costs.
 
 Two sentences. An earlier draft spent a fourteen-line table on the same point.
+
+The parentheses are deliberate. An earlier version of this rule used em dashes
+here, which spent a whole document's budget under rule 9 on provenance
+boilerplate. An editor caught the collision. Rules that contradict each other
+get resolved in favour of the one a reader would notice.
 
 ## 7. Numbers get their real digits
 
@@ -92,6 +97,12 @@ Write **249,257**, not "about a quarter million", when the figure is measured.
 Round only when rounding is the honest thing, and then say so. A rounded number
 presented as exact is a small lie that costs the reader their trust in the
 exact ones.
+
+**Restating a figure loosely is allowed once the exact one is on the page.**
+"It bills a quarter of a million tokens" is fine one sentence after 249,257,
+because the reader can see what was rounded. "So halve it: still 280 million"
+is fine after 565 million, because the arithmetic is in view. What is banned is
+a round number with no exact one anywhere near it.
 
 ## 8. Report disagreement plainly, and leave the door open
 
@@ -102,8 +113,10 @@ propose the fix. Do not perform balance and do not perform certainty.
 > million and the same call is cheap; change it to half a million and it is
 > steep. The bill never moved.
 
-Close with the line that keeps it a conversation: *if this is defended on
-grounds I have missed, say so and I will fold the argument in instead.*
+Leave the door open at the end, and **write that sentence fresh every time.** A
+fixed closing formula becomes a worn phrase by rule 5 on its second outing, and
+a reader who has seen it twice stops reading it. Say what specifically would
+change your mind about this specific claim.
 
 ## 9. Punctuation
 
@@ -129,9 +142,10 @@ argument.
 Write it. Then edit it twice, and treat the two passes as different jobs:
 
 1. **Structure.** Is the lede the finding? Does it reach *now what*? Cut whole
-   paragraphs and sections. This is where most of the length goes.
+   paragraphs and sections. **Headings belong to this pass**, because rewriting
+   a heading means rethinking what the section is for.
 2. **Line.** Sentence by sentence, out loud. Cut adverbs, worn phrases,
-   self-admiring lines, and every em dash past the second.
+   self-admiring lines, and every em dash past the second in the document.
 
 The second pass is a different job from the first and does not work while the
 structure is still moving. Do them in order.
