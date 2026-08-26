@@ -21,6 +21,7 @@ the one saying what is claimed and unfinished.
 from __future__ import annotations
 
 import datetime as dt
+import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -169,6 +170,59 @@ def existing_notes(path: Path, session_id: str | None = None) -> list[str]:
     return notes
 
 
+# #40: a handoff regenerated mid-session carried every draft of a note as well
+# as the note. Four bullets on the Windows file were progressive restatements
+# of one paragraph -- ~2,800 of 3,716 characters -- and this file is not a
+# display, it is context, re-billed on every call of the session it is
+# injected into.
+#
+# The threshold is measured, not chosen. On the six real notes of the handoff
+# this repo actually injected on 2026-08-25, all of them genuinely distinct,
+# the highest containment between any pair is 0.35. On the three restatements
+# quoted in #40 it is 0.62-0.80. 0.5 sits in the gap with margin on both
+# sides, and the quoted restatements are elided, so a full one overlaps more.
+SUPERSEDE_CONTAINMENT = 0.5
+
+_WORD_RE = re.compile(r"[a-z0-9#.\-]+")
+
+
+def _words(note: str) -> set[str]:
+    return set(_WORD_RE.findall(note.lower()))
+
+
+def supersede(notes: list[str]) -> list[str]:
+    """Drop earlier drafts of a note that a later one restates.
+
+    Containment rather than Jaccard, and of the *shorter* note in the longer:
+    a restatement usually grows as it is edited, and the question being asked
+    is "does the later note already say what the earlier one said", which is
+    asymmetric. The later wording wins, in the earlier one's position -- the
+    order of the bullets is the writer's ordering of the work, and the first
+    bullet is by convention the next action.
+
+    Only near-duplicates are collapsed. Six distinct notes stay six.
+    """
+    kept: list[str] = []
+    kept_words: list[set[str]] = []
+    for note in notes:
+        words = _words(note)
+        replaced = False
+        for index in range(len(kept) - 1, -1, -1):
+            earlier = kept_words[index]
+            smaller = min(len(words), len(earlier))
+            if not smaller:
+                continue
+            if len(words & earlier) / smaller >= SUPERSEDE_CONTAINMENT:
+                kept[index] = note
+                kept_words[index] = words
+                replaced = True
+                break
+        if not replaced:
+            kept.append(note)
+            kept_words.append(words)
+    return kept
+
+
 def build(
     repo: Path,
     stats: SessionStats | None,
@@ -181,7 +235,7 @@ def build(
         branch=current_branch(repo),
         landed=landed_since(repo, since),
         dirty=dirty_paths(repo),
-        notes=list(notes or []),
+        notes=supersede(list(notes or [])),
         written=now or dt.datetime.now(dt.timezone.utc),
     )
 

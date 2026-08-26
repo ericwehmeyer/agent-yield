@@ -283,6 +283,11 @@ def _cmd_handoff(args) -> int:
     handoff_module.write(out, handoff_module.render(handoff))
 
     print(f"handoff written to {out}")
+    superseded = len(notes) - len(handoff.notes)
+    if superseded:
+        # Never drop text into a file silently -- the reader has to be able to
+        # tell a supersession from a bug that ate a note (#40).
+        print(f"  {superseded} note(s) superseded by a later restatement")
     if stats is None:
         print("  no session transcript found -- cost is unmeasured in it")
     if handoff.dirty:

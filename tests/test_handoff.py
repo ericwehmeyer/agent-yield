@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import pathlib
 import subprocess
 from pathlib import Path
 
@@ -12,6 +13,7 @@ from agent_yield import handoff as handoff_module
 from agent_yield.handoff import (
     ARCHIVE_SUFFIX,
     NOTES_HEADING,
+    SUPERSEDE_CONTAINMENT,
     build,
     consume,
     dirty_paths,
@@ -19,6 +21,7 @@ from agent_yield.handoff import (
     landed_since,
     read,
     render,
+    supersede,
     write,
 )
 from agent_yield.session import session_stats
@@ -241,3 +244,46 @@ def test_a_handoff_without_the_session_header_carries_nothing(tmp_path):
         encoding="utf-8",
     )
     assert handoff_module.existing_notes(path, "some-session") == []
+
+
+# --- #40: a handoff must not carry every draft of a note ------------------
+
+_NOTES = json.loads(
+    (pathlib.Path(__file__).parent / "fixtures" / "handoff_notes.json").read_text()
+)
+DISTINCT_NOTES = _NOTES["distinct"]
+RESTATED_NOTES = _NOTES["restatements"]
+
+
+def test_six_genuinely_distinct_notes_stay_six():
+    # The negative control, and the one that matters: a supersession rule that
+    # eats a real note is worse than the repetition it was written to fix.
+    assert supersede(DISTINCT_NOTES) == DISTINCT_NOTES
+
+
+def test_progressive_restatements_collapse_to_the_latest():
+    assert supersede(RESTATED_NOTES) == [RESTATED_NOTES[-1]]
+
+
+def test_the_later_wording_wins_in_the_earlier_position():
+    notes = [RESTATED_NOTES[0], DISTINCT_NOTES[0], RESTATED_NOTES[2]]
+    # The order of the bullets is the writer's ordering of the work, so the
+    # survivor keeps the slot the first draft claimed.
+    assert supersede(notes) == [RESTATED_NOTES[2], DISTINCT_NOTES[0]]
+
+
+def test_the_threshold_has_margin_on_the_measured_data():
+    # 0.35 is the highest containment between any two of the six distinct
+    # notes; 0.62 the lowest between any two restatements. If the constant
+    # ever wanders out of that gap, this fails rather than degrading quietly.
+    assert 0.35 < SUPERSEDE_CONTAINMENT < 0.62
+
+
+def test_build_supersedes_and_an_empty_note_list_is_untouched():
+    handoff = build(Path("."), None, notes=list(RESTATED_NOTES))
+    assert handoff.notes == [RESTATED_NOTES[-1]]
+    assert build(Path("."), None, notes=[]).notes == []
+
+
+def test_a_blank_note_is_not_a_duplicate_of_everything():
+    assert supersede(["", DISTINCT_NOTES[0], ""]) == ["", DISTINCT_NOTES[0], ""]
