@@ -1,0 +1,714 @@
+<title>The Silent Band</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,600;1,400&display=swap">
+
+<style>
+:root {
+  --bg:        #f2f5f7;
+  --surface:   #fbfcfd;
+  --sunken:    #e8edf1;
+  --ink:       #101519;
+  --ink-2:     #3d4952;
+  --ink-3:     #6a7883;
+  --rule:      #d2dae0;
+  --rule-soft: #e2e8ed;
+  --main:      #b06a00;
+  --main-soft: rgba(176, 106, 0, 0.13);
+  --sub:       #0089a8;
+  --sub-soft:  rgba(0, 137, 168, 0.13);
+  --shade:     rgba(176, 106, 0, 0.075);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg:        #0e1216;
+    --surface:   #151b21;
+    --sunken:    #10161b;
+    --ink:       #e6ecf1;
+    --ink-2:     #a7b4be;
+    --ink-3:     #74838e;
+    --rule:      #26313a;
+    --rule-soft: #1d262d;
+    --main:      #c08322;
+    --main-soft: rgba(192, 131, 34, 0.17);
+    --sub:       #2496ad;
+    --sub-soft:  rgba(36, 150, 173, 0.17);
+    --shade:     rgba(192, 131, 34, 0.09);
+  }
+}
+:root[data-theme="dark"] {
+  --bg:        #0e1216;
+  --surface:   #151b21;
+  --sunken:    #10161b;
+  --ink:       #e6ecf1;
+  --ink-2:     #a7b4be;
+  --ink-3:     #74838e;
+  --rule:      #26313a;
+  --rule-soft: #1d262d;
+  --main:      #c08322;
+  --main-soft: rgba(192, 131, 34, 0.17);
+  --sub:       #2496ad;
+  --sub-soft:  rgba(36, 150, 173, 0.17);
+  --shade:     rgba(192, 131, 34, 0.09);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  font-size: 16.5px;
+  line-height: 1.62;
+  margin: 0;
+  padding: 0 1.5rem 6rem;
+  -webkit-font-smoothing: antialiased;
+}
+
+.wrap { max-width: 60rem; margin: 0 auto; }
+.col  { max-width: 40rem; }
+
+/* ---- masthead ---- */
+
+header {
+  border-bottom: 2px solid var(--ink);
+  padding: 4.5rem 0 1.75rem;
+  margin-bottom: 3rem;
+}
+.eyebrow {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  margin: 0 0 1.5rem;
+}
+h1 {
+  font-family: "IBM Plex Serif", ui-serif, Georgia, serif;
+  font-weight: 600;
+  font-size: clamp(2.1rem, 5.5vw, 3.2rem);
+  line-height: 1.08;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  margin: 0 0 1.25rem;
+  max-width: 20ch;
+}
+.standfirst {
+  font-family: "IBM Plex Serif", ui-serif, Georgia, serif;
+  font-size: 1.2rem;
+  line-height: 1.55;
+  color: var(--ink-2);
+  margin: 0;
+  max-width: 46ch;
+}
+.standfirst em { color: var(--ink); font-style: italic; }
+
+/* ---- tiles ---- */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 1px;
+  background: var(--rule);
+  border: 1px solid var(--rule);
+  margin: 0 0 3.5rem;
+}
+.tile { background: var(--surface); padding: 1.15rem 1.25rem 1.25rem; }
+.tile .k {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.66rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  display: block;
+  margin-bottom: 0.5rem;
+}
+.tile .v {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 1.55rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  line-height: 1;
+  display: block;
+}
+.tile .n { font-size: 0.79rem; color: var(--ink-3); display: block; margin-top: 0.45rem; line-height: 1.4; }
+.tile.accent .v { color: var(--main); }
+
+/* ---- sections ---- */
+
+section { margin: 0 0 4rem; }
+h2 {
+  font-family: "IBM Plex Serif", ui-serif, Georgia, serif;
+  font-size: 1.55rem;
+  font-weight: 600;
+  letter-spacing: -0.015em;
+  line-height: 1.2;
+  text-wrap: balance;
+  margin: 0 0 0.6rem;
+}
+.num {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--main);
+  display: block;
+  margin-bottom: 0.7rem;
+}
+p { margin: 0 0 1.05rem; }
+p:last-child { margin-bottom: 0; }
+strong { font-weight: 600; }
+.mono, code {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9em;
+}
+code {
+  background: var(--sunken);
+  border: 1px solid var(--rule-soft);
+  padding: 0.08em 0.36em;
+  border-radius: 2px;
+}
+
+/* ---- figures ---- */
+
+figure {
+  margin: 2rem 0 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  padding: 1.5rem 1.5rem 1.25rem;
+}
+figure .cap {
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--ink-3);
+  margin: 1.1rem 0 0;
+  padding-top: 0.95rem;
+  border-top: 1px solid var(--rule-soft);
+  max-width: 62ch;
+}
+figure .cap b { color: var(--ink-2); font-weight: 600; }
+.scroller { overflow-x: auto; }
+svg { display: block; width: 100%; height: auto; }
+svg text { font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1.25rem;
+  margin: 0 0 1.15rem;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.73rem;
+  letter-spacing: 0.04em;
+  color: var(--ink-2);
+}
+.legend span { display: inline-flex; align-items: center; gap: 0.45rem; }
+.swatch { width: 13px; height: 13px; flex: none; border-radius: 2px; }
+
+/* ---- callout ---- */
+
+.callout {
+  border-left: 3px solid var(--main);
+  background: var(--main-soft);
+  padding: 1.15rem 1.35rem;
+  margin: 2rem 0 0;
+}
+.callout p { margin: 0; }
+.callout p + p { margin-top: 0.8rem; }
+
+/* ---- table ---- */
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  margin: 1.5rem 0 0;
+}
+caption {
+  text-align: left;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-bottom: 0.7rem;
+}
+th, td { text-align: left; padding: 0.62rem 0.85rem; border-bottom: 1px solid var(--rule-soft); }
+thead th {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  font-weight: 500;
+  border-bottom: 1px solid var(--rule);
+}
+td.n, th.n { text-align: right; font-family: "IBM Plex Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+tbody tr:last-child td { border-bottom: none; }
+.chip {
+  display: inline-block;
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.7rem;
+  letter-spacing: 0.05em;
+  padding: 0.16rem 0.5rem;
+  border-radius: 2px;
+  border: 1px solid;
+}
+.chip.m { color: var(--main); border-color: var(--main); background: var(--main-soft); }
+.chip.s { color: var(--sub);  border-color: var(--sub);  background: var(--sub-soft); }
+
+/* ---- ledger list ---- */
+
+.ledger { list-style: none; padding: 0; margin: 1.5rem 0 0; border-top: 1px solid var(--rule); }
+.ledger li { border-bottom: 1px solid var(--rule-soft); padding: 0.95rem 0; display: grid; grid-template-columns: 7.5rem 1fr; gap: 1.25rem; }
+.ledger .tag {
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+  padding-top: 0.22rem;
+}
+.ledger .tag.measured { color: var(--sub); }
+.ledger .tag.chosen   { color: var(--main); }
+@media (max-width: 34rem) { .ledger li { grid-template-columns: 1fr; gap: 0.3rem; } }
+
+/* ---- tooltip ---- */
+
+#tip {
+  position: fixed;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity .09s;
+  background: var(--ink);
+  color: var(--bg);
+  font-family: "IBM Plex Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  padding: 0.5rem 0.65rem;
+  border-radius: 3px;
+  z-index: 50;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0,0,0,.22);
+}
+
+footer {
+  border-top: 1px solid var(--rule);
+  padding-top: 1.5rem;
+  font-size: 0.82rem;
+  color: var(--ink-3);
+  max-width: 62ch;
+}
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">agent-yield &nbsp;/&nbsp; issue #17 &nbsp;/&nbsp; 20,255 calls, one operator</p>
+  <h1>Every threshold we have measures the wrong thing</h1>
+  <p class="standfirst">The rules in <span class="mono">design.md §5</span> fire when the context window gets <em>full</em>. Nothing fires when a call gets <em>expensive</em>. On a 1M window those are nearly 600,000 tokens apart — and almost all the money is spent in the gap.</p>
+</header>
+
+<div class="tiles">
+  <div class="tile accent">
+    <span class="k">Median main-thread call</span>
+    <span class="v">249,257</span>
+    <span class="n">tokens of context, every call</span>
+  </div>
+  <div class="tile">
+    <span class="k">Briefed agent floor</span>
+    <span class="v">31,618</span>
+    <span class="n">measured at n=4, working-method §1</span>
+  </div>
+  <div class="tile accent">
+    <span class="k">Ratio</span>
+    <span class="v">7.9&times;</span>
+    <span class="n">what the median call costs against dispatching it</span>
+  </div>
+  <div class="tile">
+    <span class="k">Corpus</span>
+    <span class="v">3.02B</span>
+    <span class="n">context tokens across 20,255 calls</span>
+  </div>
+</div>
+
+<section class="col">
+  <span class="num">The argument</span>
+  <h2>A full window and an expensive call are not the same event</h2>
+  <p>§5 has one family of thresholds and they are all percentages: warn at 60% of the window, compact at 75%, compact now at 85%. That is the right shape for the question <em>am I about to run out of room</em>. Room is a fraction of a window, so a percentage is the honest unit.</p>
+  <p>But cost is not a fraction of anything. <strong>A call carrying 200,000 tokens costs 200,000 tokens whether the window is 200K or 1M.</strong> The window does not appear in the bill. So a cost threshold has to be an absolute number of tokens, and none of ours are.</p>
+  <p>The consequence is the picture below.</p>
+</section>
+
+<figure>
+  <div class="scroller"><svg id="fig1" viewBox="0 0 900 300" role="img" aria-label="A token axis from zero to one million showing capacity thresholds firing at 600,000 and above, while proposed cost thresholds fire at 150,000, 250,000 and 400,000, with the median main-thread call at 249,257."></svg></div>
+  <p class="cap"><b>Figure 1 — the same axis, two families of rule.</b> Every capacity threshold sits to the right of every cost threshold. The shaded band is where a session is silent under all three existing rules and is already spending at several times the dispatch floor. <b>89.6% of all main-thread spend happens to the left of the first capacity warning.</b></p>
+</figure>
+
+<div class="callout col">
+  <p>Last night this session stopped at <span class="mono">212,000</span> tokens believing it had become bloated. It was at <strong>21% of the window</strong> — silent under every rule in §5, and the concession looked like an overreaction.</p>
+  <p>It was not an overreaction. <strong>212,000 is below the median main-thread call.</strong> The instinct was right and no instrument agreed with it.</p>
+</div>
+
+<section>
+  <div class="col">
+    <span class="num">Finding one</span>
+    <h2>Main threads and subagents are two different populations</h2>
+    <p>§5 has a single threshold family applied to everything. But the two roles do not live in the same range at all — the median main call carries <strong>2.6&times;</strong> the context of the median subagent call. One number cannot serve both, and today the same number serves both.</p>
+  </div>
+  <figure>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--main)"></span> Main thread &mdash; 5,016 calls</span>
+      <span><span class="swatch" style="background:var(--sub)"></span> Subagent &mdash; 15,239 calls</span>
+    </div>
+    <div class="scroller"><svg id="fig2" viewBox="0 0 900 340" role="img" aria-label="Two distributions of context per call. Subagent calls peak near 60,000 tokens; main-thread calls form a broad plateau from 100,000 to 450,000 tokens."></svg></div>
+    <p class="cap"><b>Figure 2 — share of each role's calls, by context carried.</b> Plotted as a share of its own population so the shapes compare. The subagent curve is a peak; the main-thread curve is a <b>plateau</b> that never resolves, running from roughly 100,000 to 450,000 tokens. Hover any column for its numbers.</p>
+  </figure>
+</section>
+
+<section>
+  <div class="col">
+    <span class="num">Finding two</span>
+    <h2>There is no knee, and the 200K edge was an artifact</h2>
+    <p>The measurement that opened #17 said <em>47% of the bill comes from calls above 200K</em>. That number is real. But 200,000 was a <strong>bucket edge chosen to print a histogram</strong>, not a break discovered in the data.</p>
+    <p>Plotted continuously, the main-thread curve just decays. 83% &rarr; 74% &rarr; 65% &rarr; 42% &rarr; 21%, smooth the whole way. <strong>There is no natural threshold in here to find.</strong></p>
+    <p>That is a negative result and it matters: it means #17 cannot be solved by looking harder at the data. Any threshold we set is a <em>policy choice</em>, and the honest version says so instead of dressing a chosen number as a discovered one.</p>
+  </div>
+  <figure>
+    <div class="legend">
+      <span><span class="swatch" style="background:var(--main)"></span> Main thread</span>
+      <span><span class="swatch" style="background:var(--sub)"></span> Subagent</span>
+    </div>
+    <div class="scroller"><svg id="fig3" viewBox="0 0 900 340" role="img" aria-label="Share of total spend occurring at or above each context threshold. The main-thread curve decays smoothly with no break; the subagent curve falls away much earlier."></svg></div>
+    <p class="cap"><b>Figure 3 — share of that role's total spend occurring at or above a given context size.</b> Read it as: <i>if I never made another call above X, how much of my bill would remain?</i> The dashed marker is the old 200,000 bucket edge — nothing happens there. Hover for exact values.</p>
+  </figure>
+</section>
+
+<section>
+  <div class="col">
+    <span class="num">The proposal</span>
+    <h2>A second family, in tokens, that never mentions the window</h2>
+    <p>Capacity thresholds stay exactly as they are — percentages, because capacity genuinely is a fraction of a window. Cost thresholds get added beside them as <strong>absolute token counts</strong>, per role, because tokens are absolute.</p>
+    <p>The one measured quantity available to anchor against is the briefed-agent floor of <span class="mono">31,618</span>. The multiples below are derived from it. The round token numbers are chosen.</p>
+  </div>
+
+  <table>
+    <caption>Proposed cost thresholds &mdash; main thread</caption>
+    <thead>
+      <tr><th>Fires at</th><th class="n">&times; floor</th><th>What it means</th><th class="n">Spend above</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="chip m">dispatch</span> <span class="mono">150,000</span></td><td class="n">4.7&times;</td><td>Brief and dispatch anything mechanical from here on</td><td class="n">90.5%</td></tr>
+      <tr><td><span class="chip m">restart</span> <span class="mono">250,000</span></td><td class="n">7.9&times;</td><td>Write findings down; restart at the next natural boundary</td><td class="n">74.3%</td></tr>
+      <tr><td><span class="chip m">stop</span> <span class="mono">400,000</span></td><td class="n">12.7&times;</td><td>Restart now, at the next safe point &mdash; do not compact</td><td class="n">41.8%</td></tr>
+    </tbody>
+  </table>
+
+  <table>
+    <caption>Proposed cost threshold &mdash; subagent</caption>
+    <thead>
+      <tr><th>Fires at</th><th class="n">&times; floor</th><th>What it means</th><th class="n">Spend above</th></tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="chip s">brief failed</span> <span class="mono">150,000</span></td><td class="n">4.7&times;</td><td>The agent rebuilt the context you dispatched to escape</td><td class="n">41.1%</td></tr>
+    </tbody>
+  </table>
+
+  <div class="callout">
+    <p><strong>The advice is different, not just the number.</strong> Every capacity rule ends in <em>compact</em>. Every cost rule must end in <em>dispatch</em> or <em>restart</em>. Compacting an expensive session pays for a summarisation pass and then keeps paying, because the context you rebuilt is re-read on every call that follows.</p>
+  </div>
+</section>
+
+<section class="col">
+  <span class="num">Provenance</span>
+  <h2>Which of these numbers are measured, and which are chosen</h2>
+  <p>The whole point of this repo is that the distinction gets written down rather than blurred.</p>
+  <ul class="ledger">
+    <li><span class="tag measured">Measured</span><span>Median main-thread call <span class="mono">249,257</span>, median subagent call <span class="mono">97,341</span>, across 20,255 deduplicated calls on one Windows corpus.</span></li>
+    <li><span class="tag measured">Measured</span><span>Briefed-agent floor <span class="mono">31,618</span> — median of four briefed dispatches, <span class="mono">working-method.md §1</span>.</span></li>
+    <li><span class="tag measured">Measured</span><span>Every "spend above" figure, computed directly from <span class="mono">.agent-yield/calls.jsonl</span>.</span></li>
+    <li><span class="tag measured">Measured</span><span>That the distribution has <strong>no knee</strong>. This is the finding that constrains the rest.</span></li>
+    <li><span class="tag chosen">Chosen</span><span>The three round numbers — <span class="mono">150,000 / 250,000 / 400,000</span>. Anchored to the floor, but selected. No measurement picks them.</span></li>
+    <li><span class="tag chosen">Chosen</span><span>That subagents get one threshold rather than three, on the argument that a subagent past the floor is a brief failure, not a session to restart.</span></li>
+    <li><span class="tag">Unverified</span><span>All of it is one operator on one machine. Issue <span class="mono">#20</span> is a blind re-measurement on a second corpus; these numbers were withheld from it deliberately.</span></li>
+  </ul>
+</section>
+
+<footer>
+  Generated from <span class="mono">.agent-yield/calls.jsonl</span> — 20,255 calls deduplicated on <span class="mono">(message_id, request_id)</span>, 2026-08-25. Context per call is <span class="mono">cache_read + input + cache_creation</span>. Companion to <span class="mono">docs/design.md §5</span> and issue #17.
+</footer>
+
+</div>
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script>
+const D = {
+  main: { n: 5016, total: 1374775049, median: 249257,
+    hist: [0,133,363,289,291,315,276,299,292,256,209,256,233,273,217,193,213,188,139,118,107,82,37,34,19,15,32,34,28,18,35,12,10],
+    cum: [100,100,99.6,97.9,96.1,93.7,90.5,87.3,83.2,78.7,74.3,70.3,65,59.7,53,47.2,41.8,35.4,29.4,24.7,20.6,16.6,13.4,11.9,10.4] },
+  sub: { n: 15239, total: 1644408458, median: 97341,
+    hist: [542,2186,2661,2507,2229,1736,1372,925,476,216,117,22,17,54,60,76,33,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    cum: [100,99.4,94.2,84.1,70.8,55.6,41.1,27.6,17.1,11,7.9,6,5.6,5.3,4.2,2.9,1.1,0.3,0,0,0,0,0,0,0] }
+};
+const STEP = 25000, NS = "http://www.w3.org/2000/svg";
+const fmt = n => n.toLocaleString("en-US");
+const kfmt = n => n === 0 ? "0" : (n % 1000000 === 0 ? (n/1e6) + "M" : Math.round(n/1000) + "K");
+
+const el = (t, a = {}) => { const e = document.createElementNS(NS, t);
+  for (const k in a) e.setAttribute(k, a[k]); return e; };
+const txt = (s, a = {}) => { const e = el("text", a); e.textContent = s; return e; };
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+/* ---------- tooltip ---------- */
+const tip = document.getElementById("tip");
+function bind(node, html) {
+  const show = ev => { tip.innerHTML = html; tip.style.opacity = 1;
+    const r = tip.getBoundingClientRect();
+    let x = ev.clientX + 14, y = ev.clientY - r.height - 10;
+    if (x + r.width > innerWidth - 8) x = ev.clientX - r.width - 14;
+    if (y < 8) y = ev.clientY + 18;
+    tip.style.left = x + "px"; tip.style.top = y + "px"; };
+  node.addEventListener("mousemove", show);
+  node.addEventListener("mouseenter", show);
+  node.addEventListener("mouseleave", () => tip.style.opacity = 0);
+}
+
+/* ---------- figure 1: the two number lines ---------- */
+(function () {
+  const svg = document.getElementById("fig1");
+  const W = 900, L = 20, R = 30, MAX = 1000000;
+  const x = t => L + (t / MAX) * (W - L - R);
+  const AX = 196;
+
+  const capacity = [
+    { t: 600000, label: "warn 60%" },
+    { t: 750000, label: "compact 75%" },
+    { t: 850000, label: "compact now 85%" }
+  ];
+  const cost = [
+    { t: 150000, label: "dispatch" },
+    { t: 250000, label: "restart" },
+    { t: 400000, label: "stop" }
+  ];
+
+  // the silent band
+  const band = el("rect", { x: x(150000), y: 60, width: x(600000) - x(150000),
+    height: 200, fill: css("--shade") });
+  svg.appendChild(band);
+  svg.appendChild(el("line", { x1: x(150000), y1: 60, x2: x(150000), y2: 260,
+    stroke: css("--main"), "stroke-width": 1, "stroke-dasharray": "2 3", opacity: .55 }));
+  svg.appendChild(el("line", { x1: x(600000), y1: 60, x2: x(600000), y2: 260,
+    stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "2 3", opacity: .55 }));
+
+  svg.appendChild(txt("SILENT UNDER EVERY EXISTING RULE", {
+    x: (x(150000) + x(600000)) / 2, y: 78, "text-anchor": "middle",
+    "font-size": 10.5, "letter-spacing": "0.1em", fill: css("--main"), "font-weight": 600 }));
+  svg.appendChild(txt("89.6% of main-thread spend happens in here", {
+    x: (x(150000) + x(600000)) / 2, y: 95, "text-anchor": "middle",
+    "font-size": 11, fill: css("--ink-2") }));
+
+  // cost lane (above axis)
+  svg.appendChild(txt("COST  —  proposed, absolute tokens", { x: L, y: 128,
+    "font-size": 10, "letter-spacing": "0.1em", fill: css("--main"), "font-weight": 600 }));
+  cost.forEach(c => {
+    svg.appendChild(el("line", { x1: x(c.t), y1: 138, x2: x(c.t), y2: AX,
+      stroke: css("--main"), "stroke-width": 2 }));
+    svg.appendChild(el("circle", { cx: x(c.t), cy: 138, r: 4, fill: css("--main") }));
+    svg.appendChild(txt(c.label, { x: x(c.t), y: 158, "text-anchor": "middle",
+      "font-size": 11, "font-weight": 600, fill: css("--ink") }));
+    svg.appendChild(txt(fmt(c.t), { x: x(c.t), y: 173, "text-anchor": "middle",
+      "font-size": 10.5, fill: css("--ink-3") }));
+  });
+
+  // the axis itself
+  svg.appendChild(el("line", { x1: L, y1: AX, x2: W - R, y2: AX,
+    stroke: css("--ink"), "stroke-width": 1.5 }));
+  for (let t = 0; t <= MAX; t += 100000) {
+    svg.appendChild(el("line", { x1: x(t), y1: AX, x2: x(t), y2: AX + 5,
+      stroke: css("--rule"), "stroke-width": 1 }));
+    if (t % 200000 === 0)
+      svg.appendChild(txt(kfmt(t), { x: x(t), y: AX + 18, "text-anchor": "middle",
+        "font-size": 10, fill: css("--ink-3") }));
+  }
+
+  // median marker
+  const med = D.main.median;
+  svg.appendChild(el("line", { x1: x(med), y1: AX - 46, x2: x(med), y2: AX,
+    stroke: css("--ink"), "stroke-width": 1.5, "stroke-dasharray": "3 2" }));
+  svg.appendChild(el("path", {
+    d: `M ${x(med)} ${AX} l -5 -8 l 10 0 z`, fill: css("--ink") }));
+
+  // capacity lane (below axis)
+  svg.appendChild(txt("CAPACITY  —  design.md §5 today, on a 1M window", { x: L, y: 254,
+    "font-size": 10, "letter-spacing": "0.1em", fill: css("--ink-3"), "font-weight": 600 }));
+  capacity.forEach(c => {
+    svg.appendChild(el("line", { x1: x(c.t), y1: AX, x2: x(c.t), y2: 240,
+      stroke: css("--ink-3"), "stroke-width": 2 }));
+    svg.appendChild(el("circle", { cx: x(c.t), cy: 240, r: 4, fill: css("--ink-3") }));
+    svg.appendChild(txt(c.label, { x: x(c.t), y: 225, "text-anchor": "middle",
+      "font-size": 11, "font-weight": 600, fill: css("--ink-2") }));
+  });
+
+  svg.appendChild(txt("median main-thread call", { x: x(med) + 8, y: AX - 36,
+    "font-size": 11, "font-weight": 600, fill: css("--ink") }));
+  svg.appendChild(txt(fmt(med) + " tokens", { x: x(med) + 8, y: AX - 22,
+    "font-size": 10.5, fill: css("--ink-3") }));
+  svg.appendChild(txt("— half of all main-thread calls are larger than this", {
+    x: L, y: 292, "font-size": 10.5, fill: css("--ink-3") }));
+})();
+
+/* ---------- figure 2: distributions ---------- */
+(function () {
+  const svg = document.getElementById("fig2");
+  const W = 900, H = 340, L = 46, R = 18, T = 16, B = 46;
+  const NB = 29, MAX = NB * STEP;
+  const x = t => L + (t / MAX) * (W - L - R);
+  const yMax = 18;
+  const y = p => T + (1 - p / yMax) * (H - T - B);
+
+  // grid
+  for (let p = 0; p <= yMax; p += 6) {
+    svg.appendChild(el("line", { x1: L, y1: y(p), x2: W - R, y2: y(p),
+      stroke: css("--rule-soft"), "stroke-width": 1 }));
+    svg.appendChild(txt(p + "%", { x: L - 8, y: y(p) + 3.5, "text-anchor": "end",
+      "font-size": 10, fill: css("--ink-3") }));
+  }
+
+  const series = [["sub", css("--sub"), css("--sub-soft")], ["main", css("--main"), css("--main-soft")]];
+  series.forEach(([k, stroke, fill]) => {
+    const d = D[k];
+    let path = "";
+    for (let i = 0; i < NB; i++) {
+      const pct = d.hist[i] / d.n * 100;
+      path += (i === 0 ? "M " : " L ") + x(i * STEP) + " " + y(pct)
+            + " L " + x((i + 1) * STEP) + " " + y(pct);
+    }
+    svg.appendChild(el("path", { d: path + ` L ${x(NB*STEP)} ${y(0)} L ${x(0)} ${y(0)} Z`,
+      fill: fill, stroke: "none" }));
+    svg.appendChild(el("path", { d: path, fill: "none", stroke: stroke,
+      "stroke-width": 2, "stroke-linejoin": "round" }));
+
+    // median marker
+    svg.appendChild(el("line", { x1: x(d.median), y1: T + 4, x2: x(d.median), y2: y(0),
+      stroke: stroke, "stroke-width": 1.5, "stroke-dasharray": "4 3" }));
+    const lab = k === "main" ? "median " + fmt(d.median) : "median " + fmt(d.median);
+    const anchor = k === "main" ? "start" : "end";
+    const dx = k === "main" ? 7 : -7;
+    svg.appendChild(txt(lab, { x: x(d.median) + dx, y: T + 14, "text-anchor": anchor,
+      "font-size": 10.5, "font-weight": 600, fill: stroke }));
+  });
+
+  // axis
+  svg.appendChild(el("line", { x1: L, y1: y(0), x2: W - R, y2: y(0),
+    stroke: css("--ink"), "stroke-width": 1.2 }));
+  for (let i = 0; i <= NB; i += 4) {
+    const t = i * STEP;
+    svg.appendChild(el("line", { x1: x(t), y1: y(0), x2: x(t), y2: y(0) + 5,
+      stroke: css("--rule"), "stroke-width": 1 }));
+    svg.appendChild(txt(kfmt(t), { x: x(t), y: y(0) + 18, "text-anchor": "middle",
+      "font-size": 10, fill: css("--ink-3") }));
+  }
+  svg.appendChild(txt("context carried by the call, tokens", { x: (L + W - R) / 2, y: H - 8,
+    "text-anchor": "middle", "font-size": 10.5, fill: css("--ink-3") }));
+  svg.appendChild(txt("share of role's calls", { x: 12, y: T + 4,
+    "font-size": 10, fill: css("--ink-3"), transform: `rotate(-90 12 ${T + 4})` }));
+
+  // hover columns
+  for (let i = 0; i < NB; i++) {
+    const hit = el("rect", { x: x(i * STEP), y: T, width: x(STEP) - x(0), height: H - T - B,
+      fill: "transparent" });
+    const mp = (D.main.hist[i] / D.main.n * 100).toFixed(1);
+    const sp = (D.sub.hist[i] / D.sub.n * 100).toFixed(1);
+    bind(hit, `<b>${fmt(i*STEP)}–${fmt((i+1)*STEP)}</b><br>`
+      + `main &nbsp;${mp}% &nbsp;(${fmt(D.main.hist[i])} calls)<br>`
+      + `sub &nbsp;&nbsp;${sp}% &nbsp;(${fmt(D.sub.hist[i])} calls)`);
+    svg.appendChild(hit);
+  }
+})();
+
+/* ---------- figure 3: cumulative spend ---------- */
+(function () {
+  const svg = document.getElementById("fig3");
+  const W = 900, H = 340, L = 46, R = 18, T = 16, B = 46;
+  const MAX = 600000;
+  const x = t => L + (t / MAX) * (W - L - R);
+  const y = p => T + (1 - p / 100) * (H - T - B);
+
+  for (let p = 0; p <= 100; p += 25) {
+    svg.appendChild(el("line", { x1: L, y1: y(p), x2: W - R, y2: y(p),
+      stroke: css("--rule-soft"), "stroke-width": 1 }));
+    svg.appendChild(txt(p + "%", { x: L - 8, y: y(p) + 3.5, "text-anchor": "end",
+      "font-size": 10, fill: css("--ink-3") }));
+  }
+
+  // the old bucket edge
+  svg.appendChild(el("line", { x1: x(200000), y1: T, x2: x(200000), y2: y(0),
+    stroke: css("--ink-3"), "stroke-width": 1, "stroke-dasharray": "3 3" }));
+  svg.appendChild(txt("200,000 — a bucket edge, not a break", { x: x(200000) + 8, y: T + 12,
+    "font-size": 10.5, fill: css("--ink-3") }));
+
+  [["main", css("--main")], ["sub", css("--sub")]].forEach(([k, stroke]) => {
+    const c = D[k].cum;
+    const d = c.map((p, i) => (i ? "L " : "M ") + x(i * STEP) + " " + y(p)).join(" ");
+    svg.appendChild(el("path", { d, fill: "none", stroke, "stroke-width": 2.5,
+      "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    const last = c.length - 1;
+    svg.appendChild(el("circle", { cx: x(last * STEP), cy: y(c[last]), r: 4,
+      fill: stroke, stroke: css("--surface"), "stroke-width": 2 }));
+  });
+
+  svg.appendChild(txt("main thread", { x: x(325000), y: y(59.7) - 12,
+    "font-size": 11.5, "font-weight": 600, fill: css("--main") }));
+  svg.appendChild(txt("subagent", { x: x(150000), y: y(41.1) - 12,
+    "font-size": 11.5, "font-weight": 600, fill: css("--sub") }));
+
+  svg.appendChild(el("line", { x1: L, y1: y(0), x2: W - R, y2: y(0),
+    stroke: css("--ink"), "stroke-width": 1.2 }));
+  for (let t = 0; t <= MAX; t += 100000) {
+    svg.appendChild(el("line", { x1: x(t), y1: y(0), x2: x(t), y2: y(0) + 5,
+      stroke: css("--rule"), "stroke-width": 1 }));
+    svg.appendChild(txt(kfmt(t), { x: x(t), y: y(0) + 18, "text-anchor": "middle",
+      "font-size": 10, fill: css("--ink-3") }));
+  }
+  svg.appendChild(txt("context threshold, tokens", { x: (L + W - R) / 2, y: H - 8,
+    "text-anchor": "middle", "font-size": 10.5, fill: css("--ink-3") }));
+  svg.appendChild(txt("share of spend at or above", { x: 12, y: T + 4,
+    "font-size": 10, fill: css("--ink-3"), transform: `rotate(-90 12 ${T + 4})` }));
+
+  const cross = el("line", { x1: 0, y1: T, x2: 0, y2: y(0), stroke: css("--ink"),
+    "stroke-width": 1, opacity: 0 });
+  svg.appendChild(cross);
+  const hit = el("rect", { x: L, y: T, width: W - R - L, height: H - T - B, fill: "transparent" });
+  hit.addEventListener("mousemove", ev => {
+    const box = svg.getBoundingClientRect();
+    const px = (ev.clientX - box.left) / box.width * W;
+    const i = Math.max(0, Math.min(D.main.cum.length - 1, Math.round((px - L) / (x(STEP) - x(0)))));
+    cross.setAttribute("x1", x(i * STEP)); cross.setAttribute("x2", x(i * STEP));
+    cross.setAttribute("opacity", .35);
+  });
+  hit.addEventListener("mouseleave", () => cross.setAttribute("opacity", 0));
+  bindCurve(hit);
+  function bindCurve(node) {
+    const show = ev => {
+      const box = svg.getBoundingClientRect();
+      const px = (ev.clientX - box.left) / box.width * W;
+      const i = Math.max(0, Math.min(D.main.cum.length - 1, Math.round((px - L) / (x(STEP) - x(0)))));
+      tip.innerHTML = `<b>at or above ${fmt(i * STEP)}</b><br>`
+        + `main &nbsp;${D.main.cum[i]}% of spend<br>`
+        + `sub &nbsp;&nbsp;${D.sub.cum[i]}% of spend`;
+      tip.style.opacity = 1;
+      const r = tip.getBoundingClientRect();
+      let tx = ev.clientX + 14, ty = ev.clientY - r.height - 10;
+      if (tx + r.width > innerWidth - 8) tx = ev.clientX - r.width - 14;
+      if (ty < 8) ty = ev.clientY + 18;
+      tip.style.left = tx + "px"; tip.style.top = ty + "px";
+    };
+    node.addEventListener("mousemove", show);
+    node.addEventListener("mouseleave", () => tip.style.opacity = 0);
+  }
+  svg.appendChild(hit);
+})();
+</script>
