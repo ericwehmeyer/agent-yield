@@ -269,6 +269,14 @@ the recipient except that it eventually reads. For two machines that restart
 constantly *by design* — which is this project's whole thesis — the durable
 channel beats the live one.
 
+**Take the ticket number from GitHub, never from arithmetic.** Both machines
+allocated **#64** within an hour of each other on 2026-08-26 -- one for a
+portability finding, one for the depth experiment -- because each read the
+highest number in `NEXT.md` and added one. The issue tracker is the allocator:
+`gh issue create` returns the number, and only then does it go in a commit
+subject, in `interventions.toml`, or on this page. A number that exists in two
+places is worse than no number, because both halves of the repo will cite it.
+
 ### 7.2 Which machine made a commit (issue #45)
 
 Two machines through one queue means every git-denominated metric divides **one**
@@ -958,7 +966,7 @@ is the second reason the depth experiment below is the one worth running.
   2.62 on a second task at a different k, against 3.50; the band above uses
   both. Orientation is now the narrow term and the **arrival price** is the wide
   one, at 2x between tool schemas.
-- **The depth experiment (#64), and it is now the only thing that can move this
+- **The depth experiment (#65), and it is now the only thing that can move this
   section.** No arm has ever been run at a packed depth over 15 calls, against a
   52-call median dispatch and a break-even quoted at 35-196. One agent over k
   slices against k agents, sized so the packed arm takes **at least 50 calls**,

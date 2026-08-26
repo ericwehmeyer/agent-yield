@@ -1909,7 +1909,7 @@ anticipated and which makes §12's rubric a lever on the packing number.
 §11.1's at 5, this one at 13.5 — against a median real dispatch of 52 and a
 break-even quoted in the high tens. The rule *never split on cost* is measured
 at a fifth of the depth it is applied at; above ~15 calls it is arithmetic.
-**#64 is filed and pre-registered**: the same comparison sized so the packed arm
+**#65 is filed and pre-registered**: the same comparison sized so the packed arm
 takes **at least 50 calls**, run at both tool schemas, scored in list dollars
 and defects found. Nothing else can move §11.4.
 
