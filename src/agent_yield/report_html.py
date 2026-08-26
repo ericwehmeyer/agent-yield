@@ -99,8 +99,10 @@ def _repo(cwd: str | None) -> str:
     Taking the last segment is not enough on its own: when the session ran in
     the home directory itself, the last segment *is* the account name, so the
     rule leaks exactly the case it was written to stop. `/Users/<name>`,
-    `/home/<name>`, `C:\\Users\\<name>` and a bare `~` all collapse to
-    HOME_LABEL instead.
+    `/home/<name>`, `C:\\Users\\<name>`, a UNC share, a WSL mount and a bare
+    `~` all collapse to HOME_LABEL instead. The eleven shapes this must hold
+    for are a table in `tests/test_report_html.py`; a redaction with a shape
+    missing from its table is a redaction with a leak in it.
     """
     if not cwd:
         return DASH
@@ -112,7 +114,16 @@ def _repo(cwd: str | None) -> str:
     parts = [p for p in parts if not re.fullmatch(r"[A-Za-z]:", p)]
     if not parts:
         return DASH
-    if len(parts) == 2 and parts[0].lower() in _HOME_ROOTS:
+    # The segment BEFORE the last, not the first, and not a segment count.
+    # `len(parts) == 2` described one shape -- a local home directory -- and
+    # missed every path with anything in front of it: a UNC share splits to
+    # three segments and returned the account name, a WSL mount to four
+    # (audit N5). This rule is looser than strictly needed, and the
+    # direction is chosen: a repository whose parent is literally named
+    # `home` renders as (home) rather than by name, which costs a label. The
+    # other error costs somebody's name on a page that may be shared. A
+    # redaction should fail toward redacting.
+    if len(parts) >= 2 and parts[-2].lower() in _HOME_ROOTS:
         return HOME_LABEL
     return parts[-1]
 

@@ -190,3 +190,64 @@ def test_no_hook_reaches_for_sys_stdin_directly(path):
         "decodes UTF-8 hook payloads as cp1252, silently (#59, audit N3). Read it "
         f"through agent_yield.{_STDIN_READER[:-3]}.read_payload instead."
     )
+
+
+_WRITE_MODES = ("w", "a", "x", "+")
+
+
+def _writes(node: ast.Call) -> bool:
+    """Whether this `open` call is opening a text file for writing.
+
+    The mode is the FIRST positional argument of `Path.open` and the SECOND of
+    the builtin. The first draft read args[1:] for both, so every
+    `PROBE_PATH.open("a", ...)` in the hooks read as mode "r" and the rule
+    reported them clean -- a guard scoped one argument too narrowly says
+    nothing while looking like it said yes.
+    """
+    positional = node.args if isinstance(node.func, ast.Attribute) else node.args[1:]
+    mode = next(
+        (a.value for a in positional
+         if isinstance(a, ast.Constant) and isinstance(a.value, str)),
+        None,
+    )
+    if mode is None:
+        mode = next(
+            (kw.value.value for kw in node.keywords
+             if kw.arg == "mode" and isinstance(kw.value, ast.Constant)),
+            "r",
+        )
+    return "b" not in mode and any(m in mode for m in _WRITE_MODES)
+
+
+@pytest.mark.parametrize("path", sorted((_ROOT / "src").rglob("*.py")), ids=_rel)
+def test_every_text_file_this_tool_writes_names_its_line_ending(path):
+    r"""N11: these files are the tool's own record of its own measurements.
+
+    A text write with no `newline=` gets `os.linesep` -- `\r\n` on Windows,
+    `\n` everywhere else. Nothing breaks today: every internal reader goes
+    through `splitlines()`, and `json.loads` tolerates a trailing `\r`. It is
+    listed anyway because `calls.jsonl`, `handoff.md` and the probe logs are
+    what this repo compares between two machines, and a file that differs
+    byte-for-byte by platform is a bad thing to be comparing. `statusline`
+    already slices one of these trees by byte offset.
+
+    The rule is on `src/` only. Tests write fixtures whose bytes nobody
+    carries anywhere, and a guard that fires where the property does not
+    matter is how guards get switched off.
+    """
+    tree = ast.parse(_read(path), filename=str(path))
+    offenders = [
+        node.lineno
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        and (
+            _called(node).endswith("write_text")
+            or (_called(node).endswith("open") and _writes(node))
+        )
+        and "newline" not in _keywords(node)
+    ]
+    assert not offenders, (
+        f"{_rel(path)}:{offenders} writes text with no newline= -- that is "
+        r"\r\n on Windows and \n everywhere else, in a file this tool writes "
+        r'to compare two machines (audit N11). Pass newline="\n".'
+    )

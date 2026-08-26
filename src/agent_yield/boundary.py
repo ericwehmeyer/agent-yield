@@ -227,7 +227,7 @@ def _probe(
         }
         entry.update(_resolution(payload))
         PROBE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with PROBE_PATH.open("a", encoding="utf-8") as handle:
+        with PROBE_PATH.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(entry) + "\n")
     except Exception:
         return
@@ -238,7 +238,7 @@ def arm_refusal(path: Path | None = None) -> Path:
     target = Path(path) if path is not None else REFUSAL_ARMED_PATH
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(
-        dt.datetime.now(dt.timezone.utc).isoformat() + "\n", encoding="utf-8"
+        dt.datetime.now(dt.timezone.utc).isoformat() + "\n", encoding="utf-8", newline="\n"
     )
     return target
 

@@ -402,3 +402,17 @@ def test_a_failed_archive_never_costs_the_text_it_already_read(
     assert consume(path, now=NOW) == "# handoff\n"
     assert path.exists()  # unarchived, and deliberately left where it is
     assert "not archived" in capsys.readouterr().err
+
+
+def test_the_handoff_is_written_with_unix_line_endings_on_every_platform(tmp_path):
+    r"""N11, and this is the file that actually crosses machines.
+
+    `handoff.md` is read by the next session, committed, and quoted back in
+    NEXT.md. Written with no `newline=` it was `\r\n` on Windows and `\n` on
+    the Mac, so the same handoff had two byte representations depending on who
+    wrote it. Asserted in bytes; vacuous on POSIX, where the guard rule in
+    test_portability_guard.py is what holds the line.
+    """
+    path = tmp_path / "handoff.md"
+    write(path, "# Handoff\n\n## Claimed and unfinished\n\n- x\n")
+    assert b"\r\n" not in path.read_bytes()

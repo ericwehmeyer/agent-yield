@@ -80,7 +80,7 @@ def record_mode(path: Path, session_id: str, mode: str) -> None:
         for sid, tag in modes.items()
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(_HEADER + body, encoding="utf-8")
+    path.write_text(_HEADER + body, encoding="utf-8", newline="\n")
 
 
 def tagged_sessions(path: Path) -> list[tuple[str, str]]:

@@ -347,3 +347,28 @@ def test_a_record_carrying_a_unicode_line_separator_survives_whole(tmp_path):
     (record,) = load_records([path])
     assert record.usage.output_tokens == 2_663
     assert record.incomplete is False, "the terminal record was dropped"
+
+
+def test_calls_jsonl_is_written_with_unix_line_endings_on_every_platform(tmp_path):
+    r"""N11: this file is the record two machines compare.
+
+    A text write with no `newline=` gets `os.linesep`, so `calls.jsonl` was
+    `\r\n` on Windows and `\n` on the Mac. Nothing broke -- every reader here
+    goes through `json_lines`, and `json.loads` tolerates a trailing `\r` --
+    but the ledger this repo diffs between platforms differed byte-for-byte by
+    platform, and `statusline._slice` already reads one of these trees in "rb"
+    and cuts it by byte offset.
+
+    Asserted in BYTES, and vacuous on POSIX by construction: there is no way
+    to distinguish the fix on a machine whose linesep is already `\n`. The
+    guard rule in test_portability_guard.py is what covers the other two
+    platforms, and it is the half that fails when a new write site forgets.
+    """
+    src = tmp_path / "s.jsonl"
+    src.write_text(_line(req="r1", msg="m1", cr=10) + "\n", encoding="utf-8")
+    dest = tmp_path / "calls.jsonl"
+    ingest(dest, [src])
+
+    raw = dest.read_bytes()
+    assert b"\r\n" not in raw
+    assert raw.endswith(b"\n")

@@ -190,6 +190,6 @@ def ingest(dest: Path, roots: Iterable[Path]) -> int:
 
     merged.sort(key=lambda r: r.timestamp)
     dest.write_text(
-        "\n".join(_to_json(r) for r in merged) + "\n", encoding="utf-8"
+        "\n".join(_to_json(r) for r in merged) + "\n", encoding="utf-8", newline="\n"
     )
     return len(merged)

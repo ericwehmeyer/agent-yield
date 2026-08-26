@@ -8,6 +8,8 @@ from __future__ import annotations
 import datetime as dt
 import re
 
+import pytest
+
 from agent_yield.interventions import Intervention
 from agent_yield.records import CallRecord
 from agent_yield.report import BeforeAfter, YieldRow
@@ -228,19 +230,60 @@ def test_no_person_is_named():
     assert "agent-yield" in out
 
 
-def test_a_home_directory_cwd_never_renders_the_account_name():
+# Eleven literal path shapes and what the page must render for each. A table
+# rather than a list of asserts because `_repo` is a redaction: every row that
+# is missing is a shape that leaks, and the two the audit found -- UNC and the
+# WSL mount -- were missing precisely because nobody had typed them (N5).
+_REPO_SHAPES = [
+    # the home directory itself, on each platform's spelling of it
+    ("/Users/ada", "HOME"),
+    ("/home/ada", "HOME"),
+    (r"C:\Users\ada", "HOME"),
+    ("~", "HOME"),
+    ("~/", "HOME"),
+    # N5: a Windows network share. Three segments, not two, so the old
+    # `len(parts) == 2` home check never fired and the function returned the
+    # account name -- the one thing it exists to keep off a shared page.
+    (r"\\server\Users\ada", "HOME"),
+    # N5: a WSL mount, where the distro name sits between host and home.
+    (r"\\wsl.localhost\Ubuntu\home\eric", "HOME"),
+    # a real repository is still named, on every shape
+    ("/Users/ada/IdeaProjects/agent-yield", "agent-yield"),
+    (r"C:\Users\ada\src\agent-yield", "agent-yield"),
+    (r"\\server\projects\agent-yield", "agent-yield"),
+    # trailing separator, which splits to an empty final segment
+    ("/Users/ada/repos/agent-yield/", "agent-yield"),
+]
+
+
+@pytest.mark.parametrize("cwd,expected", _REPO_SHAPES, ids=lambda v: v)
+def test_a_home_directory_cwd_never_renders_the_account_name(cwd, expected):
     """The last-segment rule leaks the very thing it exists to hide.
 
     A session run in the home directory has the account name as its last path
     segment, so `/Users/ada` would render as "ada" -- a person, which is not
     the unit of account.
+
+    The rule is now "the segment before the last is a home root", not "the
+    path has exactly two segments". That is deliberately looser than it needs
+    to be, and the direction of the looseness is the point: a repository whose
+    parent directory is literally named `home` or `Users` renders as (home)
+    instead of by name, which costs a label on a page. Getting it wrong the
+    other way puts somebody's account name on a page that may be shared. A
+    redaction should fail toward redacting.
     """
     from agent_yield.report_html import HOME_LABEL, _repo
 
-    assert _repo("/Users/ada") == HOME_LABEL
-    assert _repo("/home/ada") == HOME_LABEL
-    assert _repo("C:\\Users\\ada") == HOME_LABEL
-    assert _repo("~") == HOME_LABEL
-    # A real repository under the home directory is still named.
-    assert _repo("/Users/ada/IdeaProjects/agent-yield") == "agent-yield"
-    assert _repo("C:\\Users\\ada\\src\\agent-yield") == "agent-yield"
+    assert _repo(cwd) == (HOME_LABEL if expected == "HOME" else expected)
+
+
+def test_a_repo_whose_parent_is_named_home_is_redacted_rather_than_named():
+    """The known false positive, written down so it is a decision, not a bug.
+
+    `/srv/home/dotfiles` is a real repository called `dotfiles`, and it
+    renders as (home). That is the looseness above, chosen on purpose: the
+    cost is a missing label, and the alternative costs a name.
+    """
+    from agent_yield.report_html import HOME_LABEL, _repo
+
+    assert _repo("/srv/home/dotfiles") == HOME_LABEL

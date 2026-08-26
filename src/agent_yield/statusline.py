@@ -175,7 +175,7 @@ def _cache_read(cache_path: Path) -> dict:
 def _cache_write(cache_path: Path, data: dict) -> None:
     try:
         Path(cache_path).parent.mkdir(parents=True, exist_ok=True)
-        Path(cache_path).write_text(json.dumps(data), encoding="utf-8")
+        Path(cache_path).write_text(json.dumps(data), encoding="utf-8", newline="\n")
     except OSError:
         return
 
@@ -371,7 +371,7 @@ def _probe(payload: dict, line: str) -> None:
     try:
         path, route = resolve_transcript(payload)
         PROBE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with PROBE_PATH.open("a", encoding="utf-8") as handle:
+        with PROBE_PATH.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps({
                 "keys": sorted(keys(payload)),
                 "route": route,

@@ -196,7 +196,7 @@ def _probe(
             entry["keys"] = None
             entry["has_reason_key"] = False
         PROBE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with PROBE_PATH.open("a", encoding="utf-8") as handle:
+        with PROBE_PATH.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(entry) + "\n")
     except Exception:
         return

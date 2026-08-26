@@ -142,7 +142,7 @@ def append(path: Path, snapshot: Snapshot, previous: Snapshot | None = None) -> 
         return False
     try:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with Path(path).open("a", encoding="utf-8") as handle:
+        with Path(path).open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(asdict(snapshot), sort_keys=True) + "\n")
     except OSError:
         return False
