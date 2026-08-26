@@ -14,10 +14,22 @@ MEASURED, and the measurement matters more than the code:
     So the live session is identified twice over -- by path and by id -- and
     `session.resolve_transcript` now uses the observed contract instead of
     guessing at it.
-  - **Whether exit 2 blocks a prompt is still NOT measured**, and neither is
-    whether stderr reaches the operator. `--enforce` therefore remains
-    unverified; see `--probe-refuse`, which measures it once, deliberately,
-    and disarms itself.
+  - **Exit 2 refuses the prompt, and the operator is told why** (armed
+    refusal, 2026-08-26 01:48 UTC). The refused prompt never reached the
+    model; the operator saw, verbatim:
+
+        UserPromptSubmit operation blocked by hook:
+          [/path/to/agent-yield boundary --probe]: <this hook's stderr>
+
+        Original prompt: <what they typed>
+
+    Three things follow, and the third is the one that changes the design.
+    stderr reaches the operator in full, so an enforcing boundary can
+    explain itself. The hook is named in the message, so a refusal can be
+    traced to its cause without guesswork. And **the harness echoes the
+    prompt back**, so refusing costs the operator a re-send, not their
+    typing -- which is most of the risk `--enforce` was being cautious
+    about. It is a verified mechanism now, not a hopeful flag.
 
 And it cannot be verified from the session that installs it: hook config loads
 at session start, so a hook installed now first runs in the NEXT session. That

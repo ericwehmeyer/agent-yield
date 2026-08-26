@@ -109,11 +109,15 @@ and the boundary no longer guesses at which session it is measuring. It also
 never widens to "the most recently modified transcript": with two sessions
 open that is routinely the *other* one.
 
-**Whether exit 2 refuses a prompt is still unmeasured**, so `boundary` advises
-by default and refuses only under `--enforce`. `agent-yield boundary
---arm-refusal` arms one deliberate refusal to settle it, and disarms itself
-before refusing, so the next prompt goes through either way. Install the probe
-mode to record what arrives:
+**Exit 2 refuses the prompt — measured**, by arming one deliberate refusal
+(`agent-yield boundary --arm-refusal`, which disarms itself before refusing so
+it can cost at most one re-send). The refused prompt never reached the model,
+and the operator saw the hook's stderr in full, the hook's own command path,
+and their **original prompt echoed back** — so refusing costs a re-send rather
+than someone's typing. `--enforce` is therefore a verified mechanism; it stays
+opt-in per install anyway, because the policy question — how often a boundary
+should refuse — is separate from whether it can. Install the probe mode to
+record what arrives:
 
 ```json
 {

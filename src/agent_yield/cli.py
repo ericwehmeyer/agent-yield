@@ -383,7 +383,8 @@ def main(argv: list[str] | None = None) -> int:
         help="UserPromptSubmit hook entry point (advisory unless --enforce)",
     )
     p.add_argument("--enforce", action="store_true",
-                   help="exit 2 to refuse the prompt -- UNVERIFIED mechanism")
+                   help="exit 2 to refuse the prompt (measured: it refuses, "
+                        "and the harness echoes the prompt back)")
     p.add_argument("--probe", action="store_true",
                    help="record what the hook receives; never blocks")
     p.add_argument("--arm-refusal", dest="arm_refusal", action="store_true",

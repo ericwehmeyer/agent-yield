@@ -353,12 +353,36 @@ Two consequences, both already in the code:
   transcript is routinely the other one's, and a boundary enforcing against
   the wrong session is the worst object in this repository.
 
-**Exit 2 is still unmeasured**, so `--enforce` remains unverified.
-`agent-yield boundary --arm-refusal` arms exactly one deliberate refusal — the
-same move `gate` was measured with, under human approval — and the sentinel is
-deleted *before* the refusal is returned, so even if exit 2 does block a
-prompt, the next one goes through. A measurement that can lock someone out of
-their session is not one worth having.
+**Exit 2 was then measured, and it refuses the prompt.** One deliberate
+refusal, armed by `agent-yield boundary --arm-refusal` under human approval —
+the same move `gate` was measured with, with the sentinel deleted *before* the
+refusal is returned so that even a blocking exit 2 cannot cost more than one
+re-send. Fired 2026-08-26 01:48 UTC. The refused prompt never reached the
+model, and the operator saw:
+
+```
+UserPromptSubmit operation blocked by hook:
+  [/path/to/agent-yield boundary --probe]: <the hook's stderr, verbatim>
+
+Original prompt: <what they typed>
+```
+
+So `--enforce` is buildable, and the safety argument shifts in its favour:
+
+- **stderr reaches the operator in full**, so a boundary that refuses can
+  explain itself and name its remedy. A silent refusal would have been
+  unusable regardless of whether it worked.
+- **The hook is identified by command path in the message**, so a refusal is
+  traceable to its cause rather than looking like the harness misbehaving.
+- **The harness echoes the prompt back.** Refusing costs a re-send, not the
+  operator's typing — which was most of what the caution about `--enforce`
+  was protecting against.
+
+What does *not* change: the boundary still fires only on "expensive AND
+nothing written down", and a bug that refuses unconditionally still locks the
+operator out of the session, if not out of their words. Enforcement remains
+opt-in per install, and `AGENT_YIELD_BOUNDARY_OVERRIDE` remains the escape.
+The mechanism is verified; the policy is still deliberately conservative.
 
 ### 4.7-adjacent: the status line, and what the harness already knows
 
