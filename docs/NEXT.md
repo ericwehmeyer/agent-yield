@@ -999,3 +999,17 @@ read as evidence about the cap rather than about the dispatchers.
 **Status of this spec after reconciliation: the mechanism stands, the
 justification is half retracted, and the end-to-end test has not been run.**
 Do not build from it yet.
+
+### The baton, as discrete tickets: #33-#38
+
+Written as an index on purpose — each one independently checkable, so the set is
+itself the input to #38.
+
+| | | |
+|---|---|---|
+| **#33** | the end-to-end number | **blocks everything.** One task, two arms, total tokens. Per-call arithmetic has predicted the wrong sign twice (§11 6.2x→1.07x, Part E 1.5x→0.65x); this one gets a retraction bar before it runs. |
+| **#34** | re-entry cost across the corpus | ~19,800 is one number from one run and the whole cost model rests on it. Is it fixed, or does it scale with the brief? If it scales, the five-part brief buys its own cost back. |
+| **#35** | slice thin, batch fat | retires the 10-call cap as a target and replaces it. A row is a unit of verification, not of dispatch. |
+| **#36** | the index and the parent loop | as a practice, **no code** — `predict` is the standing example of shipping a subcommand for an unvalidated shape. |
+| **#37** | `BRIEF:` / `EXPLORE:` self-declaration | what §12 left open and what #32 says the detector cannot do. Makes the exploratory share measurable. Related: #27, #32. |
+| **#38** | **can the method build itself?** | build #36 and #37 through the baton rather than by hand. A method that cannot carry its own implementation is not a method. Three outcomes, all recorded in advance, and "it cannot hold discipline" is the most useful of them. |
