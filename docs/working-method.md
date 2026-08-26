@@ -36,6 +36,49 @@ context and the same work costs a fraction.
 **The corollary that matters:** the main session's job is to decide, dispatch,
 verify, and commit. Not to type.
 
+### Corrected on a second machine, 2026-08-26 (#12)
+
+The 7× is real but it is **not a property of dispatching**. It is the payoff for
+the §2 brief discipline, and without that discipline it mostly disappears.
+
+Measured on the MacBook Pro, using `agent_yield` on its own transcripts:
+
+| | agents | context/call |
+|---|---|---|
+| one agent dispatched by line range, forbidden to explore | 1 | **17,580** |
+| every other subagent on this machine | 62 | median **85,195** (p25 67,736, p75 95,310, max 136,865) |
+| main sessions with ≥20 calls | 4 | median **194,566** (min 62,215, max 397,947) |
+
+Two things fall out, and they point in opposite directions.
+
+**The brief works, better than claimed.** The one agent given a self-contained
+task and exact `sed` line ranges ran at 17,580 — below the ~30,000 §1 quotes,
+against a parent at 61,466. Held against the median parent it is 11×.
+
+**The brief is not the default, and un-briefed dispatch is not 7× cheaper.** The
+62 agents actually run on this machine — real work, no line-range discipline —
+sat at a median 85,195, **2.8× the figure above**. Against the median parent
+that is **2.3×, not 7×.** An agent that has to explore the repo to start rebuilds
+the context you dispatched to escape.
+
+So the honest form of the claim is: the denominator is what you control. A fresh
+agent costs ~25K per call if you brief it and ~85K if you do not; the numerator
+is whatever the parent happens to be carrying, which only grows. Quoting a
+single multiplier hides both variables. This is the doc's own falsification
+bullet — "if agents given self-contained briefs still explore the repo, the
+line-range economy is imaginary" — coming back with a number attached: the
+economy is real, and it is conditional.
+
+One caveat on the sample: n=1 for the briefed agent, over 4 calls. The 62 are a
+different project's work. The gap is large enough to report and too thin to
+treat as calibrated.
+
+**`subagent_tokens` was wrong again, by a different factor.** The dispatch above
+reported 25,874; its transcript totals 94,602, a 3.7× understatement. The case
+study's figure is ~80×. The error is not a constant either — it scales with how
+much cache the agent read — so no correction factor can be applied to it. Read
+the transcript.
+
 ## 2. Write the plan so an agent needs nothing else
 
 The single highest-leverage practice. A task section must be **self-contained**:
@@ -56,6 +99,11 @@ is the difference between ~360K and ~30K of pure preamble.
 
 Get the ranges with one grep, and **re-grep after any edit to the plan** — line
 numbers shift.
+
+Confirmed on the Mac (#12): an agent handed two `sed -n` ranges and told not to
+explore made four tool calls, read only those ranges, produced the edit, and
+reported an omission it had chosen rather than hiding it. It stayed at 17,580
+context/call. §2 holds.
 
 ## 3. Agents do not touch git
 
@@ -145,9 +193,33 @@ direct messaging both ends need it from launch.
 
 ## 8. Snapshot perishable data before you need it
 
-Subagent transcripts live in the OS temp directory. On this machine, **249 of
-352 were already empty** — the record of what agents cost is being deleted
-continuously, and it is the exact data this tool exists to read.
+Subagent transcripts live in a temp directory, and which one differs by
+platform. On Windows they sit under `tempfile.gettempdir()/claude`. On macOS
+they do not: `tempfile.gettempdir()` resolves to the per-user `$TMPDIR`, e.g.
+`/var/folders/qq/k7z8j7vj79585cprbknrw6r40000gn/T`, which holds no `claude`
+directory at all, while Claude Code writes to `/tmp/claude-<uid>` —
+`/tmp/claude-501` on this machine. Below that point the layout is identical:
+`<root>/<project-slug>/<session-id>/tasks/<agentId>.output`.
+
+A probe that checks only `tempfile.gettempdir()` therefore finds nothing, and
+fails silently. `discovery.find_transcripts` skips a root that does not exist,
+so the macOS walk returned cleanly having read 75 main transcripts and zero of
+the 112 subagent transcripts — and reported that as the whole history.
+
+The record is deleted continuously, and it is the exact data this tool exists
+to read, but the rate varies. On Windows **249 of 352 subagent transcripts were
+already empty**. On macOS, with a three-day-old history and temp not yet swept,
+1 of 112 was empty — though a further 49 held no billable call, so 62 of 112
+carried usage data.
+
+On a machine whose sessions have completed, the scratch tree is also largely
+redundant. Measured twice minutes apart, dedup gave 4,728 calls rising to 4,736
+(8 unique to scratch), then 4,747 to 4,747 (0 unique). Main-session transcripts
+already carry the sidechain lines, marked `"isSidechain": true`, and dedup
+collapses the duplicates. The 8 briefly-unique calls belonged to a session still
+running: a subagent's `.output` is written live, and the same calls reach the
+main transcript slightly later. That weakens the urgency of snapshotting the
+scratch tree in that case — not in general. Both numbers above were measured.
 
 Copy first, analyse later. The snapshot that made Task 10 possible was 3.0 GB
 and took under a minute:
@@ -198,9 +270,15 @@ those unwritten findings.
 - **If a fresh agent's context is not much smaller than the parent's**, §1
   collapses and dispatching stops paying. Measure it; do not assume it.
 - **If agents given self-contained briefs still explore the repo**, the brief is
-  not self-contained, and the line-range economy is imaginary.
+  not self-contained, and the line-range economy is imaginary. Tested on the Mac
+  (#12): a briefed agent held 17,580 context/call, but the 62 un-briefed agents
+  on the same machine sat at a median 85,195. The economy is real and it is
+  conditional — see the correction in §1.
 - **If central commits become the bottleneck** rather than the dependency graph,
   the parent is doing too much and should batch or delegate verification.
-- **If the ~136K context-per-call constant turns out to be machine-specific**,
-  the cost model in §1 needs per-machine calibration and the numbers here are
-  local, not general. Issue #11 tests exactly this on a second machine.
+- **The ~136K context-per-call constant is a planning figure, not a price.**
+  Issue #11 ran it on a second machine. The aggregate held — 132,234 over 4,745
+  calls, against the 136,449 and 135,943 of the case studies — but on that one
+  machine context-per-call ranged from 47,347 to 179,864 across working
+  directories. What is stable is the aggregate over a mixed session. Use it to
+  plan a session; do not use it to price one known task.
