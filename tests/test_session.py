@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import os
 from pathlib import Path
@@ -319,7 +320,22 @@ def test_find_session_stays_case_sensitive_on_posix(tmp_path, monkeypatch):
     assert find_session(None, None, cwd=Path("/repo/mine")) is None
 
 
-def test_find_session_does_not_reach_into_another_project(tmp_path, monkeypatch):
+# The cwd and the directory name Claude Code writes for it, both typed out.
+# Deriving the second from the first with `project_slug` is audit N10: the two
+# sides then move together and the test agrees with whatever the function
+# does. Both shapes are asserted on both platforms -- a Windows cwd is a bare
+# filename on POSIX and a real path on Windows, and the slug is the same
+# either way, which is the property the eight-row table above pins.
+_SCOPED_CWDS = [
+    (Path("/repo/mine"), "-repo-mine"),
+    (Path(r"C:\repo\mine"), "C--repo-mine"),
+]
+
+
+@pytest.mark.parametrize("cwd,directory", _SCOPED_CWDS, ids=lambda v: str(v))
+def test_find_session_does_not_reach_into_another_project(
+    tmp_path, monkeypatch, cwd, directory
+):
     """Measured 2026-08-25: `status` reported another repo's session.
 
     The unrestricted "most recently modified" fallback spans every project
@@ -330,10 +346,10 @@ def test_find_session_does_not_reach_into_another_project(tmp_path, monkeypatch)
     exits 1 to mean "leave"; deciding that on another session's cost is the
     same failure `boundary._stats_for` was fixed for.
     """
-    from agent_yield.session import find_session, project_slug
+    from agent_yield.session import find_session
 
     projects = tmp_path / "projects"
-    mine = projects / project_slug(Path("/repo/mine"))
+    mine = projects / directory
     theirs = projects / "-some-other-project"
     mine.mkdir(parents=True)
     theirs.mkdir(parents=True)
@@ -348,7 +364,7 @@ def test_find_session_does_not_reach_into_another_project(tmp_path, monkeypatch)
     monkeypatch.setattr(
         "agent_yield.session.main_transcript_dir", lambda: projects
     )
-    found = find_session(None, None, cwd=Path("/repo/mine"))
+    found = find_session(None, None, cwd=cwd)
     assert found == ours, "the newer file belongs to another project"
 
 
@@ -378,3 +394,43 @@ def test_an_explicit_root_is_not_second_guessed(tmp_path, monkeypatch):
     only = root / "ccc.jsonl"
     only.write_text("{}\n", encoding="utf-8")
     assert find_session(None, root, cwd=Path("/repo/unrelated")) == only
+
+
+# --- N10: an expectation must not be computed by the function under test ---
+
+_SLUG_TABLE_TEST = "test_project_slug_matches_the_real_transcript_directory_names"
+
+
+def test_project_slug_is_only_ever_called_where_its_output_is_pinned():
+    """Audit N10, and the reason #51 survived the morning fix of #51.
+
+    A `find_session` test that builds its fixture directory by calling
+    `project_slug` asserts nothing about the slug: both sides move together,
+    so the test agrees with whatever the function does, on either platform,
+    including doing it wrong. That is the exact shape that kept specimen 1
+    invisible -- and then kept N1 invisible through 68f062f, a fix to this
+    same function written by someone who had just diagnosed the class.
+
+    The rule is narrow on purpose: `project_slug` may be called in the one
+    test whose expected values are eight literal strings. Everywhere else the
+    directory name is typed out, so a wrong slug moves one side only and the
+    test goes red.
+    """
+    tree = ast.parse(Path(__file__).read_text(encoding="utf-8"))
+    callers = {
+        node.name
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef)
+        and any(
+            isinstance(inner, ast.Call)
+            and isinstance(inner.func, ast.Name)
+            and inner.func.id == "project_slug"
+            for inner in ast.walk(node)
+        )
+    }
+    assert callers <= {_SLUG_TABLE_TEST}, (
+        f"{sorted(callers - {_SLUG_TABLE_TEST})} build a fixture with "
+        "project_slug and then assert about find_session -- the expected "
+        "value is computed by the code under test, so the test cannot fail "
+        "(audit N10). Type the directory name out."
+    )
