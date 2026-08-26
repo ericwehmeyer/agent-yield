@@ -115,7 +115,7 @@ both are corrected.
 | **#29** | ~~SessionStart needs a probe~~ — **closed `c979f52`.** Named silences + `--probe`. The general rule is the keeper: *the one hook a session cannot measure by installing it is the one that most needs a probe.* `UserPromptSubmit` at least fires again next prompt; `SessionStart` fires once, before anyone can watch. |
 | **#31** | **[Windows] Open, and addressed, not assigned.** Reinstall the hook with `--probe`, expect 233 tests, restart, paste the probe line. Its `keys` list is the ask — one machine, one binary read, no live capture. |
 | **#28** | What a scheduler can and cannot do, measured: no session can replace itself, `claude -p` works non-interactively, **interactive launch from cron is undocumented**, routines run in Anthropic's cloud. Filed so the assumption stops being repeated without its caveat. Three things worth measuring are listed there. |
-| **#18** | Three levers. Parts A, B and D **done**; **C (agent-length audit) and E (the falsification test) are open.** E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
+| **#18** | Three levers. Parts A, B, C and D **done**; **only E (the falsification test) is open.** **Part C shipped `10db8f4`** — `agent-yield agents` joins each dispatch to its child's transcript, which is what makes either rubric scorable. Headline: marker-briefed dispatches hold a median **6 calls** against **57** un-briefed (n=4 vs 69, 73 joined, 0 unmatched). It reports, it does not retune. E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
 | **#24** | The status line could carry `rate_limits.seven_day.used_percentage` — measured, free on every render, and on a subscription it is the operator's *real* currency. The design question is whether an allowance percentage counts as "money" under the tokens-never-money rule. **Retitle it: it says "Task 23" and collides with #23.** |
 | ~~**#22**~~ | **Closed 21:55.** Exit 2 refuses the prompt, stderr reaches the operator, and the harness echoes the prompt back. |
 | **#20, #21** | Opened by the Windows machine at 01:19–01:20 UTC while the macOS session was working: a blind re-measurement of context/call by model and role, and `report --by-model`. Not started. |
@@ -523,6 +523,49 @@ across the boundary. It asks for one probe line back and pastes the macOS line
 beside it, since this payload has been measured on exactly one machine, by
 reading a binary rather than catching a live call. If the Windows key list
 differs, §3.1's lesson applies again.
+
+## [macOS 2026-08-25] #18 Part C: the rubric, finally scored
+
+`agent-yield agents` joins each dispatch to the transcript of the agent it
+started. That join is the whole point: §11's length rule needs the child's call
+count, §12's marker rubric needs the parent's prompt, they live in different
+files, and **hooks do not fire inside a subagent** — so `gate` could see a brief
+and never learn what it cost. Over **73 dispatches, 0 unmatched**:
+
+| | n | median calls | median ctx/call | median tokens |
+|---|---|---|---|---|
+| all three markers | 4 | **6** | 39,139 | 264,622 |
+| missing one or more | 69 | **57** | 84,357 | 5,074,043 |
+
+**9.5× on calls, 2.2× on context, 19× on tokens.** First evidence the markers
+*predict* length rather than correlating with an author who was being careful
+anyway.
+
+**It reports; it does not retune, and the reasons are the interesting part.**
+n=4. The marker-detected four are **not** the hand-identified four the
+constants were fitted to — automatic selection picks a different set, so this
+is a new measurement, not a replication. Retuning wants #27's prospective 20.
+
+**A written-down claim did not survive the bigger corpus.** `thresholds.py`
+said the briefed and un-briefed populations *"do not overlap at all"* (4–27 vs
+62–188). Over 73 they overlap: **briefed 3–30, un-briefed 3–118.** True of
+eight hand-picked dispatches, false of seventy-three, and corrected next to the
+constants rather than in a commit message nobody reading them would find.
+
+**The uncomfortable number: 4 of 73 dispatches carried all three markers, and
+60 of 73 exceeded the 10-call cap** (longest **118**). The rubric is followed
+about 5% of the time, in the repo whose subject is the rubric, by the people
+who wrote it. That also reshapes #27 Stage 2 — an enforcement firing on 95% of
+dispatches is the `RESTART_HARD_FACTOR` failure again, so the compound
+condition is load-bearing, not decoration.
+
+**The join is a heuristic and is labelled one.** No structural link exists: the
+parent's `tool_use` id appears nowhere in the child, and the child's first
+record has `parentUuid: null`. Match is same session, same subagent type, child
+starting within 120s (measured lag 1.4–1.6s). It reports `unlinked` rather than
+guessing, and `--unlinked` lists the orphans — **a join whose failures are
+invisible is indistinguishable from one that always works**, which is #29's
+lesson one file over.
 
 ## Two review routines still armed
 
