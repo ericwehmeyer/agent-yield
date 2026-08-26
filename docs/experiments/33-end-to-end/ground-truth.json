@@ -1,0 +1,20 @@
+{
+  "pinned_src": "76cbf08",
+  "note": "Two docstring defects that were verified BY HAND after #33 ran and then fixed in 0130b66 (aa973b0 before rebase). Both were reported by the reader arm in BOTH replicates and missed by the five-agent baton arm in BOTH replicates. They are the only defects in this experiment with ground truth attached, which is why #47's bar is stated on them. Any re-run MUST pin src/ to 76cbf08 -- at HEAD these two defects no longer exist and an arm that finds nothing would look identical to an arm that finds everything.",
+  "defects": [
+    {
+      "id": "discovery-two-locations",
+      "module": "discovery.py",
+      "docstring_claim": "Only `tasks/*.output` under that tree is a transcript.",
+      "truth": "There is a third location: newer sessions write ~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl and leave tasks/<id>.output as a symlink to it.",
+      "match": "(tasks/\\*?\\.?output|two locations|third|subagents)"
+    },
+    {
+      "id": "resume-five-silences",
+      "module": "resume.py",
+      "docstring_claim": "So the silences are named. There are five of them",
+      "truth": "The code comment says five outcomes of which FOUR are silences, not five.",
+      "match": "(five|5)"
+    }
+  ]
+}

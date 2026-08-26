@@ -3,6 +3,7 @@
 #
 #   run.sh baton 1
 #   run.sh reader 1
+#   run.sh baton1 1     # #47: the baton arm with the packing fixed at one agent
 #
 # Both arms get IDENTICAL flags. The only difference is which arm-*.md is
 # prepended to the shared task, because a flag difference (allowing `Agent` in
@@ -22,7 +23,8 @@ REPO="$(cd "$HERE/../../.." && pwd)"
 case "$ARM" in
   baton)  ARMNUM=1 ;;
   reader) ARMNUM=2 ;;
-  *) echo "arm must be baton or reader" >&2; exit 2 ;;
+  baton1) ARMNUM=3 ;;   # #47: the baton, but ONE agent for all 19 modules
+  *) echo "arm must be baton, reader or baton1" >&2; exit 2 ;;
 esac
 SID="33333333-0000-4000-8000-00000000${ARMNUM}0${REP}0"
 
