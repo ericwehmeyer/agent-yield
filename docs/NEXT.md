@@ -1537,3 +1537,96 @@ away text it has already read), slice 7 (N4, MAX_PATH), slice 8 (N5 UNC leak,
 N11 CRLF). N10 — three `find_session` tests deriving their expectation from
 the code under test — is untouched and is the one that would have made #51
 visible earlier.
+
+### [Windows 10:58] The audit's silent half, closed -- and what each mechanism actually caught
+
+**Slices 3 and 5 and finding N10 are done (#59, #60), and CI is green on all
+six jobs for each.** With #51, #49, #50 and #43 that is seven of the audit's
+eleven findings. What is left is N4 (MAX_PATH), N5 (the UNC leak), N9
+(`SystemRoot`) and N11 (CRLF) -- all four latent, none silent-and-live.
+
+**N3 was the last finding that was both silent and live, and it was the
+inbound twin nobody filed.** #41 was a subprocess read decoded as cp1252, #43
+was stdout encoded as cp1252, and the third member of the set -- stdin -- was
+never a ticket. All four hooks read `sys.stdin` with no encoding. Claude Code
+sends UTF-8 JSON; Windows decodes it with the console code page and sets
+`errors="surrogateescape"`, so a `transcript_path` with an accent in it
+arrives quietly different, `resolve_transcript` finds no such file, and every
+hook swallows the outcome in `except Exception: return 0`. Live, as a child
+process under `PYTHONIOENCODING=cp1252`, with the transcript under a directory
+named `José`:
+
+```
+before: ay -
+after:  ay 20K 2% 1.0x
+```
+
+`ay -` is the status line's QUIET. There is no way to tell it from a healthy
+session with nothing to say.
+
+**The gate had a second live path and nobody had looked for it.**
+`_LINE_RANGE_RE` accepts U+2013 on purpose, so a brief can say "lines 22 – 58"
+the way a person types it. cp1252 turns those three bytes into three other
+characters, so the gate warns that a brief is missing the line-range marker it
+is carrying. That defect is not about paths, it is not about Windows account
+names, and it would never have been found by looking for either -- it came out
+of asking what a *decode* can change, which is a different question from what
+a path can contain.
+
+**Each of the three tests asserts a consequence, not a decode**: a transcript
+that is found, a boundary that fires, a marker that is still recognised. The
+hostile stream is the fixture rather than the platform, so all three fail on
+macOS and Linux too -- confirmed on CI, which is the point of #43's lesson
+being transferable rather than a Windows anecdote.
+
+**`resume` deliberately has no test, and that is the argument for the guard.**
+It reads only `source` and `hook_event_name`, both ASCII, so there is nothing
+observable to assert and no test would ever have been written for it. The
+guard rule states the property instead -- *no hook touches `sys.stdin`* -- which
+is checkable, where "every hook remembers to reconfigure it" is a hope. That
+is also why the fix is a module (`hookio.read_payload`) rather than four
+copies of one line: a guard can name a module.
+
+**N2 is two bugs stacked, and only the top one is about platforms.** `consume`
+reads the handoff, archives it with `os.replace`, and returns `None` from
+inside `except OSError`. Switching to `os.replace` closed #42's
+`FileExistsError` and not this: `os.replace` still raises `PermissionError`
+while either file is open in another process. The larger bug is four lines
+above -- **the text has already been read**, and returning `None` throws away a
+handoff the function is holding in order to report a *filing* failure. The
+caller cannot tell that apart from "there was no handoff", so a transient lock
+costs a whole session's continuity, which is the one thing this mechanism
+exists to provide. The archive is a convenience, not a correctness invariant;
+injecting twice is the smaller harm.
+
+**It took two tests, and the reason is the reason this audit exists.** The
+real-handle test is the proof, and it carries a named `skipif`: on POSIX
+`rename(2)` over an open file always succeeds, so it would pass vacuously
+rather than assert anything. An injected-`OSError` test then runs everywhere,
+so the branch cannot be quietly deleted on a machine where the lock never
+happens. A Windows-only proof with no cross-platform companion is how the
+branch gets refactored away on the Mac six weeks from now.
+
+**N10 is the cheapest finding here and the one with the longest reach.** A
+`find_session` test built its project directory by calling `project_slug` and
+then asserted about `find_session`. Both sides moved together, so the test
+agreed with whatever the function did, including doing it wrong. It is why
+specimen 1 stayed invisible, and then why N1 stayed invisible through
+`68f062f` -- a fix to that same function, written by someone who had just
+diagnosed the class, on the affected machine. **The expected value must not be
+computed by the code under test**, and the local guard now says so in a form
+that fails: `project_slug` may be called in exactly one test in the file, the
+one whose expected values are eight literal strings. It fired on the offender
+on its first run.
+
+**Scoreboard for the mechanisms, now that all four have run.** The audit
+predicted CI 1/5, guard 4/5, fixture 2/5, table 1/5. Against what has actually
+happened since: the **guard** has fired on three real hits it was not written
+for (`test_outcomes.py:20`, `test_handoff.py:71`, and the `find_session`
+fixture, if the local N10 rule counts as the same mechanism); the **fixture**
+found a defect nobody had filed -- the gate's en dash; **CI** reported one
+thing no local run could, that GitHub's `windows-latest` holds the symlink
+privilege; and the **table** is the only mechanism that catches a slug bug at
+all. The one the audit ranked lowest is still the substrate the other three
+run on, and the one it ranked highest is the only one that fires without
+somebody first imagining the bug.
