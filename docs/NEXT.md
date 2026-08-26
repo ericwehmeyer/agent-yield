@@ -1410,13 +1410,14 @@ One agent over 19 modules spent **859,292** agent tokens against five agents'
 **1,045,608** against the five-agent arm's 832,830. **The five-agent baton is the
 cheapest arm in tokens, not the one-agent baton.**
 
-**#35's premise is falsified as stated.** It predicts cost falls as agents fall,
-because re-entry is ~22,114 an agent. Dropping 5 agents to 1 *did* save ~88,000
-of arrival — the parent fell to a mean 186,317 — and then paid **~377,000 of the
-single agent's own growth**, reading module 19 while carrying modules 1–18.
-That is #33's reading-parent mechanism **relocated into the agent, not removed**.
-**#35 must search for a minimum, not assume a floor at one agent.** It needs a
-ticket; do not pick the number locally.
+Dropping 5 agents to 1 *did* save ~88,000 of arrival — the parent fell to a mean
+186,317 — and then paid **~377,000 of the single agent's own growth**, reading
+module 19 while carrying modules 1–18. That is #33's reading-parent mechanism
+**relocated into the agent, not removed**.
+
+**The mechanism is real. The cost conclusion I drew from it was wrong, and it is
+retracted below** — corrected inside the same session, by measuring the thing the
+raw total was hiding.
 
 ### The units disagree in sign, and #23 put the cost family in tokens
 
@@ -1425,14 +1426,47 @@ $2.54 and $3.23 — exactly reversing the token ranking. Per defect the dollar
 figures are 0.402, 0.636 and 0.403: **the one-agent baton and the reader tie and
 the five-agent baton is worst**, where in tokens per defect the reader wins.
 
-*Measured:* both totals — tokens through this repo's loader over explicitly named
-transcripts, dollars through the CLI's own `total_cost_usd`, which includes
-subagents (the reader arms have none and reconcile against parent usage alone).
-*Inferred and NOT verified:* that the divergence is cache creation priced against
-cache read — five agents each creating their own cache where one creates once and
-reads many times. **Do not quote the dollar ranking as a finding until that is
-measured. Quote the disagreement, which is real either way.** A cost family in
-one unit that reverses in another is the 28x error's family, one metric over.
+### Measured, not inferred — and it files #52 and retracts the line above
+
+The cache explanation was labelled *inferred*. It is now measured, from the same
+transcripts, with `Usage`'s four fields kept apart:
+
+| arm | cache create | cache read | output | create % | read/create |
+|---|---|---|---|---|---|
+| baton, 5 agents | 168,600 | 656,253 | 7,910 | ~20% | 3.9 |
+| **baton1, 1 agent** | **116,362** | **925,221** | **3,986** | **~11%** | **8.1** |
+| reader | 213,618 | 1,189,179 | 19,758 | ~15% | 5.6 |
+
+**Cache creation falls as agents fall.** Five agents each create their own cache;
+one creates once and re-reads it. The one-agent arm's extra raw tokens are almost
+all **cache reads** — 0.10x base input, against cache write's 1.25x and output's
+5.0x. A raw token sum prices a cache read like an output token, and `usage.py`'s
+own docstring says cache reads are **97.4%** of what is consumed. **A raw total
+nearly counts the cheapest thing in the system.**
+
+Weighted at the standard multipliers, the ordering matches dollars exactly —
+baton1 **257,901** < baton **315,922** < reader **484,730**, against $1.81 <
+$2.54 < $3.23.
+
+**So "fewer agents cost more" is true only in raw tokens, and I retract the
+stronger claim.** In dollars and in weighted tokens the one-agent arm is
+*cheaper*, and **#35's premise is supported here, not falsified.** What #35
+actually needs is to **state which unit it predicts in**, or it will score itself
+against whichever number agrees with it.
+
+**Scope, so this is not overstated.** #33's headline **survives** the
+reweighting: 1.71x raw, **1.53x weighted**, same direction. #47's packing
+secondary **does not**: 1.26x raw, **0.82x weighted**. The defect bites
+within-arm packing comparisons — which is what #35–#38 all are — and not the
+reader-vs-baton comparison #33 settled.
+
+**Still not accounted for.** Weighted-tokens-per-dollar is tight within an arm
+and varies 22% across them (123,477/125,013, 142,296/142,671, 150,090/150,515).
+**The ordering is measured; a full price model is not.** Do not quote the
+weighted numbers as costs until that is closed.
+
+**Filed as #52** — which is not the number this page would have guessed, the
+ticket-numbering lesson holding for the third time.
 
 **Limits.** n=2, one task, and only two packings — 1 agent against 5, nothing
 between them, and the minimum this predicts is untested.
