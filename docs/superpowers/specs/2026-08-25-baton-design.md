@@ -1,9 +1,11 @@
 # The baton: a dispatch thread that does not grow
 
-**Status: DRAFT, unapproved.** Written 2026-08-25 23:40 EDT from a design
-conversation that got as far as one answered question before the operator went
-to bed. Nothing here is built. The open fork at the bottom is dispatched to
-Fable and its answer belongs in this document before anything is.
+**Status: DRAFT, unapproved by the operator.** Written 2026-08-25 23:40 EDT from
+a design conversation that got as far as one answered question before he went to
+bed. **Nothing here is built.** The architectural fork is decided — Fable took
+it, and it corrected both the premise and one falsifier; see *The fork, decided*.
+The measured attribution at the end is what should be read first, because it
+moves where the design should aim.
 
 ---
 
@@ -23,9 +25,12 @@ A parent running a fan-out pays three times, permanently:
 All three are variable and all three scale with the work. The baton makes all
 three constant.
 
-**Per step the parent grows by one return line and one dispatch prompt — about
-80 tokens, flat, whatever the step does.** Twenty steps costs ~1,600 tokens
-against the 68,047 measured in §11.
+**Per step the parent grows by a fixed dispatch prompt, a two-line return, and
+one shell check — about 400-800 tokens all in, flat, whatever the step does.**
+Twenty steps costs 8,000-16,000 tokens against the 68,047 measured in §11. *(An
+earlier draft said 80 tokens a step. That counted the prompt and the return and
+ignored tool-call scaffolding and verification output; the review caught it. The
+claim that matters is not the size of the constant but that it is a constant.)*
 
 One move does it: **the child writes the next child's brief.** The parent never
 comprehends the work. It relays a line range.
@@ -70,11 +75,10 @@ ranges are your entire task. Do not explore; if you need a file not named in
 them, ASK and stop. Cap: 10 tool calls. Append one step block to that same file
 before you exit.
 
-Return EXACTLY one line:
-  NEXT <start>,<end> <=12 words
-  ASK <the question>
-  DONE <reason>
-  BLOCKED <reason>
+Return EXACTLY two lines. Line 1 is what happened, line 2 is where to go next:
+  DONE 7 tests 197 passed          |  NEXT 340,395 wire cost_band into statusline
+  FAIL 7 tests 3 failed            |  STOP
+  ASK 7 <the question>             |  STOP
 ```
 
 Nothing in it varies but `<a>,<b>`. It is ~60 tokens whether step 8 is a
@@ -176,9 +180,13 @@ document is wrong.
 To be recorded in `interventions.toml` with `expect=` **before** the first run,
 per the rule that already refuses an intervention without one.
 
-- **The parent stays flat.** A run of >=8 steps should grow the parent by under
-  2,000 tokens between step 1 and step 8. Above 10,000 the relay is leaking and
-  the design is wrong as specified.
+- **The parent stays flat.** *Recalibrated after review. The original threshold
+  counted only the prompt and the return line, and would have fired on harness
+  overhead in a run that worked.* Budget **400-800 tokens a step, all in**. A run
+  of >=8 steps should grow the parent by under 8,000 tokens; above 25,000 the
+  relay is leaking and the design is wrong as specified. Measure growth
+  attributable to the loop, not total session growth — the 33.2% conversation
+  share accrues either way and would flatter or damn the result at random.
 - **Cost per step is flat.** If step 8 costs materially more than step 2, briefs
   are accreting and the state file needs pruning rather than appending.
 - **Quality survives.** A baton run should ship work the operator judges
@@ -195,21 +203,36 @@ per the rule that already refuses an intervention without one.
 
 ---
 
-## The one question this document does not answer
+## The fork, decided: the child writes the next brief
 
-**Should the child write the next brief, or should the parent write it from the
-child's verdict line?**
+**Answered by Fable, 2026-08-25 23:52.** Full reasoning in
+`docs/superpowers/specs/2026-08-25-baton-review.md`.
 
-Child-writes is what is specified above, and it is the move that makes the
-parent's prompt a constant. But it puts brief authorship in the least-informed
-place in the system, and it is the step where drift enters. Parent-writes keeps
-judgement where the goal lives, at the cost of the parent understanding each
-verdict well enough to author from it — which is the reading §11 measured at 81%
-of the session.
+**The draft had the premise backwards.** It called the child the least-informed
+author. It is the best-informed one: the child holds the goal and invariants, its
+own brief, and — uniquely in the whole system — the actual state of the work it
+just touched. The parent holds twelve words. "Least-informed" describes the
+*parent* at authoring time, and parent-writes is what hands authorship to it.
 
-That fork decides the architecture, and being wrong about it is expensive, which
-is the stated condition for spending Fable. Dispatched; the answer belongs here
-before anything is built.
+Parent-writes has only two ways to go, and both are worse. Either the parent
+reads enough to author well, which is the 81%-of-session cost this entire
+document exists to avoid, or it invents a brief from a twelve-word summary, which
+is drift with extra steps.
+
+**Child-writes stands. The specification above is the design.**
+
+### The correction that came with it
+
+**The ~80-tokens-per-step figure is wrong, and the falsifier built on it was
+dangerous.** It counted the dispatch prompt and the return line and nothing else
+— no tool-call scaffolding, no verification output, no harness overhead. Real
+per-step growth is **4-8x that, call it 400-800 tokens**.
+
+That is still flat, still constant in the size of the work, and the design
+survives it. What did not survive is falsifier 1: a 2,000-token threshold over
+eight steps **would have fired on harness overhead in a run that worked
+perfectly**, and reported a sound design as broken. It has been recalibrated
+below. This is the most useful thing the review produced.
 
 ---
 
@@ -283,7 +306,7 @@ should say so rather than inventing one.
 
 It returns two lines: how many slices, and the line range of the index table.
 
-### 2. The index. The parents entire working memory.
+### 2. The index. The parent's entire working memory.
 
 One table at the top of the plan file. One row per slice:
 
@@ -329,7 +352,7 @@ test command from the index and compares. Line 2 is a pointer, never content.
 
 **ASK is the rule that stops the wild goose chases.** A child whose brief is not
 clear enough to act on must return ASK and stop. It must not go and find out.
-Going and finding out is the un-briefed populations 85,195 context per call, and
+Going and finding out is the un-briefed population's 85,195 context per call, and
 it is the single most expensive habit in the corpus. Say it in every brief; a
 capable model handed a vague task will otherwise resolve the vagueness quietly
 and keep working.
@@ -355,3 +378,91 @@ concentration of risk the fork at the top of this document worries about, moved
 one level up rather than removed. Options nobody has tested: two slicers and
 compare their indexes, or a cheap reviewer that only checks that every slice has
 a real test command. Both cost one extra dispatch. Neither has been measured.
+
+---
+
+## Enforcement: gently, firmly, assiduously — and measured
+
+A rubric that is only written down does not hold. That is not a hypothesis here;
+it is measured twice. §12 was written yesterday and §11 still recorded the parent
+at 81% of the session. The macOS session ran **0.97 tool calls per API call while
+knowing the batching lever**. Knowing a lever is measurably not the same as
+pulling it.
+
+So each rule below gets a rung on a ladder, and the ladder ends in a number.
+
+| rung | mechanism | what it does | already exists |
+|---|---|---|---|
+| **gently** | `statusline` | renders steps in the run, parent growth since step 1, and slices remaining. Continuous, ambient, **zero token cost** — the payload arrives on every render whether or not anything reads it. | yes, live |
+| **firmly** | `gate` (PreToolUse on `Agent`) | reads the dispatch prompt before it is sent. No `sed -n` range, no call cap, no return contract → warn on stderr and **let it through**. Fails open, always. | yes, fails open |
+| **assiduously** | `agent-yield discipline` | scores every dispatch in the corpus against the five-part brief and prints one compliance number and its trend. **New. Does not exist.** | no |
+| **honestly** | `interventions.toml` | every rule above gets an `expect=` recorded before its result is known, and Week 2 scores it. The loader already refuses an intervention without one. | yes |
+
+### Why the gate warns and never blocks
+
+A bug in `gate` blocks dispatches — and past the cost threshold the remedy *is*
+to dispatch, so a blocking gate cuts off the cheapest path out of an expensive
+session. That argument is already in design.md §5 and it has not changed. The
+gate is a mirror held up at the moment of dispatch, not a door.
+
+### The thing §12 left unsolved, and how the brief solves it itself
+
+§12 records that the rubric cannot be a gate, because **an exploratory dispatch
+is supposed to have none of its markers** — a search agent told to sweep a repo
+cannot be briefed by line range without becoming a different task. Any mechanism
+has to tell a bad brief from a different kind of task before it refuses anything.
+
+The brief can just say which it is. One token at the top:
+
+```
+BRIEF:    line ranges, call cap, return contract, output path, ASK permission
+EXPLORE:  none of those required. Bounded by a call cap and a question, nothing else.
+```
+
+That makes the gate's job trivial — it checks `BRIEF:` dispatches against the
+rubric and leaves `EXPLORE:` alone — and it buys something better than
+enforcement: **the exploratory share becomes a measured quantity.** Nobody knows
+what fraction of dispatches genuinely need to explore. The suspicion is that it
+is small and that `EXPLORE:` will be used as an escape hatch. If the share climbs
+over time, that is the escape hatch being used, and it will be visible in the
+number rather than arguable.
+
+An undeclared dispatch is treated as `BRIEF:` and warned. Silence is not a third
+category.
+
+### What `discipline` measures
+
+Per dispatch, from the transcripts that already exist:
+
+```
+declared BRIEF or EXPLORE          share of each, over time
+line ranges in the prompt          yes / no
+call cap stated                    yes / no
+calls actually used                distribution, and the share over 10
+return contract stated             yes / no
+lines actually returned            distribution, and the share over 2
+ASK returned                       count -- expected to be non-zero
+parent growth per dispatch         tokens
+```
+
+Two of those rows are the ones to watch, because they are where stated intent and
+actual behaviour come apart:
+
+- **calls stated vs calls used.** A cap that is declared and blown is worse than
+  no cap, because it reads as compliance in every other column.
+- **contract stated vs lines returned.** Same failure, on the other side.
+
+**And ASK count is the honest-broker row.** A fleet that never returns ASK is
+either perfectly briefed or quietly guessing, and across a real corpus the second
+is far more likely. Zero ASKs is evidence the permission is not real, not
+evidence the briefs were good.
+
+### The falsifier for the enforcement itself
+
+Compliance measured **before** any of this ships is the baseline. If compliance
+does not move after the statusline and gate warnings are live, then ambient
+measurement does not change behaviour either, and the honest conclusion is that
+only structure does — that the discipline has to be built into how work is cut
+and dispatched, not shown to whoever is dispatching. Record that outcome as
+legitimate in advance, the way #22 recorded "exit 2 does not block" in advance,
+so it cannot be quietly skipped when the number disappoints.

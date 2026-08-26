@@ -745,3 +745,165 @@ four things that matter most:
    is paid for on every subsequent call, forever.
 4. **Restart at natural boundaries** — work landed, checks green, pushed — and
    write the findings down first. That precondition is why this page exists.
+
+## [Windows 2026-08-25 23:50] A planning session, and the one number that moved
+
+**Nothing was built. One spec was written and one measurement was taken**, and
+the measurement reframes the spec, so read them in that order.
+
+**Where main-thread context growth actually comes from.** Five dispatch-heavy
+sessions out of the archive, 2,516 intervals, each context delta attributed to
+whatever entered the conversation before it (`docs/attribution-2026-08-25.md`):
+
+```
+  the parent reading things itself   55.4%
+  the conversation itself            33.2%
+  subagent return payloads           11.4%
+```
+
+**The parent reading is roughly 5x the returns.** Every dispatch discipline
+written so far — the return contract, write-and-exit, §12(d) — is aimed at the
+11%. The lever that matters is the parent never comprehending the work at all.
+And the 33.2% is untouchable by any dispatch mechanism, which caps how much this
+whole line of work can ever save; that third is an argument for restarting, which
+is already the standing lever.
+
+**The caveat is large and it is in the doc:** the sanity check failed at ~2x
+because negative deltas (compaction drops) were floored at zero. These are shares
+of *gross* additions, not net growth. Ordering sound, percentages indicative. All
+five sessions were dispatch-heavy by selection, so there is no control group.
+
+**The spec: `docs/superpowers/specs/2026-08-25-baton-design.md`.** DRAFT,
+unapproved, nothing built. Three roles, and the parent is the smallest:
+
+| | |
+|---|---|
+| **slicer** | one agent, once — cuts the goal into slices small enough for 10 calls, **each with a test command that proves it**. Testability defines the slice boundary, not call count. A piece of work with no way to check it is not a slice. |
+| **index** | one table, one row per slice: `id / lines / depends on / test command`. ~15 tokens a row. **This is the whole of what the parent holds.** |
+| **fleet or baton** | rows with no dependency go out together in parallel; rows in a chain go one at a time, each child writing the next child's brief. Same design, different width of the dependency column. |
+
+Parent cost per slice: ~60 tokens of dispatch prompt (a constant — it varies only
+in the line range), ~25 for a two-line return, ~15 to re-run the test command
+from the index. **~100 tokens a slice against a parent that went 58,475 to
+126,522 doing one phase by hand.**
+
+**The return contract is two lines. Line 1 is what happened, line 2 is a
+pointer.** Line 1 is checkable without understanding anything — the parent
+re-runs the test command from the index and compares.
+
+**`ASK` is the new verb and it is the point.** A child whose brief is not clear
+enough to act on returns ASK and stops. It does not go and find out. Going and
+finding out is the un-briefed population's 85,195 context/call, and it is the most
+expensive habit in the corpus. This is a fifth part for §12's four-part brief:
+**(e) a stated permission to refuse.** The other four bound what a child reads
+and returns; this one bounds what it invents.
+
+**Still unsolved, and written into the spec rather than smoothed over:**
+
+1. **The child-writes-vs-parent-writes fork.** Child-writes is what makes the
+   parent's prompt a constant, but it puts brief authorship in the least-informed
+   context in the system. Dispatched to Fable — see below.
+2. **The slicer is one agent with no review**, and a bad cut poisons every slice
+   under it. That is the same concentration of risk moved up a level, not
+   removed. Untested options: two slicers and diff their indexes, or a cheap
+   reviewer that only checks every slice has a real test command.
+3. **The cost of a child writing the next brief has never been measured.** Output
+   runs ~5x base input. If a brief costs more than the parent growth it prevents,
+   the baton is a worse trade wearing a better one's clothes.
+
+**Falsifiers are in the spec** and belong in `interventions.toml` with `expect=`
+before the first run. The sharpest: **ASK should fire at least once in ten
+steps.** A chain that never asks is either perfectly briefed or quietly guessing,
+and the second is far more likely.
+
+**Two dispatches, both briefed by line range, both capped at 10 calls, both
+write-and-exit.** The attribution agent used 7 calls and returned 3 lines. That
+is the shape the spec is about, used to write the spec.
+
+---
+
+## Enforcement: gently, firmly, assiduously — and measured
+
+A rubric that is only written down does not hold. That is not a hypothesis here;
+it is measured twice. §12 was written yesterday and §11 still recorded the parent
+at 81% of the session. The macOS session ran **0.97 tool calls per API call while
+knowing the batching lever**. Knowing a lever is measurably not the same as
+pulling it.
+
+So each rule below gets a rung on a ladder, and the ladder ends in a number.
+
+| rung | mechanism | what it does | already exists |
+|---|---|---|---|
+| **gently** | `statusline` | renders steps in the run, parent growth since step 1, and slices remaining. Continuous, ambient, **zero token cost** — the payload arrives on every render whether or not anything reads it. | yes, live |
+| **firmly** | `gate` (PreToolUse on `Agent`) | reads the dispatch prompt before it is sent. No `sed -n` range, no call cap, no return contract → warn on stderr and **let it through**. Fails open, always. | yes, fails open |
+| **assiduously** | `agent-yield discipline` | scores every dispatch in the corpus against the five-part brief and prints one compliance number and its trend. **New. Does not exist.** | no |
+| **honestly** | `interventions.toml` | every rule above gets an `expect=` recorded before its result is known, and Week 2 scores it. The loader already refuses an intervention without one. | yes |
+
+### Why the gate warns and never blocks
+
+A bug in `gate` blocks dispatches — and past the cost threshold the remedy *is*
+to dispatch, so a blocking gate cuts off the cheapest path out of an expensive
+session. That argument is already in design.md §5 and it has not changed. The
+gate is a mirror held up at the moment of dispatch, not a door.
+
+### The thing §12 left unsolved, and how the brief solves it itself
+
+§12 records that the rubric cannot be a gate, because **an exploratory dispatch
+is supposed to have none of its markers** — a search agent told to sweep a repo
+cannot be briefed by line range without becoming a different task. Any mechanism
+has to tell a bad brief from a different kind of task before it refuses anything.
+
+The brief can just say which it is. One token at the top:
+
+```
+BRIEF:    line ranges, call cap, return contract, output path, ASK permission
+EXPLORE:  none of those required. Bounded by a call cap and a question, nothing else.
+```
+
+That makes the gate's job trivial — it checks `BRIEF:` dispatches against the
+rubric and leaves `EXPLORE:` alone — and it buys something better than
+enforcement: **the exploratory share becomes a measured quantity.** Nobody knows
+what fraction of dispatches genuinely need to explore. The suspicion is that it
+is small and that `EXPLORE:` will be used as an escape hatch. If the share climbs
+over time, that is the escape hatch being used, and it will be visible in the
+number rather than arguable.
+
+An undeclared dispatch is treated as `BRIEF:` and warned. Silence is not a third
+category.
+
+### What `discipline` measures
+
+Per dispatch, from the transcripts that already exist:
+
+```
+declared BRIEF or EXPLORE          share of each, over time
+line ranges in the prompt          yes / no
+call cap stated                    yes / no
+calls actually used                distribution, and the share over 10
+return contract stated             yes / no
+lines actually returned            distribution, and the share over 2
+ASK returned                       count -- expected to be non-zero
+parent growth per dispatch         tokens
+```
+
+Two of those rows are the ones to watch, because they are where stated intent and
+actual behaviour come apart:
+
+- **calls stated vs calls used.** A cap that is declared and blown is worse than
+  no cap, because it reads as compliance in every other column.
+- **contract stated vs lines returned.** Same failure, on the other side.
+
+**And ASK count is the honest-broker row.** A fleet that never returns ASK is
+either perfectly briefed or quietly guessing, and across a real corpus the second
+is far more likely. Zero ASKs is evidence the permission is not real, not
+evidence the briefs were good.
+
+### The falsifier for the enforcement itself
+
+Compliance measured **before** any of this ships is the baseline. If compliance
+does not move after the statusline and gate warnings are live, then ambient
+measurement does not change behaviour either, and the honest conclusion is that
+only structure does — that the discipline has to be built into how work is cut
+and dispatched, not shown to whoever is dispatching. Record that outcome as
+legitimate in advance, the way #22 recorded "exit 2 does not block" in advance,
+so it cannot be quietly skipped when the number disappoints.
