@@ -2063,3 +2063,55 @@ the other machine's total. And a rebase re-commits: when the other machine
 rebases work authored here, the sha it publishes was written there. `local`
 means *this clone wrote this sha*, which is the right question for a
 denominator and not the same as who typed it. 554 tests.
+
+### [Windows 12:09] #44: the scorer was measuring other people's work
+
+**#44 and #48 are closed.** #48 was overtaken -- it existed to keep a wrong
+number out of policy until #33 could replace it, and #33 ran; its one
+surviving action is #39. #44 was three defects in the intervention scorer, and
+the third is the one worth reading.
+
+**The scorer answered a different question than the prediction asked, and the
+answer was plausible.** `interventions.toml` says *"subagent context-per-call
+falls from the measured 89,721 median to under 30,000"*; the scorer printed
+`context_per_call: 139,580 -> 133,996` directly underneath it. That is a blend
+of main and subagent -- **the one metric `design.md` §3.1 already records as
+dissolving under decomposition, 311,399 against 89,721** -- and nothing in the
+output said a substitution had happened. It is the fourth instance of the
+pattern this repo keeps hitting: #29's loader that declined every session,
+#42's archive that reported `no_handoff` for a real loss, #64's walk that
+returned a short list as a complete one, and now a scorer that prints a number
+for a prediction it cannot evaluate. **Every one failed in the direction that
+looks like it is working.**
+
+**The fix is that a prediction carries its own metric, and one that names none
+is `UNSCORABLE`.** There is no `--metric` flag any more: every value of that
+flag is the wrong answer to at least one prediction, and while it existed
+someone would pass it. `UNSCORABLE` is deliberately distinct from `VOID` --
+**VOID says the run did not happen properly, UNSCORABLE says it happened and
+this tool cannot settle the question asked of it.** Fourteen of the sixteen
+predictions on the page now read UNSCORABLE, which is not a regression: they
+predict tool calls per agent, the cost of an experiment arm, or whether a
+transcript is still readable a week later, and none of those is a property of
+a day's spend. A page of honest UNSCORABLEs is pressure to write scorable
+predictions. A page of dashes was not.
+
+**The numerator was every project on the machine.** `cwd` is on all 20,757
+records, subagents included, and this repo is **544 of them**. The report
+scopes by default now and prints the scope either way, because a cross-project
+figure is fine if it is labelled and it was not. `--all-projects` keeps the
+machine-wide view and says in the same line that the two numbers are not over
+the same work.
+
+**Applying both halves together is what produced the finding.** Scoped to this
+repo, `brief-pack` -- the only prediction on the page naming a computable
+quantity -- is **UNSCORABLE**, because agent-yield's corpus *begins on the
+intervention date* and there are **zero** subagent calls in the before window.
+So `139,580 -> 133,996` was not merely the wrong metric: **both sides of it
+were other projects' spend.** The scorer had never once measured this repo.
+
+**One rule that generalises past this file.** A typo in a metric name is
+rejected at load rather than read as "no metric named". The two look identical
+in the output and are not the same thing -- one is a prediction nobody claimed
+was scorable, the other is a claim that failed on a keystroke -- and reading
+the second as the first leaves a scorable prediction unscored for a week.
