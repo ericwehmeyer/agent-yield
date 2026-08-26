@@ -6,6 +6,7 @@ import datetime as dt
 import sys
 from pathlib import Path
 
+from . import allowance as allowance_module
 from . import boundary as boundary_module
 from . import gate as gate_module
 from . import handoff as handoff_module
@@ -240,6 +241,32 @@ def _cmd_resume(args) -> int:
     return 0
 
 
+def _cmd_allowance(args) -> int:
+    """#57: what the plan is really rationing, and what one point of it costs."""
+    snapshots = allowance_module.load(Path(args.log))
+    if not snapshots:
+        print(f"no allowance snapshots at {args.log}")
+        print("the status line records them; nothing has moved yet")
+        return 0
+
+    print(f"{len(snapshots)} snapshots, {snapshots[0].timestamp} to "
+          f"{snapshots[-1].timestamp}")
+    latest = snapshots[-1]
+    five = "-" if latest.five_hour is None else f"{latest.five_hour}%"
+    print(f"  latest: 7d {latest.seven_day}%  5h {five}")
+
+    estimate = allowance_module.estimate(snapshots)
+    if estimate is None:
+        # Refusing is the honest answer, and naming the bar is what makes it
+        # actionable rather than a shrug.
+        print(f"  no calibration yet -- needs a pair inside one 7-day window "
+              f"that moved at least {allowance_module.MIN_POINTS} points with "
+              f"measured spend on both ends")
+        return 0
+    print(f"  {estimate.describe()}")
+    return 0
+
+
 def _cmd_agents(args) -> int:
     """#18 Part C: what each dispatch was briefed to do, and what it cost."""
     audits, orphans = agents_module.audit()
@@ -451,6 +478,15 @@ def main(argv: list[str] | None = None) -> int:
                         f"{resume_module.PROBE_PATH} -- the hook fires once, "
                         "before anyone can watch it")
     p.set_defaults(func=_cmd_resume)
+
+    p = subs.add_parser(
+        "allowance",
+        help="the 7-day rate limit, and the plan size it calibrates -- "
+             "a lower bound, never a declared tier",
+    )
+    p.add_argument("--log", default=str(allowance_module.SNAPSHOT_PATH),
+                   help="where the status line writes its snapshots")
+    p.set_defaults(func=_cmd_allowance)
 
     p = subs.add_parser(
         "agents",

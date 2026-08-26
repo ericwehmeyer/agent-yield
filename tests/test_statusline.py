@@ -219,3 +219,41 @@ def test_the_payload_window_still_beats_the_registry(tmp_path, capsys):
     # 100,000 of the session's own 500,000 is 20%; of the registry's 200,000
     # it would be 50%. The session knows better than the registry.
     assert "20%" in capsys.readouterr().out
+
+
+# -- The allowance -------------------------------------------------------------
+
+def test_the_seven_day_percentage_is_rendered_and_snapshotted(tmp_path, capsys, monkeypatch):
+    """The one budget number on a plan that is not an equivalent of another.
+
+    A dollar figure on a subscription is a list-price equivalent. This is what
+    the plan actually rations, in the units it enforces.
+    """
+    log = tmp_path / "allowance.jsonl"
+    monkeypatch.setattr(statusline, "SNAPSHOT_PATH", log)
+    transcript = _transcript(tmp_path, [20_000] * 20)
+    payload = json.dumps({
+        "transcript_path": str(transcript),
+        "rate_limits": {
+            "seven_day": {"used_percentage": 34, "resets_at": "2026-08-30T00:00:00Z"},
+            "five_hour": {"used_percentage": 61, "resets_at": "2026-08-26T15:00:00Z"},
+        },
+        "cost": {"total_cost_usd": 2.75},
+    })
+    assert main([], stdin=io.StringIO(payload)) == 0
+    assert "7d 34%" in capsys.readouterr().out
+
+    from agent_yield.allowance import load
+    (held,) = load(log)
+    assert held.seven_day == 34 and held.five_hour == 61
+    assert held.session_dollars == 2.75
+
+
+def test_a_client_reporting_no_limits_renders_no_allowance(tmp_path, capsys, monkeypatch):
+    # Absent is not 0%: printing "7d 0%" would read as a fresh week.
+    monkeypatch.setattr(statusline, "SNAPSHOT_PATH", tmp_path / "allowance.jsonl")
+    transcript = _transcript(tmp_path, [20_000] * 20)
+    payload = json.dumps({"transcript_path": str(transcript)})
+    assert main([], stdin=io.StringIO(payload)) == 0
+    out = capsys.readouterr().out
+    assert "7d" not in out and out.strip() == "ay 20K 2% 1.0x"

@@ -38,9 +38,12 @@ MEASURED 2026-08-26 01:38 UTC, macOS, Claude Code with Opus 5 (1M):
     equivalent rather than a bill, and the line has room for one number about
     budget. The percentage below is the one an operator can act on.
   - `rate_limits.seven_day.used_percentage` is the operator's real currency
-    on a subscription. Not rendered here -- out of scope for issue #18 Part
-    B, which asks for context, growth and a marker -- but it is measured and
-    available, and it is the obvious next thing this line could carry.
+    on a subscription, and the line now carries it as `7d NN%`. It is the one
+    budget number on a plan that is not an equivalent of something else, and
+    unlike a dollar figure it needs no price table to mean what it says.
+    Every render also snapshots the two windows to `allowance.py`'s log --
+    but only when a percentage moves, or a status line becomes a keystroke
+    counter.
 
 `--probe` records the keys that arrive (shape only, never values) so the
 contract can be re-measured after any upgrade rather than trusted.
@@ -68,6 +71,7 @@ import json
 from pathlib import Path
 from typing import TextIO
 
+from .allowance import SNAPSHOT_PATH, append as append_allowance, load as load_allowance, read_allowance
 from .hookio import read_payload
 from .pricing import window_for
 from .records import parse_line
@@ -249,6 +253,7 @@ def render(
     window: int = DEFAULT_WINDOW,
     factor: float = RESTART_FACTOR,
     hard_factor: float = RESTART_HARD_FACTOR,
+    seven_day: int | None = None,
 ) -> str:
     """The line itself: context, share of the window, growth, and a marker.
 
@@ -262,6 +267,12 @@ def render(
         parts.append(f"{current_context / window:.0%}")
     # `-`, never `0`: an unmeasurable growth is not flat growth.
     parts.append("-" if growth is None else f"{growth:.1f}x")
+
+    # The allowance, before the markers, because it is a number and they are
+    # not. Omitted entirely when the client does not report it -- absent is
+    # not 0%, which would read as a fresh week.
+    if seven_day is not None:
+        parts.append(f"7d {seven_day}%")
 
     # The band reads the token count, never the window fraction beside it:
     # cost is absolute, capacity is fractional, and the line shows both
@@ -287,6 +298,7 @@ def line_for(
     tail_bytes: int = TAIL_BYTES,
     head_bytes: int = HEAD_BYTES,
     current_context: int | None = None,
+    seven_day: int | None = None,
 ) -> str:
     """Render one session's line, or ``QUIET``.
 
@@ -311,7 +323,7 @@ def line_for(
         growth = stats.growth
         if current_context is not None and stats.opening_context_per_call:
             growth = current_context / stats.opening_context_per_call
-        return render(current, growth, window)
+        return render(current, growth, window, seven_day=seven_day)
 
     current = current_context
     if current is None:
@@ -322,7 +334,7 @@ def line_for(
         current = contexts[-1]
     opening = _opening(path, cache_path, baseline_calls, head_bytes)
     growth = None if opening is None else current / opening
-    return render(current, growth, window)
+    return render(current, growth, window, seven_day=seven_day)
 
 
 def _probe(payload: dict, line: str) -> None:
@@ -390,10 +402,23 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
                       or payload_window(payload)
                       or window_for(payload_model(payload))
                       or DEFAULT_WINDOW)
+            # Measured on every render, kept only when it moved. This is the
+            # data any later calibration needs and it cannot be recovered
+            # after the fact, so it is collected before it is used for
+            # anything -- the opposite order to the one that lost #47's
+            # baton1 arm.
+            allowance = read_allowance(payload)
+            if allowance is not None:
+                held = load_allowance(SNAPSHOT_PATH)
+                append_allowance(SNAPSHOT_PATH, allowance,
+                                 held[-1] if held else None)
+
             path, _route = resolve_transcript(payload)
             if path is not None:
-                line = line_for(path, window,
-                                current_context=payload_context(payload))
+                line = line_for(
+                    path, window,
+                    current_context=payload_context(payload),
+                    seven_day=allowance.seven_day if allowance else None)
     except Exception:
         line = QUIET
 
