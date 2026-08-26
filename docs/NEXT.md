@@ -112,6 +112,8 @@ both are corrected.
 | ~~**#23**~~ | **Closed 2026-08-26.** Cost is absolute tokens now — `COST_DISPATCH = 300_000` (p65) / `COST_RESTART = 500_000` (p87) / `COST_STOP = 700_000` (p93), each carrying the share of main-thread calls it fires on, and a test that fails if a constant loses its percentile. `window` is off the cost path: `cost_band` and `cost_advice` raise `TypeError` if handed one. Three bands because there are three actions; `cost_band` is main-thread only. design.md §5 rewritten. |
 | **#26** | ~~SessionStart loads the handoff~~ — shipped 22:20, **and it never fired.** It read `session_start_reason`; the harness names the reason in **`source`**, a string that does not occur in the harness binary at all. Every session start took the fail-open path and injected nothing, and the unit tests passed because the fixture invented the same key the code read. **Fixed 2026-08-25**, with the real payload pinned verbatim in `tests/test_resume.py` and a test that the abandoned key does *not* inject. The 2026-08-26 falsification test is scored **VOID** in `interventions.toml`, not passed — the next session opened at 48,744 context/call, but it received no handoff, so that number says nothing about the loader. **Re-armed and still unscored.** The original text of the test: the next session must show the archive consumed, open under 60,000 context/call, and cost under 1.42M over its first ten calls. `interventions.toml` holds the prediction. |
 | **#27** | **Dispatch rubric enforcement. Stage 1 shipped**, warning only, `Explore`/`Plan` exempt. **Stage 2 — the compound refusal — is blocked on #18 Part C**, which has the per-dispatch call counts it needs. `--enforce-brief` exists and stays off; it is the eager form, and the eager form gets the hook disabled. |
+| **#29** | ~~SessionStart needs a probe~~ — **closed `c979f52`.** Named silences + `--probe`. The general rule is the keeper: *the one hook a session cannot measure by installing it is the one that most needs a probe.* `UserPromptSubmit` at least fires again next prompt; `SessionStart` fires once, before anyone can watch. |
+| **#31** | **[Windows] Open, and addressed, not assigned.** Reinstall the hook with `--probe`, expect 233 tests, restart, paste the probe line. Its `keys` list is the ask — one machine, one binary read, no live capture. |
 | **#28** | What a scheduler can and cannot do, measured: no session can replace itself, `claude -p` works non-interactively, **interactive launch from cron is undocumented**, routines run in Anthropic's cloud. Filed so the assumption stops being repeated without its caveat. Three things worth measuring are listed there. |
 | **#18** | Three levers. Parts A, B and D **done**; **C (agent-length audit) and E (the falsification test) are open.** E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
 | **#24** | The status line could carry `rate_limits.seven_day.used_percentage` — measured, free on every render, and on a subscription it is the operator's *real* currency. The design question is whether an allowance percentage counts as "money" under the tokens-never-money rule. **Retitle it: it says "Task 23" and collides with #23.** |
@@ -494,6 +496,33 @@ hand. `resume.py` read `session_start_reason`; the harness sends `source`.
 **The one hook that cannot be measured by the session that installs it is the
 one that most needs a probe.** #22 established that for `UserPromptSubmit` and
 built the probe; `SessionStart` has the same property and shipped without one.
+
+**#29 closed the same night** (`c979f52`). The five outcomes are named and
+distinct — `injected`, `no_handoff`, `stale`, `reason_not_injecting`,
+`unparseable_payload` — decided in one `classify()` that is also the only place
+that consumes the handoff, so exactly-once still needs no state file. `stale`
+and `no_handoff` were the same `None` before, and only one of them is a bug
+worth chasing. `resume --hook --probe` records payload **keys, never values**
+(no `session_title`, no handoff text, only its length; there are sentinels in
+the tests asserting it), and it does **not** fire on a hand-run read — an
+operator looking is not a session start. `has_reason_key` is written explicitly
+rather than left to be inferred, because it is the one field that would have
+caught the original bug the same day. 226 → 233 tests.
+
+**The probe is armed on this machine and unfired.** It cannot fire until the
+next restart, which is the property that made all of this necessary. The first
+line in `.agent-yield/resume-probe.jsonl` is the evidence that #26 works;
+there is no line in it yet.
+
+**#31 is a message, not a task** — the first deliberate use of the tracker as a
+message bus rather than a queue, and `working-method.md` **§7.1** now writes
+down the shape. The Windows machine has the same broken key through git, and
+**cannot have received the fix to its hook config**, because `.claude/` and
+`.agent-yield/` are gitignored — that gap is precisely what is worth sending
+across the boundary. It asks for one probe line back and pastes the macOS line
+beside it, since this payload has been measured on exactly one machine, by
+reading a binary rather than catching a live call. If the Windows key list
+differs, §3.1's lesson applies again.
 
 ## Two review routines still armed
 

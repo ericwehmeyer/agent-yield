@@ -225,6 +225,42 @@ This works without Remote Control. Note that Remote Control is **per-session**:
 a session started without it cannot see one started with it, so if you want
 direct messaging both ends need it from launch.
 
+### 7.1 The issue is also the message bus, not just the queue
+
+A queue hands out work. A **message** is different: it is addressed, it expects
+a reply, and it carries something the recipient cannot derive on its own. The
+issue tracker does both, and the second use was undocumented until #31 needed
+it.
+
+The shape that works:
+
+- **Title the addressee.** `[Windows] ...`. A cold session on the other machine
+  reads titles before bodies, and this is the field that decides whether to
+  claim.
+- **Label it `task` plus the machine.** The claim query stays
+  `gh issue list --label task --state open`; the machine label is what keeps
+  both ends from doing the same work twice.
+- **Say what the recipient cannot derive.** Shared code arrives through git.
+  **`.claude/` and `.agent-yield/` are gitignored**, so hook config, probe logs
+  and handoffs are per-machine and invisible across the boundary — that gap is
+  most of what is worth sending. "Pull the fix" is derivable; "your hook config
+  is your own and still broken" is not.
+- **Ask for one artifact back, and paste yours next to it.** #31 asks for a
+  single probe line and includes the macOS line to compare against. A request
+  with no reference value gets an answer nobody can score.
+- **State the expected test count.** `233; if you see 226 you have not pulled`
+  turns "did it work" into one command with three distinguishable outcomes.
+- **Reply in the comments.** The comment thread is the return channel and it is
+  durable, timestamped, and readable by a session that was not alive for any of
+  it — which is the same property that makes the handoff work.
+
+**This is asynchronous and that is the feature.** Neither machine waits, and
+neither has to be running when the other sends. Remote Control is per-session
+and requires both ends to have launched with it; an issue requires nothing of
+the recipient except that it eventually reads. For two machines that restart
+constantly *by design* — which is this project's whole thesis — the durable
+channel beats the live one.
+
 ## 8. Snapshot perishable data before you need it
 
 Subagent transcripts live in a temp directory, and which one differs by
