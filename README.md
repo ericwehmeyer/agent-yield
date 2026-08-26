@@ -74,13 +74,25 @@ and says plainly where it cannot reach.
 
 ## Status
 
-**Pre-implementation.** The design is in
-[`docs/design.md`](docs/design.md); the measured case study that produced it is
-in [`docs/case-study.md`](docs/case-study.md).
+**Implemented, 2026-08-25.** All six components are built and tested —
+`transcripts`, `outcomes`, `interventions`, `report`, `predict`, `gate` — behind
+an `agent-yield` CLI. The case-study figures are wired in as regression tests:
+the parser must reproduce **136,449 context-per-call** and the **12,385,765
+median agent** from the recorded data, or it is considered wrong.
 
-Nothing here is built yet. This README describes what is being built and why,
-and will be corrected if the measurements stop supporting it — see
-*What would falsify this* in the design.
+| | |
+|---|---|
+| [`docs/design.md`](docs/design.md) | what it measures, and what would falsify it |
+| [`docs/case-study.md`](docs/case-study.md) | the 5.83 billion tokens and the 80× error that produced it |
+| [`docs/working-method.md`](docs/working-method.md) | how to run an agent pipeline cheaply — measured, not advice |
+| `docs/superpowers/plans/` | the implementation plan, task by task |
+
+Two things this README once claimed that measurement has since corrected: that
+dispatch-time enforcement was impossible (it is not — a `PreToolUse` hook
+refuses an `Agent` dispatch, verified), and that cache reads are a fixed 97.4%
+of consumption (they are not — the share moves with workload; see §3). Both are
+recorded rather than quietly edited away, because a document that revises itself
+without saying so is the failure this project is about.
 
 ## License
 
