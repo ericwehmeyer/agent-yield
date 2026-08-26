@@ -329,6 +329,70 @@ shows exit 2 does not block, `--enforce` is not buildable and the status line,
 `status`, and the advisory are the whole answer. That is a legitimate outcome,
 recorded in advance so it cannot be quietly skipped.
 
+### The probe, read (2026-08-26)
+
+The boundary shipped with its own mechanism unmeasured, and #22 exists because
+no session can measure a hook it installs. A later session read
+`.agent-yield/boundary-probe.jsonl`. **The hook fires**, and one prompt in a
+fresh session recorded `UserPromptSubmit` carrying exactly:
+
+```
+cwd, hook_event_name, permission_mode, prompt_id, session_id,
+transcript_path                                              (+ prompt)
+```
+
+Two consequences, both already in the code:
+
+- **The live session is identified twice over**, by path and by id, and the
+  transcript stem equals the session id. The guessing `boundary._stats_for`
+  shipped with is gone; `session.resolve_transcript` uses the observed
+  contract and records which route fired.
+- **The "most recently modified transcript" fallback was a correctness bug,
+  and is removed from the hook path.** A payload that names a session the tool
+  cannot find now measures *nothing*. With two sessions open, the most recent
+  transcript is routinely the other one's, and a boundary enforcing against
+  the wrong session is the worst object in this repository.
+
+**Exit 2 is still unmeasured**, so `--enforce` remains unverified.
+`agent-yield boundary --arm-refusal` arms exactly one deliberate refusal — the
+same move `gate` was measured with, under human approval — and the sentinel is
+deleted *before* the refusal is returned, so even if exit 2 does block a
+prompt, the next one goes through. A measurement that can lock someone out of
+their session is not one worth having.
+
+### 4.7-adjacent: the status line, and what the harness already knows
+
+`statusLine` is the one lever that enforces itself at zero token cost, and
+measuring its contract turned up something the rest of this document assumed
+away. **The `statusLine` setting takes effect immediately**, in the session
+that writes it — unlike hooks, whose config loads at session start. And the
+payload carries, alongside `session_id` and `transcript_path`:
+
+```
+context_window.context_window_size          1000000
+context_window.used_percentage              11
+context_window.current_usage.{input_tokens, output_tokens,
+    cache_creation_input_tokens, cache_read_input_tokens}
+rate_limits.{five_hour,seven_day}.used_percentage
+cost.total_cost_usd
+```
+
+- **`DEFAULT_WINDOW` no longer has to be a guess.** thresholds.py says "the
+  tool cannot read the model's context window, so a caller must say"; in the
+  status line it can, so the measured window wins over the provisional
+  constant and the cost bands are computed against the window this session
+  actually has. Everywhere else the constant still stands.
+- The three input fields summed to 105,788 against 104,156 measured from the
+  transcript's last call — the same quantity, one call apart. The current
+  context is handed over, so the common render reads no transcript tail at
+  all.
+- `cost.total_cost_usd` is deliberately ignored. Tokens, never money — and on
+  a subscription it is an API-rate equivalent rather than a bill, so rendering
+  it would be doubly wrong.
+- `rate_limits.seven_day.used_percentage` is the operator's real currency on a
+  subscription, and is the obvious next thing this line could carry. Out of
+  scope for the ticket that built it; recorded rather than quietly added.
+
 ## 6. What this tool does not do
 
 Stated here so no reader has to discover it:

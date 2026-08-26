@@ -100,11 +100,20 @@ own missing half — and gets disabled within a day. `agent-yield boundary`
 therefore fires on *"this session is expensive **and** nothing is written
 down"*, and one `agent-yield handoff` clears it for the rest of the session.
 
-**`UserPromptSubmit` exit-2 semantics are not measured in this repository**,
-and cannot be measured by the session that installs the hook: hook config loads
-at session start, so a hook installed now first runs in the *next* session. So
-`boundary` advises by default and refuses only under `--enforce`, and ships a
-`--probe` mode that records what actually arrives:
+**`UserPromptSubmit` fires, and its payload is measured** — by a later session,
+because hook config loads at session start and no session can measure a hook it
+installs. One prompt in a fresh session recorded the event carrying `cwd`,
+`hook_event_name`, `permission_mode`, `prompt_id`, `session_id`,
+`transcript_path` and `prompt`, so the live session is identified twice over
+and the boundary no longer guesses at which session it is measuring. It also
+never widens to "the most recently modified transcript": with two sessions
+open that is routinely the *other* one.
+
+**Whether exit 2 refuses a prompt is still unmeasured**, so `boundary` advises
+by default and refuses only under `--enforce`. `agent-yield boundary
+--arm-refusal` arms one deliberate refusal to settle it, and disarms itself
+before refusing, so the next prompt goes through either way. Install the probe
+mode to record what arrives:
 
 ```json
 {
@@ -128,6 +137,38 @@ that crashes is indistinguishable from one that refused, and a boundary that
 crashes locks the operator out of their own session. `AGENT_YIELD_BOUNDARY_OVERRIDE=1`
 silences it — named, never silent, and distinct from the gate's override so
 that quieting the session boundary does not also quiet the daily ceiling.
+
+## The status line
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "agent-yield statusline"
+  }
+}
+```
+
+```
+ay 132K 13% 2.6x                          a session that is still cheap
+ay 296K 30% 7.4x KNEE -- handoff + restart    one that should have stopped
+```
+
+Context, share of the window, growth since the session's opening calls, and a
+marker once a threshold is crossed. **It is not a model call: it costs no
+tokens and burns no context**, which makes it the only lever here that can be
+enforced continuously without paying for the enforcement — and the session
+that measured the batching lever went on to ignore it, so ambient beats
+remembered.
+
+Unlike hooks, **the `statusLine` setting takes effect immediately**, in the
+session that writes it. The payload hands over the real
+`context_window.context_window_size`, so the bands are computed against this
+session's actual window rather than the provisional 1M default, and the
+current context, so the usual render reads no transcript at all. It fails
+**silent**: malformed input, a missing transcript or a broken measurement all
+print `ay -` and exit 0, because a status line that raises leaves a stack trace
+under every keystroke and the operator's remedy is to delete the setting.
 
 ## Status
 
