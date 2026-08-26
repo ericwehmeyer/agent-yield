@@ -120,3 +120,20 @@ def test_ingest_is_idempotent_for_unkeyed_records_too(tmp_path):
     ingest(dest, [src])
     ingest(dest, [src])
     assert len(load_ingested(dest)) == 1
+
+
+def test_deeply_nested_json_does_not_abort_the_walk(tmp_path):
+    """json.loads raises RecursionError, not ValueError, on nested input."""
+    path = tmp_path / "s.jsonl"
+    path.write_text(
+        "[" * 20000 + "\n"
+        + json.dumps({
+            "timestamp": "2026-08-25T12:00:00Z",
+            "requestId": "req_deep",
+            "message": {"id": "msg_deep", "usage": {"input_tokens": 7}},
+        })
+        + "\n",
+        encoding="utf-8",
+    )
+    records = load_records([path])
+    assert [r.request_id for r in records] == ["req_deep"]

@@ -56,7 +56,11 @@ def parse_line(line: str) -> CallRecord | None:
         return None
     try:
         payload = json.loads(line)
-    except ValueError:
+    except (ValueError, RecursionError):
+        # RecursionError, not ValueError, is what json.loads raises on deeply
+        # nested input. It escaped `except ValueError` and aborted the whole
+        # walk on one pathological line -- load_records promises that junk
+        # contributes nothing, not that it stops the run.
         return None
     if not isinstance(payload, dict):
         return None
