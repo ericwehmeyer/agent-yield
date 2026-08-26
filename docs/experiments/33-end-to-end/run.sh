@@ -5,6 +5,7 @@
 #   run.sh reader 1
 #   run.sh baton1 1     # #47: the baton arm with the packing fixed at one agent
 #   run.sh relay1 1     # #83: baton1v with one intermediary between parent and worker
+#   run.sh workflow 1   # #39/S5: baton1v's task with the loop run by `Workflow`
 #
 # Both arms get IDENTICAL flags. The only difference is which arm-*.md is
 # prepended to the shared task, because a flag difference (allowing `Agent` in
@@ -16,7 +17,7 @@
 # Measuring only the audit turn would measure the wrong half of the claim.
 set -euo pipefail
 
-ARM="${1:?arm: baton|reader|baton1|baton1v|relay1}"
+ARM="${1:?arm: baton|reader|baton1|baton1v|relay1|workflow}"
 PY="${PY:-python3}"
 REP="${2:?replicate: 1|2}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -28,7 +29,8 @@ case "$ARM" in
   baton1) ARMNUM=3 ;;   # #47: the baton, but ONE agent for all 19 modules
   baton1v) ARMNUM=4 ;;  # #47: baton1, plus a required second pass in the agent brief
   relay1) ARMNUM=5 ;;   # #83: baton1v, plus one intermediary that dispatches and relays
-  *) echo "arm must be baton, reader, baton1, baton1v or relay1" >&2; exit 2 ;;
+  workflow) ARMNUM=6 ;; # #39/S5: the same task with `Workflow` running the loop
+  *) echo "arm must be baton, reader, baton1, baton1v, relay1 or workflow" >&2; exit 2 ;;
 esac
 SID="33333333-0000-4000-8000-00000000${ARMNUM}0${REP}0"
 
@@ -44,6 +46,18 @@ echo "$SID" > "$OUT/session-id"
 COMMON=(--output-format json --model opus --setting-sources user
         --disallowedTools Edit Write NotebookEdit WebFetch WebSearch
         --max-budget-usd 25)
+
+# The ONE arm-conditional flag, and it is free. Without it `Workflow` is called
+# and the launch is BLOCKED in a non-interactive session -- "Review dynamic
+# workflow before running" -- so the arm would record a parent that dispatched
+# nothing (#85 finding 1). It does not break the identical-flags rule above,
+# because that rule is about the tool SCHEMA and this changes a permission
+# decision: measured at 21,615 context tokens BOTH WAYS on a no-work `-p` probe,
+# identical to the token. `Workflow` is in the schema whether or not it is
+# permitted.
+if [ "$ARM" = "workflow" ]; then
+  COMMON+=(--allowedTools Workflow)
+fi
 
 snap () {  # $1 = turn label
   "$PY" "$HERE/measure.py" "$SID" --cwd "$REPO" \
