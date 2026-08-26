@@ -31,9 +31,41 @@ from agent_yield.usage import Usage
 
 
 def arm_paths(session_id: str, cwd: Path) -> tuple[Path | None, list[Path]]:
+    """The parent transcript, and every agent transcript the arm produced.
+
+    TWO SOURCES, AND THE ORDER MATTERS -- #70, extended 2026-08-26 to cover
+    `Workflow`. The original version read only `<root>/<slug>/<session>/tasks/
+    *.output`, which is the right file for an ordinary `Agent` dispatch on macOS
+    and the WRONG file twice over otherwise:
+
+    * On Windows that path exists and is 0 bytes, so every dispatching arm
+      measured `agent_tokens 0` -- the defect #70 records.
+    * For a `Workflow` run the file exists and is NOT a transcript at all. It is
+      a JSON summary: `{summary, agentCount, logs, result, workflowProgress,
+      totalTokens, totalToolCalls}`. `load_records` finds no assistant records in
+      it and returns zero calls WITHOUT ERROR.
+
+    Both failures are silent and both point the same way: an arm whose agents
+    cannot be seen looks CHEAP. That flatters whichever arm dispatches most,
+    which is the arm under test in #83 and #39. A measurement that fails toward
+    the answer it is looking for is worse than no measurement.
+
+    The real transcripts live under the main project tree:
+
+        ~/.claude/projects/<slug>/<session>/subagents/**/agent-<id>.jsonl
+
+    -- one level deeper for `Workflow`, which nests them under
+    `subagents/workflows/<run_id>/`. Those are listed FIRST so that when the same
+    call appears in both sources it is attributed to the real transcript; the
+    seen-set in `totals` drops the second copy.
+    """
     slug = project_slug(cwd)
     main = main_transcript_dir() / slug / f"{session_id}.jsonl"
+
     agents: list[Path] = []
+    subagents = main_transcript_dir() / slug / session_id / "subagents"
+    if subagents.is_dir():
+        agents.extend(sorted(subagents.rglob("agent-*.jsonl")))
     for root in subagent_transcript_dirs():
         tasks = root / slug / session_id / "tasks"
         if tasks.is_dir():
@@ -42,9 +74,29 @@ def arm_paths(session_id: str, cwd: Path) -> tuple[Path | None, list[Path]]:
 
 
 def totals(paths: list[Path]) -> dict[str, dict]:
+    """Per-file totals, with a call counted for exactly one file.
+
+    The seen-set is what makes two sources safe. An ordinary `Agent` dispatch on
+    macOS writes the SAME calls to `tasks/<id>.output` and to
+    `subagents/agent-<id>.jsonl`, and summing both would double the agent side of
+    every baton arm. `arm_paths` lists the real transcripts first, so the
+    duplicate that gets dropped is the copy, not the original.
+
+    A file left with zero calls is still reported. It is the signal that a path
+    was found and held nothing readable -- a `Workflow` summary, or #70's empty
+    Windows `.output` -- and a measurement that omitted it would look identical
+    to an arm that never dispatched.
+    """
     out: dict[str, dict] = {}
+    seen: set[tuple[str | None, str | None]] = set()
     for path in paths:
-        records = load_records([path])
+        records = []
+        for record in load_records([path]):
+            key = (record.message_id, record.request_id)
+            if key in seen:
+                continue
+            seen.add(key)
+            records.append(record)
         usage = sum((r.usage for r in records), start=Usage())
         out[path.name] = {
             "path": str(path),
