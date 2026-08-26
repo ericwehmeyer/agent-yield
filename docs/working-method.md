@@ -383,6 +383,70 @@ reported next to tokens/issue rather than instead of it.
 
 ---
 
+## 12. The dispatch rubric: what a brief must contain
+
+§11 measured the levers. This section is the operating instruction that falls
+out of them, in the form it has to take to be used: **the child pays for what
+it reads once; the parent pays for what it reads on every call afterwards.**
+That asymmetry is the whole rubric. Everything below is a way of holding to it.
+
+### The parent's four rules
+
+1. **Dispatch and decide; do not read.** §11's null result — 1.07× end to end
+   against 6.2× predicted — has one cause: the parent's context went 58,475 →
+   126,522 because it read every diff and ran every suite itself. The agents
+   were never the expense. **The parent was 81% of a 3.5M-token session; seven
+   agents and 76 calls were 19%.**
+2. **Verify through the shell, not through context.** `pytest -q | tail -3`,
+   `git diff --stat`, `grep -c`. Aggregate where the aggregation is free and
+   print ten lines, never a thousand.
+3. **Batch tool calls.** Every API call re-reads the entire context. The macOS
+   session ran **0.97 tool calls per API call while knowing this lever**;
+   batching to 2.0 would have cut 123 API calls to 60. Knowing a lever is
+   measurably not the same as applying it.
+4. **Restart rather than compact** once loaded. A compact pays a summarization
+   pass to stay in the expensive band; a restart leaves it.
+
+### The brief's four parts
+
+A brief that has all four produced 17,580–67,123 context/call. A brief missing
+them produced a median 85,195 — the same model, the same repo, ~5× the cost.
+
+| | part | why it is there |
+|---|---|---|
+| a | **Line ranges, not filenames** — "read `x.py` lines 22–58 via `sed -n`", plus *"do not explore; if you need a file not listed, say so and stop"* | the un-briefed population's cost is search, not work |
+| b | **One unit of work, capped at ~10 calls** | cost is `calls^1.54`: one 27-call agent billed 1,879,466 against 840,036 for the same calls split three ways |
+| c | **A named output path the child writes to** | child transcripts evaporate — 249 of 352 were already empty before anyone looked |
+| d | **A stated return contract** — "return the file:line list and one verdict line, nothing else" | the return lands in the parent's context and is re-billed on every later call |
+
+Parts (a) and (d) are the two that pay: (a) bounds what the child reads, (d)
+bounds what the parent reads. (b) and (c) are insurance — against the
+superlinear tail, and against a finding that existed only in a transcript that
+no longer exists.
+
+### What this does not cover
+
+**An exploratory dispatch is supposed to have none of these markers.** A search
+agent told to sweep a repo cannot be briefed by line range without becoming a
+different task. The rubric describes briefed work; it is not a test that every
+dispatch should pass, and any mechanism built on it has to tell a bad brief
+apart from a different kind of task before it refuses anything.
+
+### What would falsify this section
+
+- **If briefed and un-briefed dispatches cost the same** on a task where both
+  are possible, part (a) is decoration and §1's economy is an artefact of which
+  tasks happened to be briefed.
+- **If a parent that never reads a child's output ships worse work**, rule 1 is
+  a false economy — and §11's lever 3 already records two real catches that
+  came from the parent *not* rubber-stamping. The rubric says verify through
+  the shell, not that verification is optional.
+- **If the four-part brief costs more to write than it saves** on short
+  dispatches, there is a task size below which the rubric is overhead. Nobody
+  has measured where that line is.
+
+---
+
 ## What would falsify this
 
 - **If a fresh agent's context is not much smaller than the parent's**, §1
