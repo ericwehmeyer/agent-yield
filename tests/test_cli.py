@@ -322,3 +322,10 @@ def test_status_reports_where_the_bands_were_crossed(tmp_path, capsys):
     root = _steep_root(tmp_path, cache_read=250_000)
     assert main(["status", "--transcripts", str(root)]) == 0
     assert "crossed knee    at call 1" in capsys.readouterr().out
+
+
+def test_boundary_subcommand_fails_open_on_junk(monkeypatch):
+    import io
+    import sys
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
+    assert main(["boundary", "--enforce"]) == 0

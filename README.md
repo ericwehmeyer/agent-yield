@@ -72,6 +72,61 @@ planned**. An agent waved through at a projected 5M that then burns 60M is
 invisible until it finishes. `agent-yield` works within what hooks actually do,
 and says plainly where it cannot reach.
 
+## The session boundary
+
+Context-per-call climbs as a session runs, and every call re-reads the pile.
+Measured over 20,273 calls, **47% of the cache-read bill came from the 20% of
+calls made above 200K context** — a band every capacity threshold is silent in,
+because at 200K on a 1M window a session is at 20% of capacity and in no danger
+of running out of room at all. Capacity and cost are different questions with
+different trigger points.
+
+```
+agent-yield status     what this session costs, and whether to leave
+agent-yield handoff    write down what a restart destroys, before it does
+agent-yield boundary   UserPromptSubmit hook: advisory by default
+```
+
+`status` exits **1** when the session should end — past the hard growth factor,
+or in the steep cost band — so a shell prompt, a `Makefile` or CI can branch on
+it without parsing text.
+
+**Nothing in Claude Code can restart a session.** No hook kills and respawns
+one, so "automate the restart" is two jobs: make continuing refuse to work, and
+make restarting nearly free. The second has to land first. A restart is
+expensive only because what is not written down is lost, so a boundary that
+cannot be cleared by writing things down punishes the operator for the tool's
+own missing half — and gets disabled within a day. `agent-yield boundary`
+therefore fires on *"this session is expensive **and** nothing is written
+down"*, and one `agent-yield handoff` clears it for the rest of the session.
+
+**`UserPromptSubmit` exit-2 semantics are not measured in this repository**,
+and cannot be measured by the session that installs the hook: hook config loads
+at session start, so a hook installed now first runs in the *next* session. So
+`boundary` advises by default and refuses only under `--enforce`, and ships a
+`--probe` mode that records what actually arrives:
+
+```json
+{
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {"type": "command", "command": "agent-yield boundary --probe"}
+        ]
+      }
+    ]
+  }
+}
+```
+
+Run that for a session, read `.agent-yield/boundary-probe.jsonl`, and only then
+decide whether `--enforce` is buildable. Everything here fails **open**: a hook
+that crashes is indistinguishable from one that refused, and a boundary that
+crashes locks the operator out of their own session. `AGENT_YIELD_BOUNDARY_OVERRIDE=1`
+silences it — named, never silent, and distinct from the gate's override so
+that quieting the session boundary does not also quiet the daily ceiling.
+
 ## Status
 
 **Implemented, 2026-08-25.** All six components are built and tested —

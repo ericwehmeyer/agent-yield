@@ -5,6 +5,7 @@ import argparse
 import datetime as dt
 from pathlib import Path
 
+from . import boundary as boundary_module
 from . import gate as gate_module
 from . import handoff as handoff_module
 from . import session as session_module
@@ -341,6 +342,19 @@ def main(argv: list[str] | None = None) -> int:
 
     p = subs.add_parser("gate", help="PreToolUse hook entry point")
     p.set_defaults(func=lambda _args: gate_module.main())
+
+    p = subs.add_parser(
+        "boundary",
+        help="UserPromptSubmit hook entry point (advisory unless --enforce)",
+    )
+    p.add_argument("--enforce", action="store_true",
+                   help="exit 2 to refuse the prompt -- UNVERIFIED mechanism")
+    p.add_argument("--probe", action="store_true",
+                   help="record what the hook receives; never blocks")
+    p.set_defaults(func=lambda args: boundary_module.main(
+        (["--enforce"] if args.enforce else [])
+        + (["--probe"] if args.probe else [])
+    ))
 
     try:
         args = parser.parse_args(argv)
