@@ -1992,13 +1992,15 @@ there is no `os.name` check and the test asserts on all three. Reach for the
 platform-independent statement of a platform bug first; it exists more often
 than it looks.
 
-**CI could not confirm the last three commits.** Two runs came back
-`startup_failure`, one had every job `cancelled` with no concurrency group in
-the workflow to explain it, one has been queued for over twenty minutes, and
-the push of `#64` produced no run at all. That is an Actions problem, not a
-repo one -- `73b00ec` and `db28427` were green on all six jobs an hour
-earlier, and nothing since has touched the workflow. **Do not read the current
-matrix as a signal until a run completes.** Re-check before trusting it.
+**CI went dark for about forty minutes in the middle of this, and then came
+back.** Two runs returned `startup_failure`, one had every job `cancelled`
+with no concurrency group in the workflow to explain it, and one sat queued
+for over twenty minutes. Nothing had touched `.github/workflows/test.yml`.
+`fbf2249` -- the last commit of this batch -- then went green on all six jobs,
+so **every commit above is confirmed on the matrix** and the outage was
+GitHub's. Recorded because the failure mode is worth recognising: a red or
+absent matrix is a signal about the *service* as often as about the code, and
+the way to tell them apart is whether the workflow file changed.
 
 ## [macOS 2026-08-26] #45 is closed, and the heuristic it proposed was 61% accurate
 
