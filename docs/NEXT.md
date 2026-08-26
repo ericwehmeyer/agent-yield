@@ -2639,3 +2639,11 @@ The two findings worth carrying past this page:
 - **The page's designated guard against #46 teaches a false mechanism.** It asserts a −23% headline was a code/docs mix shift. `tokens_per_insertion` is `tokens / (code + docs + other)`; the *composition* of that denominator does not appear in the expression, so a pure mix shift at a fixed line total moves the ratio by exactly nothing. The −23% was a 27% rise in line count. A guard that names the wrong mechanism is worse than no guard, because it will be used to dismiss a real movement.
 
 **Seven levels became two, and that cut was right** — a level that asks no new question is not a level. What is not yet true is the claim that makes the cut cheap: the renderer is not recursive, and a three-level tree throws (#78).
+
+### [Windows 16:55] Why rebases keep eating commit subjects, and it is one config line
+
+The subject of `0d05054` is its second paragraph, and the subject it was written with is gone. **A commit subject that begins with `#` is a comment line, and `git rebase --continue` re-runs cleanup on the editor path with `--cleanup=default`, which strips it.** `git commit -F -` does not, which is why the same subject survives when the commit lands first try and vanishes when it is replayed.
+
+This repo puts an issue number first in almost every subject, and both machines rebase constantly. It is the mechanism behind "the rebase ate three commit subjects" recorded against #52, #56 and #57 — not a mystery, and not the Mac's fault.
+
+**Fix, one line:** `git config commit.cleanup whitespace` on both clones. Until then a subject beginning with `#` survives only if the commit is never replayed, which is not a property this repo has.
