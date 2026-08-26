@@ -1,0 +1,912 @@
+<title>Agent Yield Drilldown</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --page: #f9f9f7;
+    --surface: #fcfcfb;
+    --ink: #0b0b0b;
+    --ink-2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11, 11, 11, 0.10);
+    --accent: #2a78d6;           /* series 1: the yield metric, emphasis */
+    --accent-soft: rgba(42, 120, 214, 0.10);
+    --s-code: #2a78d6;           /* categorical slot 1 */
+    --s-docs: #eb6834;           /* categorical slot 2 */
+    --s-other: #1baf7a;          /* categorical slot 3 */
+    --context-line: #b5b3ac;     /* de-emphasis series */
+    --good: #006300;             /* delta down = cheaper lines */
+    --bad: #c22f2f;              /* delta up = dearer lines */
+    --synth-ink: #4a3aa7;        /* SYNTHETIC labeling, never a series here */
+    --synth-bg: rgba(74, 58, 167, 0.08);
+    --unsc-ink: #8a3d1e;
+    --unsc-bg: rgba(236, 131, 90, 0.14);
+    --unsc-border: rgba(236, 131, 90, 0.55);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --page: #0d0d0d;
+      --surface: #1a1a19;
+      --ink: #ffffff;
+      --ink-2: #c3c2b7;
+      --muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255, 255, 255, 0.10);
+      --accent: #3987e5;
+      --accent-soft: rgba(57, 135, 229, 0.14);
+      --s-code: #3987e5;
+      --s-docs: #d95926;
+      --s-other: #199e70;
+      --context-line: #5c5b56;
+      --good: #0ca30c;
+      --bad: #e66767;
+      --synth-ink: #9085e9;
+      --synth-bg: rgba(144, 133, 233, 0.12);
+      --unsc-ink: #f0a583;
+      --unsc-bg: rgba(236, 131, 90, 0.12);
+      --unsc-border: rgba(236, 131, 90, 0.45);
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --page: #0d0d0d;
+    --surface: #1a1a19;
+    --ink: #ffffff;
+    --ink-2: #c3c2b7;
+    --muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255, 255, 255, 0.10);
+    --accent: #3987e5;
+    --accent-soft: rgba(57, 135, 229, 0.14);
+    --s-code: #3987e5;
+    --s-docs: #d95926;
+    --s-other: #199e70;
+    --context-line: #5c5b56;
+    --good: #0ca30c;
+    --bad: #e66767;
+    --synth-ink: #9085e9;
+    --synth-bg: rgba(144, 133, 233, 0.12);
+    --unsc-ink: #f0a583;
+    --unsc-bg: rgba(236, 131, 90, 0.12);
+    --unsc-border: rgba(236, 131, 90, 0.45);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.5;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 0 20px 72px; }
+
+  /* ------------------------------------------------------------- masthead */
+  .masthead {
+    display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px 16px;
+    padding: 26px 0 6px;
+  }
+  .masthead h1 { font-size: 21px; font-weight: 700; margin: 0; letter-spacing: -0.01em; }
+  .masthead .metric-name {
+    font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    font-size: 12.5px; color: var(--ink-2);
+  }
+  .synth-banner {
+    margin: 10px 0 20px; padding: 9px 14px;
+    background: var(--synth-bg); border: 1px dashed var(--synth-ink);
+    border-radius: 6px; color: var(--ink); font-size: 13.5px;
+  }
+  .synth-banner strong { color: var(--synth-ink); }
+
+  /* ------------------------------------------------------------- chips */
+  .chip {
+    display: inline-block; padding: 1px 8px; border-radius: 4px;
+    font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    font-size: 10.5px; font-weight: 600; letter-spacing: 0.08em;
+    vertical-align: middle; white-space: nowrap;
+  }
+  .chip-synth { color: var(--synth-ink); background: var(--synth-bg); border: 1px dashed var(--synth-ink); }
+  .chip-real  { color: var(--accent); background: var(--accent-soft); border: 1px solid var(--accent); }
+  .chip-unsc  { color: var(--unsc-ink); background: var(--unsc-bg); border: 1px solid var(--unsc-border); }
+
+  /* ------------------------------------------------------------- breadcrumb */
+  .crumbs {
+    display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+    font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    font-size: 12.5px; margin: 0 0 14px; color: var(--muted);
+  }
+  .crumbs button {
+    background: none; border: none; padding: 2px 4px; margin: 0; cursor: pointer;
+    font: inherit; color: var(--accent); border-radius: 4px;
+  }
+  .crumbs button:hover { text-decoration: underline; }
+  .crumbs button:focus-visible, .row-link:focus-visible, .bar-link:focus-visible {
+    outline: 2px solid var(--accent); outline-offset: 2px;
+  }
+  .crumbs .here { color: var(--ink); font-weight: 600; }
+
+  /* ------------------------------------------------------------- scope strip */
+  .scope {
+    font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    font-size: 12px; line-height: 1.65; color: var(--ink-2);
+    border: 1px solid var(--border); border-left: 3px solid var(--baseline);
+    background: var(--surface); border-radius: 6px;
+    padding: 10px 14px; margin: 0 0 22px;
+    overflow-x: auto;
+  }
+  .scope b { color: var(--ink); font-weight: 600; }
+
+  /* ------------------------------------------------------------- tiles */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(215px, 1fr)); gap: 14px; margin: 0 0 26px; }
+  .tile {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 14px 16px 12px;
+  }
+  .tile .k { font-size: 12.5px; color: var(--ink-2); margin-bottom: 2px; }
+  .tile .v { font-size: 27px; font-weight: 600; letter-spacing: -0.01em; line-height: 1.15; }
+  .tile .v.hero { font-size: 40px; color: var(--accent); }
+  .tile .d { font-size: 12.5px; margin-top: 3px; color: var(--muted); }
+  .tile .d .worse { color: var(--bad); font-weight: 600; }
+  .tile .d .better { color: var(--good); font-weight: 600; }
+
+  /* ------------------------------------------------------------- figures */
+  .figure-grid { display: grid; grid-template-columns: 1fr; gap: 18px; margin-bottom: 26px; }
+  .figure {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 16px 18px 14px;
+  }
+  .figure h2 { font-size: 15.5px; font-weight: 600; margin: 0 0 2px; text-wrap: balance; }
+  .figure .note { font-size: 13px; color: var(--ink-2); margin: 0 0 14px; max-width: 68ch; }
+  .figure .note b { font-weight: 600; }
+  .figure .foot { font-size: 12px; color: var(--muted); margin: 10px 0 0; max-width: 76ch; }
+  .figure svg { display: block; width: 100%; height: auto; }
+  .legend {
+    display: flex; gap: 16px; flex-wrap: wrap; margin: 8px 0 0;
+    font-size: 12px; color: var(--ink-2);
+    font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+  }
+  .legend .key { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .swatch { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+  .legend .linekey { width: 16px; height: 2px; display: inline-block; }
+
+  /* ------------------------------------------------------------- tables */
+  .tblwrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+  table { border-collapse: collapse; width: 100%; font-size: 13px; }
+  th, td { padding: 8px 12px; text-align: right; white-space: nowrap; }
+  th {
+    font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    font-size: 11px; font-weight: 600; letter-spacing: 0.05em;
+    color: var(--muted); border-bottom: 1px solid var(--grid);
+  }
+  td {
+    font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    font-variant-numeric: tabular-nums; border-bottom: 1px solid var(--grid);
+    color: var(--ink);
+  }
+  tr:last-child td { border-bottom: none; }
+  th:first-child, td:first-child { text-align: left; }
+  td .worse { color: var(--bad); } td .better { color: var(--good); }
+  tr.row-link { cursor: pointer; }
+  tr.row-link:hover td { background: var(--accent-soft); }
+  .section-h { font-size: 16px; font-weight: 600; margin: 30px 0 10px; }
+  .section-sub { font-size: 13px; color: var(--ink-2); margin: -6px 0 12px; max-width: 76ch; }
+  .bandnote {
+    font-family: "IBM Plex Mono", ui-monospace, Consolas, monospace;
+    font-size: 11.5px; color: var(--muted); margin: 8px 2px 0; max-width: 90ch;
+  }
+
+  /* ------------------------------------------------------------- tooltip */
+  #tip {
+    position: fixed; pointer-events: none; z-index: 30; display: none;
+    background: var(--surface); border: 1px solid var(--border); border-radius: 6px;
+    box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+    padding: 8px 11px; font-size: 12.5px; max-width: 320px;
+  }
+  #tip .t-title { font-family: "IBM Plex Mono", ui-monospace, monospace; font-size: 11px; color: var(--muted); margin-bottom: 3px; }
+  #tip .t-row { display: flex; align-items: baseline; gap: 7px; }
+  #tip .t-row .val { font-weight: 600; font-variant-numeric: tabular-nums; }
+  #tip .t-row .lbl { color: var(--ink-2); }
+  #tip .t-key { width: 12px; height: 2px; display: inline-block; flex: none; align-self: center; }
+
+  .bar-link { cursor: pointer; }
+  @media (prefers-reduced-motion: no-preference) {
+    .tile, .figure { transition: border-color 120ms ease; }
+  }
+  @media (max-width: 640px) {
+    .tile .v { font-size: 22px; }
+    .tile .v.hero { font-size: 30px; }
+  }
+</style>
+
+<div class="wrap">
+  <div class="masthead">
+    <h1>Agent Yield Drilldown</h1>
+    <span class="metric-name">tokens per inserted line, over time, down the org</span>
+  </div>
+  <div class="synth-banner">
+    <strong>SYNTHETIC SCAFFOLD.</strong> This corpus has one user and two machines. Every
+    team except <b>Agent Yield</b> is generated, and every generated number is chipped
+    <span class="chip chip-synth">SYNTHETIC</span> where it appears. The one real team is chipped
+    <span class="chip chip-real">REAL</span>.
+  </div>
+  <div id="app"></div>
+</div>
+<div id="tip" role="status"></div>
+
+<script>
+"use strict";
+
+/* =====================================================================
+   Data. THRESHOLDS is the one block a rebuild regenerates: its values are
+   read from src/agent_yield/thresholds.py at build time (2026-08-26), and
+   every label that mentions a band is rendered from this object at runtime,
+   never typed into markup.
+   ===================================================================== */
+const THRESHOLDS = {
+  ladder: ["dispatch", "restart", "stop"],
+  dispatch: 300000,
+  restart: 500000,
+  stop: 700000,
+  source: "src/agent_yield/thresholds.py, read 2026-08-26",
+};
+
+/* The real leaf: `agent-yield report --since 2026-08-25 --machine` and
+   `agent-yield outcomes --since 2026-08-25 --machine`, run 2026-08-26 on the
+   Windows clone. Numerator: calls whose recorded cwd is this repo. Denominator:
+   commits and insertions this clone's reflog wrote. Same work on both sides. */
+const REAL_SCOPE = {
+  calls: "1,096 of 4,114 calls on this machine, made in C:\\Users\\ewehm\\repos\\agent-yield",
+  outcomes: "commits and insertions from this clone's reflog (--machine); unattributable: 0 on both days",
+  captured: "captured 2026-08-26; the second day was still running",
+};
+const REAL_DAYS = [
+  { day: "2026-08-25", tokens: 17787031, calls: 146, commits: 10, merges: 0,
+    code: 1127, docs: 3025, other: 51, mainCtx: 178226, subCtx: 42095, bands: [20, 0, 0] },
+  { day: "2026-08-26", tokens: 138660430, calls: 950, commits: 50, merges: 0,
+    code: 3208, docs: 4273, other: 1012, mainCtx: 155668, subCtx: 58705, bands: [4, 0, 0] },
+];
+const REAL_MACHINES = [
+  { name: "windows (this clone)", real: true },
+  { name: "macOS clone", real: false,
+    unscorable: "this machine's corpus holds no macOS calls; its ledger lives on that machine (#66 asks for it)" },
+];
+
+/* ---------------------------------------------------------------- synthetic
+   Deterministic (seeded), regenerated identically on every load. 56 days
+   ending 2026-08-26; the rollup compares the last 28 against the prior 28. */
+function mulberry32(a) {
+  return function () {
+    a |= 0; a = (a + 0x6D2B79F5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+const N_DAYS = 56;
+const DAY_MS = 86400000;
+const END_DAY = Date.UTC(2026, 7, 26);
+function dayISO(i) { return new Date(END_DAY - (N_DAYS - 1 - i) * DAY_MS).toISOString().slice(0, 10); }
+
+const SYNTH_PARAMS = [
+  { id: "payments",   name: "Payments",       seed: 11, tok: 60e6, ins: 5200, tokTrend: 1.00, mixA: [0.55, 0.35, 0.10], mixB: [0.55, 0.35, 0.10], noise: 0.10 },
+  { id: "risk",       name: "Risk Analytics", seed: 23, tok: 55e6, ins: 4800, tokTrend: 1.90, mixA: [0.52, 0.38, 0.10], mixB: [0.52, 0.38, 0.10], noise: 0.10 },
+  { id: "platform",   name: "Platform",       seed: 37, tok: 75e6, ins: 6100, tokTrend: 1.05, mixA: [0.60, 0.30, 0.10], mixB: [0.60, 0.30, 0.10], noise: 0.09 },
+  { id: "portal",     name: "Client Portal",  seed: 41, tok: 48e6, ins: 4000, tokTrend: 1.00, insTrend: 1.55, mixA: [0.52, 0.38, 0.10], mixB: [0.27, 0.63, 0.10], noise: 0.09 },
+  { id: "marketdata", name: "Market Data",    seed: 53, tok: 40e6, ins: 3600, tokTrend: 0.85, mixA: [0.58, 0.32, 0.10], mixB: [0.58, 0.32, 0.10], noise: 0.10 },
+  { id: "trading",    name: "Trading Tools",  seed: 67, tok: 66e6, ins: 5400, tokTrend: 1.00, mixA: [0.56, 0.34, 0.10], mixB: [0.56, 0.34, 0.10], noise: 0.20 },
+];
+
+function genTeamDays(p) {
+  const rnd = mulberry32(p.seed);
+  const days = [];
+  for (let i = 0; i < N_DAYS; i++) {
+    const t = i / (N_DAYS - 1);
+    const wk = 1 - 0.55 * (new Date(END_DAY - (N_DAYS - 1 - i) * DAY_MS).getUTCDay() % 6 === 0 ? 1 : 0);
+    const jitter = () => 1 + p.noise * (rnd() * 2 - 1);
+    const tokens = Math.round(p.tok * (1 + (p.tokTrend - 1) * t) * wk * jitter());
+    const ins = Math.round(p.ins * (1 + ((p.insTrend || 1) - 1) * t) * wk * jitter());
+    const mix = p.mixA.map((a, k) => a + (p.mixB[k] - a) * t);
+    const code = Math.round(ins * mix[0]);
+    const docs = Math.round(ins * mix[1]);
+    const other = Math.max(0, ins - code - docs);
+    const calls = Math.max(1, Math.round(tokens / 145000 * jitter()));
+    const commits = Math.max(1, Math.round(ins / 110 * jitter()));
+    const bands = [
+      Math.max(0, Math.round(16 * jitter())),
+      Math.max(0, Math.round(3 * jitter())),
+      Math.max(0, Math.round(1 * jitter())),
+    ];
+    days.push({ day: dayISO(i), tokens, calls, commits, merges: 0, code, docs, other,
+      mainCtx: Math.round(150000 * jitter()), subCtx: Math.round(50000 * jitter()), bands });
+  }
+  return days;
+}
+
+/* ---------------------------------------------------------------- the tree
+   One recursive shape. A node with children renders the rollup view; a node
+   without renders the team ledger. A deeper org is more internal nodes with
+   the same two renderers, not another screen. */
+const TREE = {
+  id: "org", name: "All teams", synthetic: true,
+  scope: [
+    "<b>window:</b> 2026-07-02 \u2192 2026-08-26, compared as last 28 days against the prior 28",
+    "<b>numerator:</b> each team's own recorded calls \u00b7 <b>denominator:</b> the same team's commits and inserted lines \u2014 per team, same work on both sides",
+    "<b>aggregate:</b> synthetic teams only; the one real team is never blended into an invented total",
+  ],
+  children: SYNTH_PARAMS.map((p) => ({
+    id: p.id, name: p.name, synthetic: true, days: genTeamDays(p),
+    scope: [
+      "<b>SYNTHETIC:</b> every number on this view is generated (seed " + p.seed + "), shaped like the real ledger below it",
+      "<b>numerator:</b> generated calls for " + p.name + " \u00b7 <b>denominator:</b> generated commits and insertions for " + p.name,
+    ],
+  })).concat([{
+    id: "agent-yield", name: "Agent Yield", synthetic: false, days: REAL_DAYS,
+    scope: [
+      "<b>REAL:</b> " + REAL_SCOPE.calls,
+      "<b>denominator:</b> " + REAL_SCOPE.outcomes,
+      REAL_SCOPE.captured,
+    ],
+  }]),
+};
+
+/* =====================================================================
+   Metrics. tokens_per_insertion (ANY inserted line) is the headline: the
+   least gameable denominator on record. The code and docs halves exist only
+   inside the rendered triple any/code/docs, mirroring PerInsertion.render;
+   there is no attribute, column, or series a reader can select for a half.
+   ===================================================================== */
+function sumDays(days) {
+  const s = { tokens: 0, calls: 0, commits: 0, code: 0, docs: 0, other: 0, n: days.length };
+  for (const d of days) { s.tokens += d.tokens; s.calls += d.calls; s.commits += d.commits;
+    s.code += d.code; s.docs += d.docs; s.other += d.other; }
+  s.ins = s.code + s.docs + s.other;
+  return s;
+}
+function tokPerIns(s) { return s.ins ? s.tokens / s.ins : null; }
+function tokPerCommit(s) { return s.commits ? s.tokens / s.commits : null; }
+function triple(s) { // PerInsertion.render: all three or none, halves unnamed
+  const r = (den) => (den ? s.tokens / den : null);
+  return [r(s.ins), r(s.code), r(s.docs)].map(fmt0).join("/");
+}
+function inWindow(days, fromIdx) {
+  const lo = dayISO(fromIdx[0]), hi = dayISO(fromIdx[1]);
+  return days.filter((d) => d.day >= lo && d.day <= hi);
+}
+const CUR = [28, 55], PRIOR = [0, 27];
+const CUR_LABEL = dayISO(28) + " \u2192 " + dayISO(55);
+const PRIOR_LABEL = dayISO(0) + " \u2192 " + dayISO(27);
+
+/* ---------------------------------------------------------------- format */
+function fmt0(v) { return v == null ? "-" : Math.round(v).toLocaleString("en-US"); }
+function pct(v) { return v == null ? "-" : (v >= 0 ? "+" : "") + (v * 100).toFixed(0) + "%"; }
+function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
+
+/* =====================================================================
+   Chart primitives: hand-written SVG, hairline solid grid, thin marks,
+   4px rounded data ends square at the baseline, 2px surface gaps.
+   ===================================================================== */
+const tipEl = () => document.getElementById("tip");
+function showTip(evt, rowsHTML, title) {
+  const t = tipEl();
+  t.innerHTML = (title ? '<div class="t-title">' + esc(title) + "</div>" : "") + rowsHTML;
+  t.style.display = "block";
+  const pad = 14, w = t.offsetWidth, h = t.offsetHeight;
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if (x + w > window.innerWidth - 8) x = evt.clientX - w - pad;
+  if (y + h > window.innerHeight - 8) y = evt.clientY - h - pad;
+  t.style.left = x + "px"; t.style.top = y + "px";
+}
+function hideTip() { tipEl().style.display = "none"; }
+function tipRow(color, value, label) {
+  return '<div class="t-row">' +
+    (color ? '<span class="t-key" style="background:' + color + '"></span>' : "") +
+    '<span class="val">' + esc(value) + '</span><span class="lbl">' + esc(label) + "</span></div>";
+}
+
+function niceMax(v) {
+  if (v <= 0) return 1;
+  const mag = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 2, 2.5, 5, 10]) if (v <= m * mag) return m * mag;
+  return 10 * mag;
+}
+function roundRight(x, y, w, h, r) { // horizontal bar: square left (baseline), rounded right (data end)
+  r = Math.min(r, w / 2, h / 2);
+  return "M" + x + " " + y + " h" + (w - r) + " a" + r + " " + r + " 0 0 1 " + r + " " + r +
+    " v" + (h - 2 * r) + " a" + r + " " + r + " 0 0 1 " + (-r) + " " + r + " h" + (-(w - r)) + " Z";
+}
+function roundTop(x, y, w, h, r) { // column: square bottom (baseline), rounded top (data end)
+  r = Math.min(r, w / 2, h / 2);
+  return "M" + x + " " + (y + h) + " v" + (-(h - r)) + " a" + r + " " + r + " 0 0 1 " + r + " " + (-r) +
+    " h" + (w - 2 * r) + " a" + r + " " + r + " 0 0 1 " + r + " " + r + " v" + (h - r) + " Z";
+}
+
+/* =====================================================================
+   Navigation: a path of ids into TREE. In-page only.
+   ===================================================================== */
+let PATH = ["org"];
+function nodeAt(path) {
+  let node = TREE;
+  for (const id of path.slice(1)) node = node.children.find((c) => c.id === id);
+  return node;
+}
+function go(path) { PATH = path; render(); window.scrollTo({ top: 0 }); }
+
+function crumbsHTML() {
+  const parts = [];
+  for (let i = 0; i < PATH.length; i++) {
+    const node = nodeAt(PATH.slice(0, i + 1));
+    if (i === PATH.length - 1) parts.push('<span class="here">' + esc(node.name) + "</span>");
+    else parts.push('<button data-crumb="' + i + '">' + esc(node.name) + "</button>");
+  }
+  return '<nav class="crumbs" aria-label="org path">' + parts.join('<span aria-hidden="true">/</span>') + "</nav>";
+}
+function scopeHTML(node) {
+  return '<div class="scope">' + node.scope.map((line) => "<div>" + line + "</div>").join("") + "</div>";
+}
+function chip(node) {
+  return node.synthetic ? '<span class="chip chip-synth">SYNTHETIC</span>'
+    : '<span class="chip chip-real">REAL</span>';
+}
+function bandLegend() {
+  return '<p class="bandnote">cost bands: share of the day\u2019s main-thread calls at or above ' +
+    THRESHOLDS.ladder.map((b) => fmt0(THRESHOLDS[b])).join(" / ") +
+    " context tokens (" + esc(THRESHOLDS.ladder.join("/")) + "); thresholds read from " +
+    esc(THRESHOLDS.source) + "</p>";
+}
+
+/* =====================================================================
+   Rollup view: an internal node over its children.
+   ===================================================================== */
+function teamStats(team) {
+  const cur = sumDays(inWindow(team.days, CUR));
+  const prior = sumDays(inWindow(team.days, PRIOR));
+  const yCur = tokPerIns(cur), yPrior = tokPerIns(prior);
+  return {
+    team, cur, prior, yCur, yPrior,
+    delta: (yCur != null && yPrior != null && yPrior !== 0) ? (yCur - yPrior) / yPrior : null,
+  };
+}
+
+function renderRollup(node) {
+  const stats = node.children.map(teamStats);
+  const synth = stats.filter((s) => s.team.synthetic);
+  const aggCur = sumDays(synth.flatMap((s) => inWindow(s.team.days, CUR)));
+  const aggPrior = sumDays(synth.flatMap((s) => inWindow(s.team.days, PRIOR)));
+  const aggY = tokPerIns(aggCur), aggYP = tokPerIns(aggPrior);
+  const aggDelta = aggYP ? (aggY - aggYP) / aggYP : null;
+
+  // outlier: largest |delta| among synthetic teams
+  const outlier = synth.slice().sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta))[0];
+  const mixShifted = synth.slice().sort((a, b) => {
+    const shift = (s) => Math.abs(s.cur.docs / s.cur.ins - s.prior.docs / s.prior.ins);
+    return shift(b) - shift(a);
+  })[0];
+
+  const deltaHTML = (d, label) => {
+    if (d == null) return '<span class="chip chip-unsc" title="no data in the prior window">UNSCORABLE</span>';
+    const cls = d > 0 ? "worse" : "better";
+    return '<span class="' + cls + '">' + pct(d) + "</span> " + esc(label);
+  };
+
+  let html = crumbsHTML() + scopeHTML(node);
+
+  // KPI row: the aggregate is synthetic-only and says so.
+  html += '<div class="tiles">' +
+    tile("tokens per inserted line, last 28 days " + '<span class="chip chip-synth">SYNTHETIC AGGREGATE</span>',
+      fmt0(aggY), true, deltaHTML(aggDelta, "vs prior 28 days")) +
+    tile("tokens, last 28 days " + '<span class="chip chip-synth">SYNTHETIC AGGREGATE</span>', fmt0(aggCur.tokens), false,
+      esc(fmt0(aggCur.calls)) + " calls") +
+    tile("inserted lines, last 28 days " + '<span class="chip chip-synth">SYNTHETIC AGGREGATE</span>', fmt0(aggCur.ins), false,
+      esc(fmt0(aggCur.commits)) + " commits") +
+    tile("teams", String(node.children.length), false,
+      esc(String(synth.length)) + " synthetic \u00b7 1 real") +
+    "</div>";
+
+  html += '<div class="figure-grid">';
+  html += figRankedBars(stats, outlier);
+  html += figWeeklyTrend(stats, outlier);
+  html += figMixShift(stats, mixShifted);
+  html += "</div>";
+
+  // team table
+  html += '<div class="section-h">Every team, both windows</div>' +
+    '<p class="section-sub">tok/ins is the whole ratio; any/code/docs is its one decomposition, ' +
+    "rendered together or not at all. Click a row to drill in.</p>";
+  html += '<div class="tblwrap"><table><thead><tr>' +
+    "<th>team</th><th>data</th><th>tokens (28d)</th><th>commits</th><th>inserted lines</th>" +
+    "<th>tok/ins</th><th>any/code/docs</th><th>vs prior 28d</th>" +
+    "</tr></thead><tbody>";
+  for (const s of stats) {
+    const d = s.delta;
+    const deltaCell = d == null
+      ? '<span class="chip chip-unsc" title="no corpus in the prior window">UNSCORABLE</span>'
+      : '<span class="' + (d > 0 ? "worse" : "better") + '">' + pct(d) + "</span>";
+    const note = s.team.synthetic ? "" :
+      " <span style='color:var(--muted)'>(" + s.cur.n + " days of corpus)</span>";
+    html += '<tr class="row-link" tabindex="0" role="link" data-team="' + esc(s.team.id) + '">' +
+      "<td>" + esc(s.team.name) + note + "</td>" +
+      "<td>" + chip(s.team) + "</td>" +
+      "<td>" + fmt0(s.cur.tokens) + "</td>" +
+      "<td>" + fmt0(s.cur.commits) + "</td>" +
+      "<td>" + fmt0(s.cur.ins) + "</td>" +
+      "<td><b>" + fmt0(s.yCur) + "</b></td>" +
+      "<td>" + triple(s.cur) + "</td>" +
+      "<td>" + deltaCell + "</td></tr>";
+  }
+  html += "</tbody></table></div>";
+  html += '<p class="bandnote">tokens per inserted line: a team\u2019s recorded tokens over the inserted lines its own commits shipped, same window. ' +
+    "Lower is better; UNSCORABLE means the window has no corpus, not that nothing happened.</p>";
+  return html;
+}
+
+function tile(k, v, hero, d) {
+  return '<div class="tile"><div class="k">' + k + '</div><div class="v' + (hero ? " hero" : "") + '">' + esc(v) +
+    '</div><div class="d">' + (d || "") + "</div></div>";
+}
+
+/* Figure: ranked bars, one hue (the metric across teams), delta labels. */
+function figRankedBars(stats, outlier) {
+  const rows = stats.slice().sort((a, b) => (b.yCur ?? -1) - (a.yCur ?? -1));
+  const W = 640, labelW = 120, valW = 150, barH = 20, gap = 14, top = 6;
+  const H = top + rows.length * (barH + gap);
+  const maxV = niceMax(Math.max(...rows.map((r) => r.yCur || 0)));
+  const plotW = W - labelW - valW;
+  let marks = "";
+  rows.forEach((r, i) => {
+    const y = top + i * (barH + gap);
+    const w = Math.max(2, (r.yCur || 0) / maxV * plotW);
+    const isOut = r === outlier;
+    const deltaTxt = r.delta == null ? "UNSCORABLE" : pct(r.delta) + " vs prior";
+    const deltaFill = r.delta == null ? "var(--unsc-ink)" : (r.delta > 0 ? "var(--bad)" : "var(--good)");
+    marks += '<g class="bar-link" tabindex="0" role="link" data-team="' + esc(r.team.id) + '" ' +
+      'data-tip="' + esc(r.team.name + "\u2007" + fmt0(r.yCur) + " tok/ins \u00b7 any/code/docs " + triple(r.cur) +
+        (r.team.synthetic ? " \u00b7 SYNTHETIC" : " \u00b7 REAL, " + r.cur.n + " days")) + '">' +
+      '<rect x="0" y="' + (y - 4) + '" width="' + W + '" height="' + (barH + 8) + '" fill="transparent"></rect>' +
+      '<text x="' + (labelW - 8) + '" y="' + (y + barH / 2 + 4) + '" text-anchor="end" ' +
+        'font-size="12" fill="var(--ink)" font-weight="' + (isOut ? 600 : 400) + '">' + esc(r.team.name) + "</text>" +
+      '<path d="' + roundRight(labelW, y, w, barH, 4) + '" fill="var(--accent)"' + (r.team.synthetic ? ' opacity="0.55"' : "") + "></path>" +
+      '<text x="' + (labelW + w + 7) + '" y="' + (y + barH / 2 + 4) + '" font-size="12" ' +
+        'fill="var(--ink)" font-weight="600">' + fmt0(r.yCur) + "</text>" +
+      '<text x="' + (W - 2) + '" y="' + (y + barH / 2 + 4) + '" text-anchor="end" font-size="10.5" ' +
+        'font-family="IBM Plex Mono, monospace" fill="' + deltaFill + '">' + esc(deltaTxt) + "</text></g>";
+  });
+  const outLabel = outlier.team.name + " is " + (outlier.yCur / medianOf(stats.filter((s) => s !== outlier).map((s) => s.yCur))).toFixed(1) +
+    "x the median of its siblings and " + pct(outlier.delta) + " on itself";
+  return '<div class="figure"><h2>' + esc(outlier.team.name) + " is the outlier</h2>" +
+    '<p class="note"><b>' + esc(outLabel) + ".</b> Bars are the last 28 days; solid is the real team, translucent is synthetic. Click a bar to drill in.</p>" +
+    '<svg viewBox="0 0 ' + W + " " + H + '" aria-label="tokens per inserted line by team">' + marks + "</svg>" +
+    '<p class="foot">Agent Yield\u2019s bar covers its 2 days of corpus \u2014 the only real data in this window \u2014 and its delta is UNSCORABLE because the prior window holds no corpus at all.</p></div>';
+}
+function medianOf(vals) {
+  const v = vals.filter((x) => x != null).sort((a, b) => a - b);
+  return v.length ? (v.length % 2 ? v[(v.length - 1) / 2] : (v[v.length / 2 - 1] + v[v.length / 2]) / 2) : null;
+}
+
+/* Figure: weekly trend, emphasis form (outlier in the accent, rest gray). */
+function figWeeklyTrend(stats, outlier) {
+  const weeks = [];
+  for (let w = 0; w < 8; w++) weeks.push([w * 7, w * 7 + 6]);
+  const series = stats.filter((s) => s.team.synthetic).map((s) => ({
+    team: s.team,
+    pts: weeks.map(([a, b]) => tokPerIns(sumDays(inWindow(s.team.days, [a, b])))),
+  }));
+  const W = 640, H = 240, padL = 58, padR = 118, padT = 12, padB = 26;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxV = niceMax(Math.max(...series.flatMap((s) => s.pts.filter((p) => p != null))));
+  const x = (i) => padL + i / 7 * plotW;
+  const y = (v) => padT + (1 - v / maxV) * plotH;
+  let grid = "";
+  for (let g = 0; g <= 4; g++) {
+    const v = maxV * g / 4, yy = y(v);
+    grid += '<line x1="' + padL + '" y1="' + yy + '" x2="' + (W - padR) + '" y2="' + yy + '" stroke="var(--grid)" stroke-width="1"></line>' +
+      '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + fmt0(v) + "</text>";
+  }
+  let ticks = "";
+  weeks.forEach(([a], i) => {
+    ticks += '<text x="' + x(i) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="10" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + dayISO(a).slice(5) + "</text>";
+  });
+  let lines = "";
+  const drawSeries = (s, color, width, label) => {
+    const d = s.pts.map((p, i) => (i ? "L" : "M") + x(i).toFixed(1) + " " + y(p).toFixed(1)).join(" ");
+    let out = '<path d="' + d + '" fill="none" stroke="' + color + '" stroke-width="' + width + '" stroke-linejoin="round" stroke-linecap="round" stroke-dasharray="5 4"></path>';
+    const last = s.pts[s.pts.length - 1];
+    out += '<circle cx="' + x(7) + '" cy="' + y(last) + '" r="4" fill="' + color + '" stroke="var(--surface)" stroke-width="2"></circle>';
+    if (label) out += '<text x="' + (x(7) + 9) + '" y="' + (y(last) + 4) + '" font-size="11.5" fill="var(--ink)" font-weight="600">' + esc(label) + "</text>";
+    return out;
+  };
+  for (const s of series) if (s.team !== outlier.team) lines += drawSeries(s, "var(--context-line)", 2, "");
+  const outS = series.find((s) => s.team === outlier.team);
+  lines += drawSeries(outS, "var(--accent)", 2.5, outlier.team.name);
+  // crosshair layer
+  const hover = '<rect id="trendHover" x="' + padL + '" y="' + padT + '" width="' + plotW + '" height="' + plotH + '" fill="transparent"></rect>' +
+    '<line id="trendX" x1="0" y1="' + padT + '" x2="0" y2="' + (padT + plotH) + '" stroke="var(--baseline)" stroke-width="1" style="display:none"></line>';
+  const ratio = (outS.pts[7] / outS.pts[0]).toFixed(1);
+  window.__trend = { series, weeks, x, padL, plotW, outlierTeam: outlier.team };
+  return '<div class="figure"><h2>The divergence is eight weeks old, not a blip</h2>' +
+    '<p class="note"><b>' + esc(outlier.team.name) + " ends the window at " + ratio + "x its own starting ratio; its five siblings hold flat.</b> Weekly tokens per inserted line; dashes mark every series here as synthetic.</p>" +
+    '<svg id="trendSvg" viewBox="0 0 ' + W + " " + H + '" aria-label="weekly tokens per inserted line per team">' + grid + ticks + lines + hover + "</svg>" +
+    '<div class="legend">' +
+      '<span class="key"><span class="linekey" style="background:var(--accent)"></span>' + esc(outlier.team.name) + " (synthetic)</span>" +
+      '<span class="key"><span class="linekey" style="background:var(--context-line)"></span>5 siblings (synthetic)</span>' +
+    "</div>" +
+    '<p class="foot">Agent Yield (REAL) is not plotted: 2 days of corpus is not a week, and stretching it to one would put a cross-scope point on a same-scope chart. Its ledger is one click down.</p></div>';
+}
+
+/* Figure: mix, the guard against a mix artefact read as efficiency. */
+function figMixShift(stats, mixShifted) {
+  const rows = stats.filter((s) => s.team.synthetic);
+  const W = 640, labelW = 130, pctW = 46, barH = 13, pairGap = 3, rowGap = 15, top = 4;
+  const H = top + rows.length * (2 * barH + pairGap + rowGap);
+  const plotW = W - labelW - pctW - 8;
+  let marks = "";
+  rows.forEach((s, i) => {
+    const y0 = top + i * (2 * barH + pairGap + rowGap);
+    const draw = (sum, y, tag) => {
+      const parts = [
+        { v: sum.code / sum.ins, c: "var(--s-code)", n: "code" },
+        { v: sum.docs / sum.ins, c: "var(--s-docs)", n: "docs" },
+        { v: sum.other / sum.ins, c: "var(--s-other)", n: "other" },
+      ];
+      let xx = labelW; let out = "";
+      for (const p of parts) {
+        const w = Math.max(0, p.v * plotW - 2);
+        out += '<rect x="' + xx + '" y="' + y + '" width="' + w + '" height="' + barH + '" rx="2" fill="' + p.c + '" ' +
+          'data-tip="' + esc(s.team.name + " \u00b7 " + tag + " \u00b7 " + p.n + " " + (p.v * 100).toFixed(0) + "% of " + fmt0(sum.ins) + " inserted lines \u00b7 SYNTHETIC") + '"></rect>';
+        xx += p.v * plotW;
+      }
+      out += '<text x="' + (labelW - 8) + '" y="' + (y + barH - 3) + '" text-anchor="end" font-size="9.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + tag + "</text>";
+      return out;
+    };
+    marks += '<text x="0" y="' + (y0 + barH + 1) + '" font-size="12" fill="var(--ink)" font-weight="' + (s === mixShifted ? 600 : 400) + '">' + esc(s.team.name) + "</text>" +
+      draw(s.prior, y0, "prior") + draw(s.cur, y0 + barH + pairGap, "cur") +
+      '<text x="' + (W - pctW + 4) + '" y="' + (y0 + barH + 5) + '" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="' + (s.delta > 0 ? "var(--bad)" : "var(--good)") + '">' + pct(s.delta) + "</text>";
+  });
+  const docsPrior = (mixShifted.prior.docs / mixShifted.prior.ins * 100).toFixed(0);
+  const docsCur = (mixShifted.cur.docs / mixShifted.cur.ins * 100).toFixed(0);
+  return '<div class="figure"><h2>One \u201cimprovement\u201d is a mix shift, and this panel is the tell</h2>' +
+    '<p class="note"><b>' + esc(mixShifted.team.name) + " reads " + pct(mixShifted.delta) + " on the headline while its docs share moved " +
+    docsPrior + "% \u2192 " + docsCur + "%.</b> Cheaper lines, not cheaper work. A yield delta only counts when the mix underneath it held still \u2014 which is why the per-area ratios are never shown alone.</p>" +
+    '<svg viewBox="0 0 ' + W + " " + H + '" aria-label="insertion mix by team, prior versus current window">' + marks + "</svg>" +
+    '<div class="legend">' +
+      '<span class="key"><span class="swatch" style="background:var(--s-code)"></span>code</span>' +
+      '<span class="key"><span class="swatch" style="background:var(--s-docs)"></span>docs</span>' +
+      '<span class="key"><span class="swatch" style="background:var(--s-other)"></span>other</span>' +
+      '<span class="key"><span class="chip chip-synth">SYNTHETIC</span></span>' +
+    "</div></div>";
+}
+
+/* =====================================================================
+   Team view: the leaf ledger, per day. Real for Agent Yield.
+   ===================================================================== */
+function renderTeam(node) {
+  const shown = node.synthetic ? node.days.slice(-28) : node.days;
+  const total = sumDays(shown);
+  let html = crumbsHTML() + scopeHTML(node);
+
+  const first = shown[0], last = shown[shown.length - 1];
+  const firstY = dayY(first), lastY = dayY(last);
+  const dayDelta = firstY && lastY ? lastY / firstY : null;
+
+  html += '<div class="tiles">' +
+    tile("tokens per inserted line, " + shown.length + " days " + chip(node), fmt0(tokPerIns(total)), true,
+      "any/code/docs " + esc(triple(total))) +
+    tile("tokens " + chip(node), fmt0(total.tokens), false, esc(fmt0(total.calls)) + " calls") +
+    tile("commits " + chip(node), fmt0(total.commits), false,
+      esc(fmt0(tokPerCommit(total))) + " tokens per commit") +
+    tile("inserted lines " + chip(node), fmt0(total.ins), false,
+      "code " + esc(fmt0(total.code)) + " \u00b7 docs " + esc(fmt0(total.docs)) + " \u00b7 other " + esc(fmt0(total.other))) +
+    "</div>";
+
+  html += '<div class="figure-grid">';
+  html += figDayColumns(node, shown, dayDelta);
+  html += figDayMix(node, shown);
+  html += "</div>";
+
+  // per-day ledger
+  html += '<div class="section-h">The ledger, day by day</div>' +
+    '<p class="section-sub">Every figure above is recomputable from this table. tok/ins any/code/docs is one rendered triple; the halves have no column of their own.</p>';
+  html += '<div class="tblwrap"><table><thead><tr>' +
+    "<th>day</th><th>tokens</th><th>calls</th><th>commits</th><th>code</th><th>docs</th><th>other</th>" +
+    "<th>tok/ins any/code/docs</th><th>main ctx/call</th><th>sub ctx/call</th><th>cost bands</th>" +
+    "</tr></thead><tbody>";
+  for (const d of shown.slice().reverse()) {
+    const s = sumDays([d]);
+    html += "<tr><td>" + esc(d.day) + "</td>" +
+      "<td>" + fmt0(d.tokens) + "</td><td>" + fmt0(d.calls) + "</td><td>" + fmt0(d.commits) + "</td>" +
+      "<td>" + fmt0(d.code) + "</td><td>" + fmt0(d.docs) + "</td><td>" + fmt0(d.other) + "</td>" +
+      "<td><b>" + triple(s) + "</b></td>" +
+      "<td>" + fmt0(d.mainCtx) + "</td><td>" + fmt0(d.subCtx) + "</td>" +
+      "<td>" + d.bands.map((b) => b + "%").join("/") + "</td></tr>";
+  }
+  html += "</tbody></table></div>" + bandLegend();
+
+  // machines
+  html += '<div class="section-h">Machines under this team</div>';
+  if (node.synthetic) {
+    html += '<p class="section-sub"><span class="chip chip-synth">SYNTHETIC</span> This team is generated and carries no machine ledger. ' +
+      "The grain below days exists only where a corpus exists; inventing machines here would dress a scaffold as a measurement.</p>";
+  } else {
+    html += '<div class="tblwrap"><table><thead><tr><th>machine</th><th>data</th><th>tokens</th><th>commits</th><th>tok/ins</th></tr></thead><tbody>';
+    for (const m of REAL_MACHINES) {
+      if (m.real) {
+        html += '<tr><td>' + esc(m.name) + '</td><td><span class="chip chip-real">REAL</span></td>' +
+          "<td>" + fmt0(total.tokens) + "</td><td>" + fmt0(total.commits) + "</td><td><b>" + fmt0(tokPerIns(total)) + "</b></td></tr>";
+      } else {
+        html += '<tr><td>' + esc(m.name) + '</td><td><span class="chip chip-unsc">UNSCORABLE</span></td>' +
+          '<td colspan="3" style="text-align:left;color:var(--ink-2);white-space:normal">' + esc(m.unscorable) + "</td></tr>";
+      }
+    }
+    html += "</tbody></table></div>";
+    html += '<p class="bandnote">UNSCORABLE is not a dash and not a zero: this view cannot compute the number, and a plausible substitute would be the fifth defect in a row that failed in the reassuring direction.</p>';
+  }
+
+  // what changed (real team only)
+  if (!node.synthetic && dayDelta != null) {
+    html += '<div class="section-h">What changed between the two days</div>' +
+      '<p class="section-sub"><b>' + esc(fmt0(firstY)) + " \u2192 " + esc(fmt0(lastY)) + " tokens per inserted line, " +
+      dayDelta.toFixed(2) + "x worse in one day \u2014 and one day is not a verdict.</b> " +
+      "The first day ran " + esc(fmt0(first.calls)) + " calls; the second ran " + esc(fmt0(last.calls)) +
+      " and was still running when this was captured. A day that runs six experiments and an audit is not the same task as the day before it. " +
+      "The number is real; the comparison needs more days before it means anything.</p>";
+  }
+  return html;
+}
+function dayY(d) { const s = sumDays([d]); return tokPerIns(s); }
+
+function figDayColumns(node, days, dayDelta) {
+  const W = 640, H = 220, padL = 58, padR = 12, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const vals = days.map(dayY);
+  const maxV = niceMax(Math.max(...vals.filter((v) => v != null)));
+  const n = days.length;
+  const slot = plotW / n;
+  const colW = Math.min(24, Math.max(6, slot - 2));
+  let grid = "";
+  for (let g = 0; g <= 4; g++) {
+    const v = maxV * g / 4, yy = padT + (1 - g / 4) * plotH;
+    grid += '<line x1="' + padL + '" y1="' + yy + '" x2="' + (W - padR) + '" y2="' + yy + '" stroke="var(--grid)" stroke-width="1"></line>' +
+      '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + fmt0(v) + "</text>";
+  }
+  let marks = "";
+  days.forEach((d, i) => {
+    const v = vals[i];
+    if (v == null) return;
+    const h = v / maxV * plotH;
+    const x = padL + i * slot + (slot - colW) / 2;
+    const y = padT + plotH - h;
+    const s = sumDays([d]);
+    marks += '<g data-tip="' + esc(d.day + "\u2007" + fmt0(v) + " tok/ins \u00b7 any/code/docs " + triple(s) +
+        " \u00b7 " + fmt0(d.tokens) + " tokens \u00b7 " + fmt0(d.commits) + " commits" + (node.synthetic ? " \u00b7 SYNTHETIC" : "")) + '">' +
+      '<rect x="' + (padL + i * slot) + '" y="' + padT + '" width="' + slot + '" height="' + plotH + '" fill="transparent"></rect>' +
+      '<path d="' + roundTop(x, y, colW, h, 4) + '" fill="var(--accent)"' + (node.synthetic ? ' opacity="0.55"' : "") + "></path>";
+    if (n <= 4 || i === n - 1 || v === Math.max(...vals)) {
+      marks += '<text x="' + (x + colW / 2) + '" y="' + (y - 6) + '" text-anchor="middle" font-size="11" fill="var(--ink)" font-weight="600">' + fmt0(v) + "</text>";
+    }
+    marks += "</g>";
+    if (n <= 8 || i % 7 === 0 || i === n - 1) {
+      marks += '<text x="' + (x + colW / 2) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="9.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + d.day.slice(5) + "</text>";
+    }
+  });
+  const head = node.synthetic
+    ? "Tokens per inserted line, day by day"
+    : "Two days of corpus, and the second cost " + dayDelta.toFixed(2) + "x the first per line";
+  const note = node.synthetic
+    ? "<b>Every column is generated.</b> The shape is the point: this is what the leaf grain looks like when a corpus exists."
+    : "<b>" + fmt0(vals[0]) + " \u2192 " + fmt0(vals[vals.length - 1]) + " tokens per inserted line.</b> Whole-day ratio; the decomposition rides the tooltip and the ledger as one triple.";
+  return '<div class="figure"><h2>' + esc(head) + "</h2>" +
+    '<p class="note">' + note + "</p>" +
+    '<svg viewBox="0 0 ' + W + " " + H + '" aria-label="tokens per inserted line per day">' + grid + marks + "</svg></div>";
+}
+
+function figDayMix(node, days) {
+  const W = 640, H = 220, padL = 58, padR = 12, padT = 14, padB = 30;
+  const plotW = W - padL - padR, plotH = H - padT - padB;
+  const maxV = niceMax(Math.max(...days.map((d) => d.code + d.docs + d.other)));
+  const n = days.length;
+  const slot = plotW / n;
+  const colW = Math.min(24, Math.max(6, slot - 2));
+  let grid = "";
+  for (let g = 0; g <= 4; g++) {
+    const v = maxV * g / 4, yy = padT + (1 - g / 4) * plotH;
+    grid += '<line x1="' + padL + '" y1="' + yy + '" x2="' + (W - padR) + '" y2="' + yy + '" stroke="var(--grid)" stroke-width="1"></line>' +
+      '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + fmt0(v) + "</text>";
+  }
+  let marks = "";
+  days.forEach((d, i) => {
+    const x = padL + i * slot + (slot - colW) / 2;
+    let yy = padT + plotH;
+    const parts = [
+      { v: d.code, c: "var(--s-code)", n: "code" },
+      { v: d.docs, c: "var(--s-docs)", n: "docs" },
+      { v: d.other, c: "var(--s-other)", n: "other" },
+    ];
+    marks += '<g data-tip="' + esc(d.day + "\u2007code " + fmt0(d.code) + " \u00b7 docs " + fmt0(d.docs) + " \u00b7 other " + fmt0(d.other) +
+      " inserted lines" + (node.synthetic ? " \u00b7 SYNTHETIC" : "")) + '">' +
+      '<rect x="' + (padL + i * slot) + '" y="' + padT + '" width="' + slot + '" height="' + plotH + '" fill="transparent"></rect>';
+    for (const p of parts) {
+      const h = Math.max(0, p.v / maxV * plotH - 2);
+      yy -= p.v / maxV * plotH;
+      marks += '<rect x="' + x + '" y="' + yy + '" width="' + colW + '" height="' + h + '" rx="2" fill="' + p.c + '"' + (node.synthetic ? ' opacity="0.7"' : "") + "></rect>";
+    }
+    marks += "</g>";
+    if (n <= 8 || i % 7 === 0 || i === n - 1) {
+      marks += '<text x="' + (x + colW / 2) + '" y="' + (H - 8) + '" text-anchor="middle" font-size="9.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + d.day.slice(5) + "</text>";
+    }
+  });
+  return '<div class="figure"><h2>What kind of lines the days shipped</h2>' +
+    '<p class="note"><b>The denominator\u2019s composition, in counts.</b> A yield move that arrives with a mix move is a mix story first; this panel is how a reader checks before believing the column chart.</p>' +
+    '<svg viewBox="0 0 ' + W + " " + H + '" aria-label="inserted lines per day by kind">' + grid + marks + "</svg>" +
+    '<div class="legend">' +
+      '<span class="key"><span class="swatch" style="background:var(--s-code)"></span>code</span>' +
+      '<span class="key"><span class="swatch" style="background:var(--s-docs)"></span>docs</span>' +
+      '<span class="key"><span class="swatch" style="background:var(--s-other)"></span>other</span>' +
+    "</div></div>";
+}
+
+/* =====================================================================
+   Render + events
+   ===================================================================== */
+function render() {
+  const node = nodeAt(PATH);
+  const app = document.getElementById("app");
+  hideTip();
+  app.innerHTML = node.children ? renderRollup(node) : renderTeam(node);
+
+  app.querySelectorAll("[data-crumb]").forEach((b) =>
+    b.addEventListener("click", () => go(PATH.slice(0, Number(b.dataset.crumb) + 1))));
+  app.querySelectorAll("[data-team]").forEach((el) => {
+    const open = () => go(PATH.concat(el.dataset.team));
+    el.addEventListener("click", open);
+    el.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); open(); } });
+  });
+  app.querySelectorAll("[data-tip]").forEach((el) => {
+    el.addEventListener("pointermove", (e) => {
+      const parts = el.dataset.tip.split("\u2007");
+      showTip(e, tipRow(null, parts.length > 1 ? parts[1] : parts[0], ""), parts.length > 1 ? parts[0] : "");
+    });
+    el.addEventListener("pointerleave", hideTip);
+    if (el.hasAttribute("tabindex")) {
+      el.addEventListener("focus", () => {
+        const r = el.getBoundingClientRect();
+        showTip({ clientX: r.left + r.width / 2, clientY: r.top }, tipRow(null, el.dataset.tip.replace("\u2007", " \u00b7 "), ""), "");
+      });
+      el.addEventListener("blur", hideTip);
+    }
+  });
+
+  // crosshair on the weekly trend
+  const svg = document.getElementById("trendSvg");
+  if (svg && window.__trend) {
+    const { series, weeks, x, padL, plotW, outlierTeam } = window.__trend;
+    const xline = svg.querySelector("#trendX");
+    const hover = svg.querySelector("#trendHover");
+    hover.addEventListener("pointermove", (e) => {
+      const rect = svg.getBoundingClientRect();
+      const scale = 640 / rect.width;
+      const px = (e.clientX - rect.left) * scale;
+      let idx = Math.round((px - padL) / plotW * 7);
+      idx = Math.max(0, Math.min(7, idx));
+      const cx = x(idx);
+      xline.setAttribute("x1", cx); xline.setAttribute("x2", cx);
+      xline.style.display = "block";
+      const ranked = series.slice().sort((a, b) => b.pts[idx] - a.pts[idx]);
+      let rows = "";
+      for (const s of ranked) {
+        const color = s.team === outlierTeam
+          ? getComputedStyle(document.documentElement).getPropertyValue("--accent")
+          : getComputedStyle(document.documentElement).getPropertyValue("--context-line");
+        rows += tipRow(color, fmt0(s.pts[idx]), s.team.name);
+      }
+      showTip(e, rows, "week of " + dayISO(weeks[idx][0]) + " \u00b7 tok/ins \u00b7 SYNTHETIC");
+    });
+    hover.addEventListener("pointerleave", () => { xline.style.display = "none"; hideTip(); });
+  }
+}
+render();
+</script>
