@@ -542,6 +542,18 @@ agents that still leave every slice independently checkable**. An agent running
 `60 of 73` real dispatches already exceeded the old cap, which should have been
 read as evidence about the cap rather than about the dispatchers.
 
+**[2026-08-26, #35] The rule stands and the reason given for it does not.**
+Priced over 84 subagent runs (working-method §11.4), **an agent's first call
+costs $0.0577 against $0.0800 for the median call that follows it** — arrival
+is 1.33× *cheaper* than the calls it was supposed to amortise, because it is
+54% cache read at 0.10× and 46% cache write at 1.25×, and almost no fresh
+input. "Re-entry is charged per agent" is true and is not the argument. The
+argument is that a call gets dearer with its depth in the agent (**+$0.00153
+per call**) while a second agent has to re-do its orientation, and the two
+break even **55–281 calls deep against a 52-call median dispatch**. Same runs,
+`calls^1.38` in tokens and **`calls^1.11` in dollars** — the superlinearity
+this spec reasons from is largely a property of the unit it was measured in.
+
 ### What this does to the falsifiers
 
 - **The parent-stays-flat falsifier stands** and becomes the primary one. It

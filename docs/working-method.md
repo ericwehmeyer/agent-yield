@@ -253,6 +253,14 @@ The shape that works:
 - **Reply in the comments.** The comment thread is the return channel and it is
   durable, timestamped, and readable by a session that was not alive for any of
   it — which is the same property that makes the handoff work.
+- **Rebase with `git -c core.commentChar=";"`.** Every commit subject in this
+  repo starts with `#NN:`, and git's default cleanup strips a leading `#` as a
+  comment. On 2026-08-26 a ten-commit rebase over the other machine's nine
+  silently deleted the subject line of the three commits it had to re-commit,
+  promoting each body's first paragraph in its place and losing the ticket
+  number. Nothing warns. Read the subjects after any rebase — and the reason
+  there was a ten-commit rebase at all is that "push immediately" above was not
+  followed.
 
 **This is asynchronous and that is the feature.** Neither machine waits, and
 neither has to be running when the other sends. Remote Control is per-session
@@ -720,6 +728,118 @@ runs: **$11.54**.
 
 ---
 
+## 11.4 The packing rule, priced (issue #35)
+
+**#35 asked how many index rows go to one agent, and said the answer is a
+function of re-entry cost. It is not.** Re-entry turns out to be the cheap term
+once it is priced. What decides the pack is the growth of a call with its depth
+in the agent, and a fixed orientation cost that has been measured exactly once.
+
+Everything here is **list dollars** (`pricing.py`, `costBasis: "list"`), per
+#55, over the **84** subagent transcripts on this machine that price completely.
+**9 runs are excluded and named** — 5 `claude-sonnet-5`, 4 `claude-fable-5`,
+models this repo has no reconciled rate for. A rate it has not checked is a
+guess, and a guess averaged into a median is worse than a gap.
+
+### Re-entry costs less than the calls it is supposed to amortise
+
+| | tokens | list dollars |
+|---|---|---|
+| an agent's first call | 22,052 | **$0.0577** |
+| its later calls, mean | — | **$0.0800** |
+
+**1.33x — the wrong way round.** The baton spec argued for long units because
+re-entry is a large fixed fee paid once, and long units amortise it. Priced,
+**arrival is cheaper than the median call that follows it.** The reason is in
+its composition: a first call is **54.1% cache read at 0.10x and 45.9% cache
+write at 1.25x**, with essentially no fresh input. It is not billed like
+reading; it is billed like re-reading.
+
+So the amortisation argument is retired. **Packing fat is still right, and for
+a different reason than the one that was given.**
+
+### The exponent is 1.54 in tokens and 1.11 in dollars
+
+The same 56 runs of >=20 calls, fitted three ways — cumulative cost against
+call index, within each run, so no between-run difference can produce it:
+
+| unit | exponent | p25-p75 |
+|---|---|---|
+| context tokens | **1.38** | 1.36-1.42 |
+| raw tokens | **1.38** | 1.36-1.42 |
+| **list dollars** | **1.11** | 1.09-1.15 |
+
+`calls^1.54` is real and it is a **token** fact. In the unit the operator is
+billed in it is very nearly linear, because **54.5% of a subagent's bill is
+cache read at a tenth of base input** — 96.4% of its tokens, an eighth of its
+weight. Output is 1.0% of the tokens and **27.3%** of the bill.
+
+Within a run the growth is flat enough to state as a rate: **+$0.00153 per call
+of depth** (p25 $0.00103, p75 $0.00211).
+
+### The packing rule, and the number under it
+
+Splitting a unit in two buys back the depth-growth of the calls it moves, and
+pays for a second agent's orientation. Both sides are now numbers:
+
+```
+buys back   $0.00153 x (calls moved) x (their depth)
+pays        (orientation calls) x $0.0577
+break even  depth = orientation x 0.0577 / 0.00153
+```
+
+**Orientation is the weak term and this is the honest statement of it.** The
+only measurement of it is §11.1's pair: one agent took 5 calls for six files,
+three agents took 12. That fits ~3.5 fixed calls an agent — from **two runs, of
+one task**. At 3.5 the break-even is **132 calls deep**. Across the plausible
+corners of both terms it is **55 to 281**.
+
+| | |
+|---|---|
+| break-even depth | **55-281 calls** |
+| median real dispatch | **52 calls** |
+| p90 / longest | 79 / **118** |
+
+**So the rule is:**
+
+> **Pack every adjacent, dependency-free row into one agent. Split on a
+> dependency edge or on a verification boundary — never on cost.**
+
+At the optimistic corner cost never argues for splitting anything anyone has
+dispatched. At the pessimistic corner it starts to argue at 55 calls, which is
+the median dispatch — **so this does not rule splitting out at the longest
+units, and says so.** The measurement that would settle it is the orientation
+term: dispatch one agent over k slices and k agents over one slice each, and
+count calls, not tokens. That is one experiment and it retires the widest error
+bar on this page.
+
+### What would falsify this section
+
+- **The packing falsifier, recorded before it is run** (#35's own, in the unit
+  #55 requires): one agent carrying six slices against six agents carrying one
+  each, scored on **defects found** and on **list dollars**. If the packed arm
+  returns fewer defects, the packing rule is wrong and the retired cap was
+  right for a reason nobody measured. **The bar is on defects, not on claims
+  counted** — #33 pre-registered the denominator and would have passed an arm
+  that found nothing, which is how #47 came to exist.
+- **If the orientation term is not ~3.5 calls**, the break-even moves with it
+  and this section's band moves with it. It rests on two runs.
+- **If re-entry stops being mostly cache read** — a different agent type, a
+  cold parent, a first call that actually reads — arrival gets dearer than a
+  later call and the amortisation argument comes back.
+
+### Limits
+
+One machine. **62 of the 84 runs come from a single project's audit fleet**, so
+"the median dispatch is 52 calls" describes that fleet more than it describes
+dispatching. These are also the survivors: subagent transcripts evaporate
+(§11.2), so the sample is biased toward recent runs. And every dollar here is a
+**list-price equivalent**: on a plan the ranking survives and the absolute
+figure does not.
+
+---
+
+
 ## 12. The dispatch rubric: what a brief must contain
 
 §11 measured the levers. This section is the operating instruction that falls
@@ -752,14 +872,16 @@ them produced a median 85,195 — the same model, the same repo, ~5× the cost.
 | | part | why it is there |
 |---|---|---|
 | a | **Line ranges, not filenames** — "read `x.py` lines 22–58 via `sed -n`", plus *"do not explore; if you need a file not listed, say so and stop"* | the un-briefed population's cost is search, not work |
-| b | **One unit of work** — ~~capped at ~10 calls~~ | ~~cost is `calls^1.54`: one 27-call agent billed 1,879,466 against 840,036 for the same calls split three ways~~ **Retracted 2026-08-25 — the 840,036 was arithmetic on a split nobody ran, and §11.1 ran it: the split cost 54% more.** One unit of work still earns its place, for (a) and (d)'s reasons — it bounds what the child reads and what it returns. The call cap does not; do not split a unit to meet a number |
+| b | **As many adjacent, dependency-free slices as one agent can carry.** A slice is the smallest piece of work with a command that proves it; **a row of the index is a unit of verification, not a unit of dispatch** | ~~capped at ~10 calls, because cost is `calls^1.54`~~ — retracted twice over. §11.1 ran the split and it cost **54% more**; §11.4 then re-fitted the exponent **in list dollars on the same runs** and got **1.11**, against 1.38 for the same runs in raw tokens. The superlinearity is a token fact that mostly dissolves at the price of a cache read. **Do not split a unit to meet a number, and do not pack it to meet one either: cost is not what bounds the pack. Verification is** |
 | c | **A named output path the child writes to** | child transcripts evaporate — 249 of 352 were already empty before anyone looked |
 | d | **A stated return contract** — "return the file:line list and one verdict line, nothing else" | the return lands in the parent's context and is re-billed on every later call |
 
 Parts (a) and (d) are the two that pay: (a) bounds what the child reads, (d)
-bounds what the parent reads. (b) and (c) are insurance — against the
-superlinear tail, and against a finding that existed only in a transcript that
-no longer exists.
+bounds what the parent reads. (c) is insurance against a finding that existed
+only in a transcript that no longer exists. **(b) is no longer insurance
+against the superlinear tail** — §11.4 priced that tail and it is small. (b)
+survives because a slice with no command that proves it cannot be checked, and
+because a dependency edge has to fall somewhere.
 
 ### What this does not cover
 

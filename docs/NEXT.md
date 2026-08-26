@@ -1743,3 +1743,106 @@ time: this page would have guessed #49.
 **Limits.** One task, n=2 per arm, two packings. The Haiku share is measured on
 four arms only. The plan calibration has one snapshot and cannot yet say
 anything -- `agent-yield allowance` prints exactly that rather than a number.
+
+## [macOS 2026-08-26] #35 is answered, and two instruments were repaired to answer it
+
+`agent-yield handoff` before you restart. Then read this.
+
+**#35's premise was wrong in a way that only shows up in dollars.** The ticket
+says the packing number is a function of re-entry cost. Priced over the 84
+subagent runs on this machine that price completely:
+
+| | tokens | list dollars |
+|---|---|---|
+| an agent's first call | 22,052 | **$0.0577** |
+| its later calls, mean | — | **$0.0800** |
+
+**Arrival is 1.33x CHEAPER than the median call that follows it.** It is 54.1%
+cache read at 0.10x and 45.9% cache write at 1.25x, with essentially no fresh
+input — billed like re-reading, not like reading. So "re-entry is a large fixed
+fee and long units amortise it", which is the baton spec's argument for packing
+fat, **is retired**. The conclusion survives on a different mechanism.
+
+**`calls^1.54` is a fact about tokens, not about money.** The same 56 runs of
+>=20 calls, cumulative cost fitted against call index *within* each run:
+
+| unit | exponent | p25-p75 |
+|---|---|---|
+| context tokens | 1.38 | 1.36-1.42 |
+| raw tokens | 1.38 | 1.36-1.42 |
+| **list dollars** | **1.11** | 1.09-1.15 |
+
+**54.5% of a subagent's bill is cache read** — 96.4% of its tokens at a tenth
+of base input. Output is 1.0% of the tokens and 27.3% of the bill. This is
+exactly what #55 meant by not letting #35-#38 score in raw tokens: a
+token-scored packing experiment measures the cache-read rate.
+
+**The rule, and the number under it.** Growth within an agent is
+**+$0.00153 per call of depth** (p25 $0.00103, p75 $0.00211); splitting pays a
+second agent's orientation, measured **once**, at ~3.5 calls. Break-even
+**55-281 calls** against a **52-call median dispatch** (p90 79, max 118).
+
+> **Pack every adjacent, dependency-free row into one agent. Split on a
+> dependency edge or on a verification boundary — never on cost.**
+
+At the optimistic corner cost never argues for splitting anything anyone has
+dispatched; at the pessimistic corner it starts to argue at the median. **That
+band is dominated by the orientation term, which rests on two runs of one
+task** — dispatch one agent over k slices against k agents over one slice each
+and count CALLS. That is one experiment and it retires the widest error bar on
+the page. working-method **§11.4**; the falsifier is pre-registered in
+`interventions.toml` and is scored on **defects found** and dollars, never on
+claims counted — #33's bar was on the denominator and would have passed an arm
+that found nothing.
+
+### Two instruments were wrong first, and both were found by checking rather than trusting
+
+**#61: the dedup had a second copy.** #53 fixed keep-FIRST in
+`ingest.load_records`. `agents.read_agent_runs` held its own copy of the loop,
+under a docstring reading *"deduped the way `ingest` dedups"* — true when
+written, false the moment the other copy moved. Over 163 subagent transcripts
+it undercounted output tokens **8.7x**: 388,893 against 3,395,515, **call
+counts identical at 3,800**. #53's signature exactly, one file over, and it
+blocked #35 because `AgentRun.total` is the only per-run usage this tool holds.
+The rule now lives in `records.dedup` and both callers reach for it; the second
+copy is gone, not patched. `AgentRun` carries `incomplete`. §11.2's re-entry
+median is **unaffected** — context is duplicate-invariant.
+
+**#62: JSONL was being cut with `str.splitlines()`.** After both readers were
+pointed at one dedup they still disagreed on ONE of 163 transcripts, 71,297
+against 68,634, call counts identical at 69. `splitlines()` also breaks on
+`\v`, `\f`, `\x1c`, `\x1d`, `\x1e`, `\x85`, U+2028 and U+2029, none of which end
+a line in JSONL and none of which JSON requires escaping inside a string. The
+record is cut in half, both halves fail `json.loads`, and it **disappears** —
+quietly, because these walks survive junk by design. 286 transcripts: 5 files
+affected, 10,879 spurious splits, **3 records lost, 5,326 output tokens**. The
+one it took on `a1f5f48f6b1fe2e91` was the **terminal** record, so the call
+survived through a sibling, the count stayed right, and #53's machinery marked
+it incomplete. **A call that looks unfinished is this bug's symptom** — which
+means the corpus-wide incomplete count, 444 of 3,800, is inflated by an unknown
+amount from this cause, and `pricing`'s "the residual is located, not
+tolerated" reasons from that count. Four readers now go through
+`records.json_lines`.
+
+**Both tests assert the property, not the count.** #61's is EQUALITY against
+`load_records` — "the number went up" would pass keep-max, which #53 recorded
+as wrong. #62's asserts the record is present AND complete — on the real
+transcript the count was already right, which is how it hid behind #61 for a
+day. Keep-FIRST, keep-MAX and `splitlines()` mutants were each run against the
+new tests; each fails, by name.
+
+### The two machines had diverged, and rebasing ate three commit subjects
+
+`origin/main` held nine commits this machine had never seen (the Windows
+audit line: #43, #49-#51, #59, #60, CI on six matrix jobs) and this machine
+held ten it had never pushed. **§7's "push immediately" is the rule that was
+broken**, and the merge cost three conflicts, all trivial.
+
+**Then `git rebase --continue` silently deleted the subject line of every
+commit it had to re-commit.** Every commit subject in this repo begins with
+`#NN:`, and git's default cleanup strips leading `#` as a comment. Three
+commits — #52, #56, #57 — came out with their first paragraph as the subject
+and the ticket number gone. It was caught only because the tool echoed the new
+subject back. **Rebase this repo as `git -c core.commentChar=";" rebase ...`**,
+and read the subjects afterwards. 501 tests green across both lines of work.
+
