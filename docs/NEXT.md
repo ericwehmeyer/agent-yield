@@ -2268,3 +2268,84 @@ not quote the old number. (2) **#46 beyond S1** — S1 landed the day's yield as
 one table with a 2026-09-09 falsifier date on it. (3) **#65 stays open only as
 *run it in model-migration-kit's fleet***, and it is no longer the thing that
 moves §11.4 here. Also open: #36 #37 #38 #39 #24 #27 #20 #21 #13 #28 #43.
+
+## [Windows 2026-08-26 16:15] The "24% worse" re-run: the denominator was the other machine's, and every ratio that looked like a win reverses
+
+**#45's obligation is discharged. The 08:30 daily report is retracted in all
+three of its ratios, and the two it called wins are losses.** Same numerator to
+the token — 52,802,196 tokens over 398 calls, which the corpus reproduces at a
+cutoff of **12:40:03 UTC**, the 398th call of the day — and the same 08-26 UTC
+window. Only the denominator changed, from the +/-6-minute timestamp rule to
+the reflog (`attribution.py`, #45).
+
+| 08-26 denominator, window 00:00-12:40 UTC | commits | insertions | code |
+|---|---|---|---|
+| +/-6-minute rule, as published | 50 | 10,025 | 5,493 |
+| **reflog: shas this clone wrote** | **22** | **3,841** | **833** |
+| every machine | 66 | 12,979 | 7,912 |
+| over-attribution | **2.27x** | **2.61x** | **6.59x** |
+
+| ratio, 08-25 -> 08-26, both sides this clone | published | re-run |
+|---|---|---|
+| tokens / commit | 1,778,703 -> 1,056,044, 0.59x better | **1,778,703 -> 2,400,100, 1.35x WORSE** |
+| tokens / insertion | 4,232 -> 5,267, 1.24x worse | **4,232 -> 13,747, 3.25x WORSE** |
+| tokens / code insertion | 15,783 -> 9,613, 0.61x better | **15,783 -> 63,388, 4.02x WORSE** |
+
+**The mixture argument was misattribution too, and that is the part worth
+keeping.** The 08:30 headline explained its two surviving wins as an artefact of
+mix — 08-25 doc-heavy, 08-26 code-heavy. On this machine's own lines 08-26 was
+**doc-heavy as well**: 833 code against 2,050 docs. The code lines the argument
+leaned on were the other machine's. The section reasoned correctly about a
+mixture that was not this machine's mixture, which is the same error one level
+up from the one it was correcting.
+
+**The published floor was a floor, and it was 13x low.** 08:30 argued that the
+6-minute window can only misattribute macOS commits *to* Windows, so 10,025 was
+an upper bound on the denominator and 24% was a floor on how much worse the day
+got. Direction right, size not: the true figure is 225% worse, not 24%.
+
+**The day as it stands now, from the tool rather than from a reconstruction**
+(`agent-yield report --since 2026-08-25 --machine`, 19:54 UTC, and the day is
+not over):
+
+```
+2026-08-25   17,787,031 tokens   146 calls   10 commits   tok/commit 1,778,703   per-insertion  4,232/15,783/5,880
+2026-08-26  138,660,430 tokens   950 calls   49 commits   tok/commit 2,829,805   per-insertion 16,484/43,223/33,077
+```
+
+Unscoped, the same day reads 118 commits, 5,697 tok/insertion and 1,175,088
+tok/commit — **2.89x better on the yield metric, from the denominator alone.**
+That gap is now visible in one command, which is what #44 and #45 were for.
+
+**The halves are quoted above only to retract a published row.** #46's finding 2
+stands: `tokens_per_code_insertion` does not exist, `PerInsertion.render`
+formats all three or none, and the code half is never a headline. Here it is
+printed to close a claim that was made in that unit before the rule existed.
+
+**One correction to #45's own write-up, which this re-run needed first.** It
+reads "on 08-26 this machine's denominator falls from 108 commits to 63." The
+63 is the **macOS** clone's — that section is macOS-authored and quotes its own
+`outcomes --machine`, where 08-25 shows `commits=0 unattributable=10`. On
+Windows the same command reads 10 and 49. The two clones reconcile against the
+shared history: 49 + 63 + 6 older-than-either-reflog = 118. The estimate that
+this machine's figure was "~1.7x worse than published" was the other machine's
+ratio; on the published window the real one is 2.27x.
+
+**What this does not settle.** n=2 days, one of them still running, and the
+restart discipline makes a session cheap for reasons no threshold can claim
+(#26's confound). The re-run says the published direction was wrong, not that
+the work got 3.25x less efficient in a day: 08-25 was 146 calls and 08-26 is
+950, and a day that runs six experiments and an audit is not the same task.
+**Do not quote 24%, 0.59x, 0.61x or 5,267 again.** The reproducible pair is
+4,232 -> 13,747 on the published window, both sides this clone.
+
+**Method, since the CLI cannot reproduce the middle row.** `report` buckets by
+UTC day and the published window ends at 12:40:03, so the windowed figures come
+from `git log main --first-parent --numstat` over 00:00-12:40:03 UTC, each sha
+labelled by `attribution.Machine` and each path by `outcomes.classify_path` —
+the tool's own two rules, called directly. The full-day figures are the CLI's.
+
+**Also filed: #66**, asking the macOS machine for its status line — the
+`settings.json` stanza, its scripts, and whether `agent-yield statusline` is in
+the chain. The status line is the only surface here that costs zero tokens to
+read, and this machine's is the generic one.
