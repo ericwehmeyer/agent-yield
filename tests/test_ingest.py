@@ -41,6 +41,26 @@ def test_duplicate_message_and_request_pairs_are_counted_once(tmp_path):
     assert len(load_records([path])) == 1
 
 
+def test_a_subagent_transcript_reached_twice_is_billed_once(tmp_path):
+    """The 2026-08-26 layout: the agent transcript lives under the project
+    directory and `tasks/<agentId>.output` is a SYMLINK to it, so a walk of both
+    roots hands `load_records` the same file under two paths. 84 of the 142
+    transcripts on the Mac are symlinks -- see `discovery`. Nothing but the
+    `(message_id, request_id)` dedup stands between that and a doubled subagent
+    bill, which is the number §3.1 decomposes.
+    """
+    real = tmp_path / "agent-a1.jsonl"
+    real.write_text(_line(req="r1", msg="m1", cr=90_000, sub=True, agent="a1") + "\n",
+                    encoding="utf-8")
+    link = tmp_path / "a1.output"
+    link.symlink_to(real)
+
+    records = load_records([real, link])
+    assert len(records) == 1
+    assert records[0].usage.cache_read_tokens == 90_000
+    assert records[0].is_subagent
+
+
 def test_records_without_ids_are_kept_not_dropped(tmp_path):
     path = tmp_path / "s.jsonl"
     line = json.dumps({

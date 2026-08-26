@@ -19,8 +19,8 @@ says nothing when it had something to say.
 **But failing open on a loader is indistinguishable from having nothing to
 load** (issue #29), and that is how this hook stayed broken for its first
 day alive: it read a key the harness does not send, declined every real
-session start, and said nothing about it. So the silences are named. There
-are five of them and they are not the same event:
+session start, and said nothing about it. So the outcomes are named. There
+are five of them, four of which are silences, and they are not the same event:
 
     injected                the handoff went into the session
     no_handoff              nothing at the path -- the ordinary case
