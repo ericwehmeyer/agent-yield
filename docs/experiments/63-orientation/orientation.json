@@ -1,0 +1,67 @@
+{
+ "arms": {
+  "split-r1": {
+   "agents": 5,
+   "calls": 24,
+   "dollars": 1.7212,
+   "parent_calls": 14,
+   "parent_dollars": 1.0805,
+   "per_agent_calls": [
+    5,
+    3,
+    4,
+    6,
+    6
+   ]
+  },
+  "split-r2": {
+   "agents": 5,
+   "calls": 24,
+   "dollars": 1.757,
+   "parent_calls": 7,
+   "parent_dollars": 0.416,
+   "per_agent_calls": [
+    6,
+    5,
+    4,
+    5,
+    4
+   ]
+  },
+  "packed-r1": {
+   "agents": 1,
+   "calls": 12,
+   "dollars": 1.4465,
+   "parent_calls": 7,
+   "parent_dollars": 0.3201,
+   "per_agent_calls": [
+    12
+   ]
+  },
+  "packed-r2": {
+   "agents": 1,
+   "calls": 15,
+   "dollars": 1.6111,
+   "parent_calls": 7,
+   "parent_dollars": 0.2214,
+   "per_agent_calls": [
+    15
+   ]
+  }
+ },
+ "orientation_calls": 2.625,
+ "orientation_calls_corners": [
+  2.25,
+  3.0
+ ],
+ "orientation_dollars": 0.05258,
+ "split_over_packed": 1.1376,
+ "packed_depth_calls": 13.5,
+ "arrival_here": 0.02841,
+ "arrival_corpus": 0.05826,
+ "corpus_runs": 91,
+ "break_even_band": [
+  35,
+  196
+ ]
+}

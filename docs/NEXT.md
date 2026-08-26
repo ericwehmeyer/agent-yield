@@ -1789,8 +1789,10 @@ At the optimistic corner cost never argues for splitting anything anyone has
 dispatched; at the pessimistic corner it starts to argue at the median. **That
 band is dominated by the orientation term, which rests on two runs of one
 task** — dispatch one agent over k slices against k agents over one slice each
-and count CALLS. That is one experiment, **filed as #63**, and it retires the
-widest error bar on the page. working-method **§11.4**; the falsifier is pre-registered in
+and count CALLS. That is one experiment, **filed as #63** — and it was already
+in the archive: **answered 2026-08-26, orientation is 2.62 calls, and the widest
+bar moved to the arrival price rather than closing.** See the last section of
+this file. working-method **§11.4**; the falsifier is pre-registered in
 `interventions.toml` and is scored on **defects found** and dollars, never on
 claims counted — #33's bar was on the denominator and would have passed an arm
 that found nothing.
@@ -1846,3 +1848,76 @@ and the ticket number gone. It was caught only because the tool echoed the new
 subject back. **Rebase this repo as `git -c core.commentChar=";" rebase ...`**,
 and read the subjects afterwards. 501 tests green across both lines of work.
 
+
+## [macOS 2026-08-26] #63 is answered from the archive, and it moved the error bar rather than retiring it
+
+`agent-yield handoff` before you restart. Then read this.
+
+**#63 asked for one experiment and that experiment had already been run.**
+"Dispatch one agent over k slices against k agents over one slice each and count
+CALLS" is exactly #33's baton arm (5 agents over 19 modules) against #47's
+baton1 arm (1 agent over the same 19) — same task, same brief, same return
+contract, same five-turn tail, n=2 each, compliance already verified from the
+transcripts and defects already scored. All four sessions' agent transcripts
+survive, both copies of each. **The second measurement cost nothing but a
+script**: `docs/experiments/63-orientation/orientation.py`.
+
+| | agents | agent calls | list dollars | $/call |
+|---|---|---|---|---|
+| split, r1 / r2 | 5 | 24 / 24 | 1.7212 / 1.7570 | 0.0725 |
+| packed, r1 / r2 | 1 | 12 / 15 | 1.4465 / 1.6111 | 0.1133 |
+
+**Extra calls per extra agent: 2.62** (corners 2.25-3.00), against §11.1's
+**3.50** from a different task at a different k. Two independent estimates that
+agree to within the spread of either — **so orientation is now the NARROW term**,
+and the thing §11.4 called its widest error bar is closed.
+
+**The direct result needs no equation.** Splitting multiplied the call count by
+**1.78** and divided the price of a call by **1.56**; net, splitting cost
+**1.14x**. That is under #33's own 1.25x bar, so it establishes the sign and not
+the size — but the sign is the rule's, at a packed depth of 13.5 calls, and the
+packed arm found no fewer defects. End to end the four arms price at $2.80 /
+$2.17 against $1.77 / $1.83, **reproducing the CLI's own `total_cost_usd` means
+of $2.54 and $1.81 to within 3%** on transcripts `pricing.py` was never
+calibrated against.
+
+### The bar moved to the arrival price, and an arrival is a PRICED PREFIX
+
+| | |
+|---|---|
+| cold arrival — the **first** agent of a session | **$0.1299** (n=15) |
+| warm arrival — every agent after it | **$0.0573** (n=76) |
+
+A split pays one cold arrival and k-1 warm ones, so **warm is the marginal
+price**, and the corpus median ($0.0583) is essentially it. A warm arrival's
+prefix is **14,992 cache read + 7,124 write + 228 output**, and the read is
+14,992 at p25, median *and* p75 — it is the harness's own system prompt and tool
+schema, identical for every agent. Priced straight from those three numbers:
+**$0.0577**, which is §11.4's arrival figure rebuilt from its parts rather than
+quoted.
+
+**The #33/#47 agents arrive on half that prefix** — 6,650 + 3,139, 2.3x smaller,
+because those sessions ran with five tools disallowed and a compact brief — and
+so at **$0.0284**. Break-even is therefore **72-196 calls on the standard tool
+schema and 35-97 on a trimmed one**, against a 52-call median dispatch. **A
+tighter brief argues for SPLITTING, not for packing**, which nothing in §11
+anticipated and which makes §12's rubric a lever on the packing number.
+
+### What this does not answer, and it is now the only open question
+
+**Every arm anyone has ever run sat at a packed depth of 15 calls or fewer** —
+§11.1's at 5, this one at 13.5 — against a median real dispatch of 52 and a
+break-even quoted in the high tens. The rule *never split on cost* is measured
+at a fifth of the depth it is applied at; above ~15 calls it is arithmetic.
+**#64 is filed and pre-registered**: the same comparison sized so the packed arm
+takes **at least 50 calls**, run at both tool schemas, scored in list dollars
+and defects found. Nothing else can move §11.4.
+
+**Do not refit the growth term from short runs.** These twelve agents fit
+$0.017/call, and the two packed ones $0.0072, against §11.4's $0.00153 — because
+a slope fitted on a 3-6 call run measures its **terminal** call, the one carrying
+the return payload, not depth. §11.4 fitted runs of >=20 calls and was right to.
+
+**Limits:** four runs of one task, one packing alternative (5 against 1, nothing
+between), two working trees of byte-identical source (#47 pinned `src/` to
+76cbf08), and a packed depth of 13.5 against a break-even in the high tens.
