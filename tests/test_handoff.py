@@ -70,6 +70,7 @@ def _repo(tmp_path: Path) -> Path:
             full["GIT_AUTHOR_DATE"] = full["GIT_COMMITTER_DATE"] = when
         subprocess.run(["git", *args], cwd=repo, check=True,
                        capture_output=True, text=True,
+                       encoding="utf-8", errors="replace",
                        env={**_environ(), **full})
     git("init", "-q")
     (repo / "old.txt").write_text("old\n", encoding="utf-8")

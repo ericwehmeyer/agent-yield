@@ -18,7 +18,8 @@ def _git(cwd: Path, *args: str, **env_extra: str) -> None:
         **env_extra,
     }
     subprocess.run(
-        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True, check=True
+        ["git", *args], cwd=cwd, env=env, capture_output=True, text=True,
+        encoding="utf-8", errors="replace", check=True
     )
 
 
