@@ -10,13 +10,47 @@ from agent_yield.outcomes import DailyOutcome, daily_outcomes, default_branch
 WHEN = "2026-08-24T12:00:00+00:00"
 
 
-def _git(cwd: Path, *args: str, **env_extra: str) -> None:
+# Variables a child process cannot start without, copied from the parent when
+# the parent has them. The stripped environment below is deliberate -- it is
+# what keeps git deterministic here, free of the operator's own config -- but
+# stripping `SystemRoot` is not part of that intent: it is a documented way to
+# break a child process on Windows, and the failure would present as an
+# unreproducible one-platform CI flake rather than as this helper's doing
+# (audit N9). Absent on POSIX, so no branch on os.name: "pass it through if it
+# is there" is the correct rule on every platform.
+_PASS_THROUGH = ("PATH", "SystemRoot")
+
+
+def _git_env(**extra: str) -> dict[str, str]:
     env = {
         "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
         "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e",
-        "PATH": os.environ["PATH"],
-        **env_extra,
     }
+    for name in _PASS_THROUGH:
+        if name in os.environ:
+            env[name] = os.environ[name]
+    env.update(extra)
+    return env
+
+
+def test_the_git_helper_hands_the_child_what_it_cannot_start_without(monkeypatch):
+    """N9: the helper built its env from PATH and four identity variables.
+
+    It works with this git build and would break on a Windows box whose git
+    needs `SystemRoot` -- on one leg of the matrix, intermittently, looking
+    like anything but a test helper. Asserted on all three platforms rather
+    than behind a skipif: the rule under test is "copy it if the parent has
+    it", which is true everywhere, and a Windows-only assertion here would go
+    unrun on the machine most likely to edit this file.
+    """
+    monkeypatch.setenv("SystemRoot", "C:/Windows")
+    env = _git_env()
+    assert env["SystemRoot"] == "C:/Windows"
+    assert env["PATH"] == os.environ["PATH"]
+
+
+def _git(cwd: Path, *args: str, **env_extra: str) -> None:
+    env = _git_env(**env_extra)
     subprocess.run(
         ["git", *args], cwd=cwd, env=env, capture_output=True, text=True,
         encoding="utf-8", errors="replace", check=True
