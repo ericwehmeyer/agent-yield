@@ -6,6 +6,8 @@ import datetime as dt
 from pathlib import Path
 
 from . import gate as gate_module
+from . import handoff as handoff_module
+from . import session as session_module
 from .discovery import default_roots
 from .ingest import ingest, load_ingested
 from .interventions import load_interventions
@@ -17,6 +19,7 @@ from .modes import (
     tagged_sessions,
     untagged_sessions,
 )
+from .handoff import DEFAULT_HANDOFF_PATH
 from .outcomes import daily_outcomes
 from .predict import project
 from .report import build_rows, compare_interventions, render_table
@@ -105,6 +108,41 @@ def _empty_metric_note(metric: str) -> str:
         f"  all rows are empty for {metric!r}{because}"
         f" -- try --metric {alternative}"
     )
+
+
+def _cmd_handoff(args) -> int:
+    """Write down what a restart destroys -- or read back what was written."""
+    out = Path(args.out)
+    if args.read_:
+        text = handoff_module.read(out)
+        if text is None:
+            print(f"no handoff at {out} "
+                  "-- run `agent-yield handoff` before restarting")
+            return 0
+        print(text, end="" if text.endswith("\n") else "\n")
+        return 0
+
+    root = Path(args.transcripts) if args.transcripts else None
+    path = session_module.find_session(args.session_id, root)
+    stats = (session_module.session_stats(path, args.baseline_calls)
+             if path is not None else None)
+
+    # Notes already in the file are carried forward: regenerating a handoff
+    # must not delete the one section a human wrote by hand.
+    notes = handoff_module.existing_notes(out) + list(args.note or [])
+    handoff = handoff_module.build(Path(args.repo), stats, notes)
+    handoff_module.write(out, handoff_module.render(handoff))
+
+    print(f"handoff written to {out}")
+    if stats is None:
+        print("  no session transcript found -- cost is unmeasured in it")
+    if handoff.dirty:
+        print(f"  working tree is DIRTY ({len(handoff.dirty)} path(s)) "
+              "-- commit or stash before restarting")
+    if not notes:
+        print("  nothing claimed as unfinished "
+              "-- `agent-yield handoff --note \"...\"` if something is")
+    return 0
 
 
 def _cmd_tag(args) -> int:
@@ -200,6 +238,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", default=".")
     p.add_argument("--calls", default=str(DEFAULT_CALLS_PATH))
     p.set_defaults(func=_cmd_tag)
+
+    p = subs.add_parser("handoff", help="write down what a restart destroys")
+    p.add_argument("--out", default=str(DEFAULT_HANDOFF_PATH))
+    p.add_argument("--repo", default=".")
+    p.add_argument("--session-id", dest="session_id",
+                   help="which session; default is the most recent transcript")
+    p.add_argument("--transcripts", help="transcript root (default: discovered)")
+    p.add_argument("--baseline-calls", dest="baseline_calls", type=int,
+                   default=10, help="calls averaged for the opening context")
+    p.add_argument("--note", action="append",
+                   help="what is claimed and unfinished (repeatable)")
+    p.add_argument("--read", dest="read_", action="store_true",
+                   help="print the handoff instead of writing one")
+    p.set_defaults(func=_cmd_handoff)
 
     p = subs.add_parser("gate", help="PreToolUse hook entry point")
     p.set_defaults(func=lambda _args: gate_module.main())

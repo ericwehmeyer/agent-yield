@@ -1,0 +1,177 @@
+"""Tests for the handoff: what a restart destroys, written down first."""
+
+from __future__ import annotations
+
+import datetime as dt
+import json
+import subprocess
+from pathlib import Path
+
+from agent_yield import handoff as handoff_module
+from agent_yield.handoff import (
+    NOTES_HEADING,
+    build,
+    dirty_paths,
+    existing_notes,
+    landed_since,
+    read,
+    render,
+    write,
+)
+from agent_yield.session import session_stats
+
+NOW = dt.datetime(2026, 8, 26, 3, 0, tzinfo=dt.timezone.utc)
+
+
+def _line(*, index: int, cache_read: int, session_id: str = "s1",
+          output_tokens: int = 5, sidechain: bool = False) -> str:
+    record = {
+        "timestamp": f"2026-08-26T02:{index // 60:02d}:{index % 60:02d}.000Z",
+        "sessionId": session_id,
+        "requestId": f"req-{index}",
+        "message": {
+            "id": f"msg-{index}",
+            "usage": {
+                "input_tokens": 3,
+                "output_tokens": output_tokens,
+                "cache_creation_input_tokens": 7,
+                "cache_read_input_tokens": cache_read,
+            },
+        },
+    }
+    if sidechain:
+        record["isSidechain"] = True
+    return json.dumps(record)
+
+
+def _transcript(tmp_path: Path, calls: int = 20) -> Path:
+    path = tmp_path / "s1.jsonl"
+    lines = [_line(index=i, cache_read=1_000 * (i + 1)) for i in range(calls)]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return path
+
+
+def _repo(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
+           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e"}
+    def git(*args, when: str | None = None):
+        full = dict(env)
+        if when:
+            full["GIT_AUTHOR_DATE"] = full["GIT_COMMITTER_DATE"] = when
+        subprocess.run(["git", *args], cwd=repo, check=True,
+                       capture_output=True, text=True,
+                       env={**_environ(), **full})
+    git("init", "-q")
+    (repo / "old.txt").write_text("old\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "before the session", when="2026-08-20T12:00:00 +0000")
+    (repo / "new.txt").write_text("new\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "during the session", when="2026-08-26T02:30:00 +0000")
+    return repo
+
+
+def _environ() -> dict:
+    import os
+    return dict(os.environ)
+
+
+def test_the_four_usage_fields_stay_apart(tmp_path):
+    stats = session_stats(_transcript(tmp_path))
+    text = render(build(tmp_path, stats, now=NOW))
+    for field in ("input", "output", "cache write", "cache read"):
+        assert f"| {field} |" in text
+    assert "| calls | 20 |" in text
+
+
+def test_tokens_never_money(tmp_path):
+    stats = session_stats(_transcript(tmp_path))
+    assert "$" not in render(build(tmp_path, stats, now=NOW))
+
+
+def test_unmeasurable_renders_as_a_dash_not_a_zero(tmp_path):
+    short = tmp_path / "short.jsonl"
+    short.write_text(_line(index=0, cache_read=10) + "\n", encoding="utf-8")
+    stats = session_stats(short)
+    text = render(build(tmp_path, stats, now=NOW))
+    # One call: growth is unmeasurable, and must not read as "no growth".
+    assert "| growth | - |" in text
+    assert "| growth | 0" not in text
+
+
+def test_no_transcript_says_so_rather_than_reporting_a_free_session(tmp_path):
+    text = render(build(tmp_path, None, now=NOW))
+    assert "no cost measurement" in text
+
+
+def test_landed_lists_only_commits_since_the_session_started(tmp_path):
+    repo = _repo(tmp_path)
+    since = dt.datetime(2026, 8, 26, 0, 0, tzinfo=dt.timezone.utc)
+    subjects = landed_since(repo, since)
+    assert any("during the session" in s for s in subjects)
+    assert not any("before the session" in s for s in subjects)
+
+
+def test_landed_is_empty_when_the_session_start_is_unknown(tmp_path):
+    assert landed_since(_repo(tmp_path), None) == []
+
+
+def test_a_dirty_tree_is_announced_loudly_with_its_paths(tmp_path):
+    repo = _repo(tmp_path)
+    (repo / "unsaved.txt").write_text("half done\n", encoding="utf-8")
+    text = render(build(repo, None, now=NOW))
+    assert "DIRTY" in text
+    assert "unsaved.txt" in text
+
+
+def test_a_clean_tree_says_a_restart_loses_nothing_uncommitted(tmp_path):
+    text = render(build(_repo(tmp_path), None, now=NOW))
+    assert "Clean." in text
+
+
+def test_outside_a_repository_the_tree_is_unknown_not_clean(tmp_path):
+    assert dirty_paths(tmp_path) is None
+    text = render(build(tmp_path, None, now=NOW))
+    assert "Unknown" in text
+    assert "Clean." not in text
+
+
+def test_notes_come_from_the_operator_and_survive_regeneration(tmp_path):
+    path = tmp_path / "handoff.md"
+    write(path, render(build(tmp_path, None, ["thresholds half done"], now=NOW)))
+    assert existing_notes(path) == ["thresholds half done"]
+
+    carried = existing_notes(path) + ["and the hook is unmeasured"]
+    write(path, render(build(tmp_path, None, carried, now=NOW)))
+    assert existing_notes(path) == [
+        "thresholds half done",
+        "and the hook is unmeasured",
+    ]
+
+
+def test_an_empty_notes_section_reads_back_as_no_notes(tmp_path):
+    path = tmp_path / "handoff.md"
+    write(path, render(build(tmp_path, None, now=NOW)))
+    assert existing_notes(path) == []
+    assert NOTES_HEADING in path.read_text(encoding="utf-8")
+
+
+def test_read_returns_none_when_there_is_no_handoff(tmp_path):
+    assert read(tmp_path / "missing.md") is None
+
+
+def test_write_creates_the_directory_it_is_pointed_at(tmp_path):
+    path = handoff_module.write(tmp_path / "a" / "b" / "handoff.md", "# x\n")
+    assert path.read_text(encoding="utf-8") == "# x\n"
+
+
+def test_sidechain_calls_are_not_counted_as_the_parents_context(tmp_path):
+    path = tmp_path / "s1.jsonl"
+    lines = [_line(index=i, cache_read=1_000) for i in range(12)]
+    lines.append(_line(index=99, cache_read=900_000, sidechain=True))
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    text = render(build(tmp_path, session_stats(path), now=NOW))
+    assert "| calls | 12 |" in text
+    assert "900,000" not in text

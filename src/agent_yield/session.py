@@ -13,6 +13,7 @@ was free".  This module is read-only; it never writes a file.
 
 from __future__ import annotations
 
+import datetime as dt
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -44,6 +45,10 @@ class SessionStats:
 
     ``opening_context_per_call``, ``context_per_call`` and ``growth`` are
     ``None`` when the session is too short to measure them.
+
+    ``started`` is the timestamp of the session's first main-thread call.
+    A handoff needs it to ask git what landed *during this session* rather
+    than listing the whole branch as if the session had done it.
     """
 
     path: Path
@@ -53,6 +58,7 @@ class SessionStats:
     context_per_call: float | None
     growth: float | None
     total: Usage
+    started: dt.datetime | None = None
 
 
 def find_session(session_id: str | None = None, root: Path | None = None) -> Path | None:
@@ -116,6 +122,7 @@ def session_stats(path: Path, baseline_calls: int = 10) -> SessionStats:
             context_per_call=None,
             growth=None,
             total=Usage.zero(),
+            started=None,
         )
 
     contexts = [_context(r) for r in main]
@@ -139,6 +146,7 @@ def session_stats(path: Path, baseline_calls: int = 10) -> SessionStats:
         context_per_call=context_per_call,
         growth=growth,
         total=total_usage(main),
+        started=main[0].timestamp,
     )
 
 

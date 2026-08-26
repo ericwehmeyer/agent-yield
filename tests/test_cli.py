@@ -180,3 +180,69 @@ def test_an_all_empty_metric_names_the_flag_rather_than_printing_dashes(
     assert "'tokens_per_merge'" in out
     assert "tokens_per_commit" in out
     assert "$" not in out
+
+
+def _transcript_root(tmp_path, calls: int = 20):
+    """A transcript root holding one session, the way discovery finds one."""
+    root = tmp_path / "transcripts"
+    root.mkdir()
+    lines = []
+    for index in range(calls):
+        lines.append(json.dumps({
+            "type": "assistant",
+            "timestamp": f"2026-08-26T02:{index // 60:02d}:{index % 60:02d}.000Z",
+            "requestId": f"req-{index}", "sessionId": "s1",
+            "message": {"id": f"msg-{index}",
+                        "usage": {"cache_read_input_tokens": 1_000 * (index + 1)}},
+        }))
+    (root / "s1.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return root
+
+
+def test_handoff_writes_a_readable_file(tmp_path, capsys):
+    out = tmp_path / ".agent-yield" / "handoff.md"
+    assert main(["handoff", "--out", str(out), "--repo", str(tmp_path),
+                 "--transcripts", str(_transcript_root(tmp_path))]) == 0
+    assert "handoff written" in capsys.readouterr().out
+    text = out.read_text(encoding="utf-8")
+    assert "## Session cost so far" in text
+    assert "| calls | 20 |" in text
+    assert "$" not in text
+
+
+def test_handoff_notes_are_appended_and_survive_a_second_run(tmp_path, capsys):
+    out = tmp_path / "handoff.md"
+    root = _transcript_root(tmp_path)
+    assert main(["handoff", "--out", str(out), "--repo", str(tmp_path),
+                 "--transcripts", str(root), "--note", "thresholds half done"]) == 0
+    assert main(["handoff", "--out", str(out), "--repo", str(tmp_path),
+                 "--transcripts", str(root), "--note", "hook unmeasured"]) == 0
+    text = out.read_text(encoding="utf-8")
+    assert "thresholds half done" in text
+    assert "hook unmeasured" in text
+
+
+def test_handoff_read_prints_the_file(tmp_path, capsys):
+    out = tmp_path / "handoff.md"
+    assert main(["handoff", "--out", str(out), "--repo", str(tmp_path),
+                 "--transcripts", str(_transcript_root(tmp_path))]) == 0
+    capsys.readouterr()
+    assert main(["handoff", "--out", str(out), "--read"]) == 0
+    assert "## Working tree" in capsys.readouterr().out
+
+
+def test_handoff_read_with_no_handoff_says_so(tmp_path, capsys):
+    assert main(["handoff", "--out", str(tmp_path / "none.md"), "--read"]) == 0
+    assert "no handoff" in capsys.readouterr().out
+
+
+def test_handoff_without_a_transcript_still_writes_and_says_cost_is_unmeasured(
+    tmp_path, capsys
+):
+    out = tmp_path / "handoff.md"
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert main(["handoff", "--out", str(out), "--repo", str(tmp_path),
+                 "--transcripts", str(empty)]) == 0
+    assert "no session transcript found" in capsys.readouterr().out
+    assert "no cost measurement" in out.read_text(encoding="utf-8")
