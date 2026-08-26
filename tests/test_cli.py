@@ -1,4 +1,7 @@
 import json
+import os
+import subprocess
+import sys
 
 from agent_yield import cli
 from agent_yield.cli import main
@@ -360,3 +363,47 @@ def test_arming_a_refusal_is_an_explicit_command(tmp_path, monkeypatch, capsys):
     assert main(["boundary", "--arm-refusal"]) == 0
     assert (tmp_path / "armed").exists()
     assert "one exit-2 refusal" in capsys.readouterr().out
+
+
+def test_help_emits_utf8_bytes_when_the_console_encoding_is_cp1252():
+    """#43: the write side of the section mark, and it is a BYTES claim.
+
+    `sys.stdout.encoding` is cp1252 on Windows, so a section mark printed
+    straight to the stream leaves a bare `0xA7` -- not valid UTF-8, so a
+    consumer decoding the stream fails on the whole read rather than losing
+    one glyph. `--help` did it on every invocation on that platform.
+
+    The assertion is on the emitted bytes of a real child process, because an
+    in-process assertion cannot see this bug at all: the string round-trips
+    perfectly inside Python no matter what the stream is set to, which is
+    exactly why it survived this long.
+
+    `PYTHONIOENCODING=cp1252` reproduces the Windows console on macOS and
+    Linux, so this test fails everywhere without the fix rather than only on
+    the machine that has the problem -- section 3.1's whole complaint.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "agent_yield.cli", "--help"],
+        capture_output=True,
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"},
+    )
+    raw = result.stdout
+    assert b"\xa7" in raw, "no section mark left in --help to test"
+    text = raw.decode("utf-8")  # the claim. Today: 0xa7 at position 794.
+    assert "§" in text
+
+
+def test_help_exits_zero():
+    """`--help` is not an error, and `agent-yield --help` exited 2.
+
+    `main` catches argparse's SystemExit to turn a usage error into a return
+    code, with `int(exc.code) if exc.code else 2`. argparse exits **0** for
+    `--help`, 0 is falsy, and the fallback meant for `code is None` fired --
+    so the one invocation guaranteed to succeed reported failure to every
+    caller that checks. Found by the #43 byte test, which had to assert a
+    return code to trust its own stdout.
+    """
+    result = subprocess.run(
+        [sys.executable, "-m", "agent_yield.cli", "--help"], capture_output=True
+    )
+    assert result.returncode == 0, result.stderr[-400:]

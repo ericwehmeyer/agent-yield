@@ -86,42 +86,32 @@ def _keywords(node: ast.Call) -> set[str]:
 
 
 @pytest.mark.parametrize("path", _SOURCES, ids=_rel)
-def test_every_subprocess_call_names_its_encoding(path):
+def test_every_decoding_subprocess_call_names_its_encoding(path):
     """#41: a subprocess read decoded as cp1252 and corrupted the text.
 
     `subprocess.run(..., text=True)` with no `encoding=` decodes the child's
-    bytes with `locale.getpreferredencoding()` -- cp1252 on this machine,
-    UTF-8 on the other. Git speaks UTF-8 on both. The Windows read did not
+    bytes with `locale.getpreferredencoding()` -- cp1252 on Windows, UTF-8 on
+    the other machine. Git speaks UTF-8 on both. The Windows read did not
     raise; it returned different text, which is why nothing noticed.
+
+    The rule is about calls that DECODE, and the first draft was not: it
+    demanded `encoding=` on every call, including binary ones. A call with no
+    `text=` returns bytes, and bytes are the same on every platform -- the
+    #43 test has to read raw bytes precisely because decoding is what hides
+    the bug. A guard that bans the correct spelling of the fix teaches people
+    to route around the guard.
     """
     offenders = [
         node.lineno
         for node in _calls(path, ("subprocess.run", "Popen"))
-        if "encoding" not in _keywords(node)
+        if {"text", "universal_newlines"} & _keywords(node)
+        and "encoding" not in _keywords(node)
     ]
     assert not offenders, (
-        f"{_rel(path)}:{offenders} calls a subprocess without encoding= -- "
-        "the child's bytes then decode as cp1252 on Windows and UTF-8 "
-        "elsewhere, silently (#41). Pass encoding='utf-8', errors='replace'."
-    )
-
-
-@pytest.mark.parametrize("path", _SOURCES, ids=_rel)
-def test_no_text_mode_subprocess_without_an_encoding(path):
-    """#41 again, from the other side.
-
-    `text=True` is the flag that makes the decode happen at all, so it is the
-    one an author reaches for. Stated as its own rule because it is the one
-    that will be typed next, and a rule people can read beats a rule that
-    happens to also cover the case.
-    """
-    offenders = [
-        node.lineno
-        for node in _calls(path, ("subprocess.run", "Popen"))
-        if "text" in _keywords(node) and "encoding" not in _keywords(node)
-    ]
-    assert not offenders, (
-        f"{_rel(path)}:{offenders} passes text=True with no encoding= (#41)."
+        f"{_rel(path)}:{offenders} decodes a child's output with no encoding= "
+        "-- cp1252 on Windows, UTF-8 elsewhere, silently and without raising "
+        "(#41). Pass encoding='utf-8', errors='replace', or drop text= and "
+        "read bytes."
     )
 
 

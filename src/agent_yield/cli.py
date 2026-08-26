@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import sys
 from pathlib import Path
 
 from . import boundary as boundary_module
@@ -356,6 +357,17 @@ def _list_tags(path: Path, calls_path: Path) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # #43: `sys.stdout.encoding` is cp1252 on Windows, so a section mark
+    # printed straight to the stream leaves a bare 0xA7 -- not valid UTF-8,
+    # so a consumer decoding the stream fails on the WHOLE read rather than
+    # losing one glyph. `--help` did it on every invocation there.
+    #
+    # Explicitly here rather than PYTHONUTF8, because it must not depend on
+    # how the process was launched: hooks invoke this, and their environment
+    # is not ours. `hasattr` because a caller may have replaced the stream
+    # with something that is not a TextIOWrapper -- pytest's capture does.
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(prog="agent-yield")
     subs = parser.add_subparsers(dest="command", required=True)
 
@@ -484,7 +496,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
-        return int(exc.code) if exc.code else 2
+        # `is not None`, not truthiness: argparse exits 0 for `--help`, and
+        # `if exc.code` sent that 0 down the usage-error branch and returned 2.
+        return int(exc.code) if exc.code is not None else 2
     return args.func(args)
 
 
