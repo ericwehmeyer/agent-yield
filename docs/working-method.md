@@ -297,6 +297,90 @@ at a token limit with ten having written nothing, and that work is gone. This
 document exists because the method itself was, for most of a session, one of
 those unwritten findings.
 
+
+## 11. The method's own yield, measured end to end
+
+**Everything above is per-call economics. This is the first measurement of
+whether the method actually ships more per token — and the headline is a null
+result.** One session, 2026-08-26, on the MacBook Pro, split at the first
+dispatch.
+
+| | solo (#11) | dispatching (#12, #14–16) |
+|---|---|---|
+| tokens | 2,396,312 | 8,971,302 |
+| issues closed | 1 | 4 |
+| lines added | 323 | 1,812 |
+| **tokens / issue** | 2,396,312 | 2,242,826 |
+| **tokens / line** | 7,419 | 4,951 |
+
+**1.07× per issue. 1.50× per line.** Against per-call economics that predicted
+6.2×. The agents were cheap — 48,504 context/call across 55 calls. The parent
+ate the difference: its context went **58,475 → 126,522** context/call between
+the two phases, because it read every diff, ran every suite, and wrote every
+measurement script itself, at steadily growing context.
+
+That is §6's falsification bullet firing — *"if central commits become the
+bottleneck rather than the dependency graph, the parent is doing too much."*
+It was.
+
+### Why: cost is superlinear in the length of any single unit of work
+
+`cost ≈ calls × context`, and context grows with every call *inside* a unit, so
+each call re-reads a bigger pile than the last. Fitted on this session:
+
+| | exponent |
+|---|---|
+| four briefed agents | cost ≈ calls<sup>1.54</sup> |
+| this parent session | cost ≈ calls<sup>1.41</sup> |
+
+Not quadratic, but firmly superlinear — and that is the whole lever. **The same
+work is cheaper as more, shorter units.** The heavy context, the slow cache
+reads and the spinning are one fact seen three ways: cache reads are 97.5% of
+tokens *and* the latency.
+
+### The three levers, in measured order
+
+**1. Cap agent length. Measured 2.2×.** One agent ran 27 calls and cost
+**1,879,466 tokens — 21% of the entire session in a single dispatch.** The same
+27 calls as three 9-call agents, priced at the *measured* 9-call cost, is
+840,036. §2's brief controls where an agent starts; nothing controlled where
+that one ended. Cap a dispatch at ~10 calls and split the task instead.
+
+**2. Restart the parent when context/call doubles. ~1.5×.** This session ran
+93 calls, **45,830 → 175,677 context/call**. By the end every call cost ~4× a
+call at the start, including trivial ones. §10 says to restart above 50% of the
+window; the better trigger is *context/call having doubled from the session's
+opening calls*, which is measurable, arrives earlier, and does not depend on
+knowing the window size.
+
+**3. Dispatch the mechanical verification, not the judgment.** This is where
+the parent's growth came from — and it is the lever to apply most carefully,
+because two of the three best catches in the session came from the parent
+**not** rubber-stamping: a `commits` column one agent dropped to meet a width
+budget while a sibling was adding a metric built on it, and an account name
+leaking through a helper written to keep home directories out of a page.
+Neither agent could see outside its own brief. So hand off *running the suite,
+producing the diff, generating the measurement* — and keep the cross-cutting
+read, which is a handful of calls, not forty.
+
+### Limits
+
+n=4 agents and one parent session. The 2.2× is measured; the 1.5× and both
+exponents are fits over few points. The split is by wall-clock phase, and the
+two phases did not ship the same kind of work — which is why tokens/line is
+reported next to tokens/issue rather than instead of it.
+
+### What would falsify this section
+
+- **If a task split into three short agents costs the same as one long one**,
+  the superlinear fit is an artefact and lever 1 is worthless. It is the
+  cheapest of the three to test: dispatch the same task both ways and compare.
+- **If a restarted parent needs so much re-reading to become useful that it
+  costs more than it saved**, lever 2 is a wash. Measure the first ten calls of
+  a fresh session against the last ten of the one it replaced.
+- **If dispatched verification misses the class of defect the parent caught
+  here**, lever 3 is a false economy no matter what it saves.
+
 ---
 
 ## What would falsify this
