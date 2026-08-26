@@ -1470,3 +1470,70 @@ ticket-numbering lesson holding for the third time.
 
 **Limits.** n=2, one task, and only two packings — 1 agent against 5, nothing
 between them, and the minimum this predicts is untested.
+
+### [Windows 09:55] The audit's first four slices, and a sixth defect the guard found
+
+**#51, #49, #50 and #43 are closed, in that order, and CI is green on six
+matrix jobs.** The order came from the audit
+(`docs/superpowers/specs/2026-08-26-audit-portability.md`), not from the
+tickets, and it superseded both: #50 said "add CI" and the audit's counting
+says CI alone catches **one** of the five specimens.
+
+**#51 first, because it invalidated numbers already in print.** `find_session`
+compared a case-preserving slug to a directory name with `==`. Windows does
+not canonicalise path case, so `cd c:\users\ewehm\repos\agent-yield` produced
+`c--Users-...` against the real `C--Users-...`, nothing matched, and `status`
+printed nothing and exited 0. `os.path.normcase` on both sides: folds on
+Windows, identity on POSIX, where `/repo/Mine` and `/repo/mine` are two
+projects and folding would hand one of them the other's cost. Verified live
+from a lowercase cwd. **The 3.9x growth figure above was taken from a shell
+that happened to capitalise the drive letter; that is luck, not measurement.**
+
+**The test takes a LOWERCASE drive letter as input.** Written with the natural
+`C:` it passes against the broken code — which is exactly how this survived
+`68f062f`, the morning fix of the same function, written on the affected
+machine by someone who had just diagnosed the class.
+
+**The guard (#49) found two real hits on its first run**, both in the suite:
+`test_outcomes.py:20` and `test_handoff.py:71` call git with `text=True` and
+no `encoding=`, in the file whose own docstring explains why that is the bug.
+That is the audit's N7 and it is now fixed.
+
+**Two things the guard taught, and both are about guards, not about Windows.**
+Its first draft grepped, and fired on a **docstring** quoting the banned call.
+A guard that fires on prose gets satisfied by rewording prose — it teaches the
+reflex of silencing the alarm — so the scan moved to `ast.walk`, where only
+calls that will really run exist. Then it fired on the **correct spelling of
+the next fix**: it demanded `encoding=` on every subprocess call including
+binary ones, and #43's test must read raw bytes. A guard that bans the fix is
+worse than no guard. It now fires only on calls that decode.
+
+**#43 turned up a sixth defect on the way past: `agent-yield --help` exited 2.**
+`main` catches argparse's `SystemExit` as `int(exc.code) if exc.code else 2`;
+argparse exits **0** for `--help`, 0 is falsy, so the one invocation
+guaranteed to succeed reported failure to every caller that checks. Nothing
+in the suite ran the CLI as a process, so nothing could see it. **That is the
+sixth instance of the class, and it is not a platform bug at all** — same
+shape, a default nobody had a reason to think about, failing in the
+reassuring direction.
+
+**What the byte-level test buys, and it is the transferable part.** #43's
+claim is about the bytes a *child process* emits under
+`PYTHONIOENCODING=cp1252`, so it reproduces the Windows console on macOS and
+Linux and **fails on all three without the fix**. An in-process assertion
+cannot see the bug at all — the string round-trips perfectly inside Python
+whatever the stream is set to. Where a platform bug can be turned into a
+byte-level claim about a subprocess, it stops being a platform bug.
+
+**CI is green on all six jobs** (windows/macos/ubuntu × 3.11/3.14), no
+`PYTHONUTF8`, no `PYTHONIOENCODING`, `-rs`. One thing the run told us that a
+local suite could not: **GitHub's `windows-latest` holds the symlink
+privilege**, so `test_ingest.py`'s symlink arm runs there and skips only on
+this box. The named skip was the right call over deleting it.
+
+**Still open from the audit, unstarted:** slice 3 (the cp1252 stdin fixture,
+N3 — the inbound twin, four hook entry points), slice 5 (N2, `consume` throws
+away text it has already read), slice 7 (N4, MAX_PATH), slice 8 (N5 UNC leak,
+N11 CRLF). N10 — three `find_session` tests deriving their expectation from
+the code under test — is untouched and is the one that would have made #51
+visible earlier.
