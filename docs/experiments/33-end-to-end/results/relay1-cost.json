@@ -1,0 +1,26 @@
+{
+  "arm": "relay1 (#83): baton1v with ONE intermediary between the parent and the worker, relaying the worker's JSON verbatim",
+  "ran": "2026-08-26, macOS, both replicates, instrument = this repo's own load_records + price_records",
+  "control": "baton1v-cost.json -- raw 1,112,888, weighted 464,568, $2.3229, mismatches 8.5",
+  "unit_note": "The pre-registration is written on WEIGHTED end-to-end tokens, a column cache-decomp.py has since retired ('dollars divided by a base rate'). It is a PURE RESCALE of dollars at $5/Mtok -- 464,568 x 5e-6 = $2.3228 reproduces the control's published $2.3229 -- so the same constant applies to every arm and a 1.05x ratio on weighted is arithmetically identical to a 1.05x ratio on dollars. The bar did not have to be moved to be scored.",
+  "replicates": {
+    "r1": {"parent_calls": 7, "parent_tokens": 198168, "agent_count": 2, "agent_calls": 19, "agent_tokens": 1768883,
+           "raw": 1967051, "weighted": 618686, "dollars": 3.0934, "mismatches": 9, "claims": 122,
+           "ground_truth": ["discovery-two-locations"], "ran": "alone"},
+    "r2": {"parent_calls": 7, "parent_tokens": 198439, "agent_count": 2, "agent_calls": 11, "agent_tokens": 665253,
+           "raw": 863692, "weighted": 433262, "dollars": 2.1663, "mismatches": 9, "claims": 120,
+           "ground_truth": ["discovery-two-locations"], "ran": "concurrently with workflow r1 and r2"}
+  },
+  "mean": {"raw": 1415372, "weighted": 525974, "dollars": 2.6299, "mismatches": 9.0, "dollars_per_defect": 0.2922},
+  "vs_control": {"raw": 1.272, "weighted": 1.132, "dollars": 1.132},
+  "quality_gate": "PASSED, so this is not VOID. 19/19 modules exactly once in both replicates, no missing, extra or duplicated; 0 parent reads of src/; exactly 1 dispatch; all 5 tail turns answered. Mean mismatches 9.0 against the 7.0 bar, and `discovery-two-locations` recovered in BOTH replicates. Claim volume 122/120 against the control's 106/109, so the arm is not thin.",
+  "verdict": "NOT CONFIRMED AT n=2, AND NOT RETRACTED -- reported as noise by #33's own bar 4, which this arm's pre-registration inherits. The point estimate is 1.132x, the right side of the 1.05x prediction. But the two replicates are 1.428x apart in weighted tokens and the arm-versus-control gap is only 1.132x, and bar 4 says in terms: 'if the two replicates within an arm differ by more than the gap between the arms, the result is noise and is reported as noise.' Within-arm spread exceeds the gap, so the MAGNITUDE is not established here. WHAT IS ESTABLISHED is the negative: the cheapest of the two replicates still costs 0.933x the control, above the 0.90x retraction bar, so no replicate supports 'an intermediary saves'. Across all four replicates of both arms nothing came in below the control's own replicate range.",
+  "mechanism": "The thing the arm was built to separate did separate, and it is the clearest statement of the thesis on record. The relay parent DID get thin, exactly as the design claims: 198,168 and 198,439 parent tokens against the control's 354,645 mean, a 44% thinner parent -- and end-to-end cost still went UP 13%. Thin is not cheap. The parent's saving was re-paid, with interest, by the extra instantiation: an intermediary at 25,023 tokens over 2 calls plus a worker whose own context climbed 9,923 -> 165,376 over 17 calls. This is the arithmetic from plan-skinny-parent section 1 landing where it said it would -- an intermediary can only reach the child-return-payload slice, 11.4% of gross growth, and pays a full re-entry to reach it.",
+  "consequence": "The FLOOR is not below 1.0x in any replicate, which is what a VERBATIM relay was built to measure. A distilling intermediary does strictly more work than a relaying one and so cannot come in under this floor; it is answered without being run.",
+  "caveats": [
+    "n=2, and by bar 4 that is not enough here: the within-arm spread is the largest on record for this experiment family (1.428x, against the control's own 1.108x). The agent call counts differ 19 against 11, which points at genuine behavioural variance in how much second-pass work the worker did, not at measurement.",
+    "CONFOUND, introduced by how the runs were scheduled: r1 ran alone and r2 ran concurrently with both workflow replicates. Serial-versus-parallel is therefore confounded with replicate for this arm, and r2 is both the parallel one and the cheap one. Nothing here separates the two.",
+    "The control ran on Windows; these four ran on macOS.",
+    "Both replicates dedupe correctly under #85: the two tasks/*.output copies report calls 0 because the real subagents/agent-*.jsonl transcripts are listed first and claim those calls."
+  ]
+}

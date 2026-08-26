@@ -1,0 +1,29 @@
+{
+  "arm": "workflow (#39/S5): baton1v's task with the loop run by the `Workflow` tool instead of the parent hand-dispatching `Agent`",
+  "ran": "2026-08-26, macOS, both replicates run concurrently, instrument = this repo's own load_records + price_records",
+  "control": "baton1v-cost.json -- raw 1,112,888, weighted 464,568, $2.3229, mismatches 8.5",
+  "unit_note": "Same rescale note as relay1-cost.json: weighted tokens are dollars at $5/Mtok, so the pre-registered ratio is scored unchanged.",
+  "replicates": {
+    "r1": {"parent_calls": 8, "parent_tokens": 234432, "agent_count": 2, "agent_calls": 14, "agent_tokens": 1019867,
+           "raw": 1254299, "weighted": 442004, "dollars": 2.2100, "mismatches": 8, "claims": 107,
+           "ground_truth": ["discovery-two-locations"], "incomplete_calls": 1},
+    "r2": {"parent_calls": 8, "parent_tokens": 235265, "agent_count": 2, "agent_calls": 17, "agent_tokens": 1521750,
+           "raw": 1757015, "weighted": 511279, "dollars": 2.5564, "mismatches": 9, "claims": 119,
+           "ground_truth": ["discovery-two-locations"], "incomplete_calls": 1}
+  },
+  "mean": {"raw": 1505657, "weighted": 476642, "dollars": 2.3832, "mismatches": 8.5, "dollars_per_defect": 0.2804},
+  "vs_control": {"raw": 1.353, "weighted": 1.026, "dollars": 1.026},
+  "quality_gate": "PASSED, so this is not VOID. 19/19 modules exactly once in both replicates, no missing, extra or duplicated; 0 parent reads of src/; all 5 tail turns answered. Mean mismatches 8.5 -- identical to the control's own 8.5 -- and `discovery-two-locations` recovered in BOTH replicates. NOTE on compliance: score.py reports parent_dispatches 0 for this arm, which is correct and expected rather than a violation. It counts `Agent` dispatches, and this arm dispatches through `Workflow`; the agent transcripts under subagents/workflows/<run_id>/ are the evidence that the loop ran.",
+  "verdict": "NO SAVING, and the pre-registered NEGATIVE expectation STANDS -- but stated honestly, this is 'no effect distinguishable from the control', not 'confirmed more expensive'. Measured 1.026x weighted, and the two replicates are 1.157x apart against a 1.026x gap, so #33's bar 4 reports this as noise too. The skinny-parent plan's S5 row said 'expected answer: never -- the harness ships it or the hand practice stands'. Nothing here disturbs it: handing the loop to `Workflow` bought no measurable cost advantage over the parent hand-dispatching the same one-agent packing, and it did not lose quality either (8.5 mismatches, dead level with the control). The hand practice stands because nothing displaced it.",
+  "observations": [
+    "The workflow parent took 8 calls in both replicates where the relay and baton1v parents took 7. The extra call is consistent across replicates, so it is the tool's own shape rather than variance.",
+    "r1 returned the fewest claims of any arm scored here, 107, against the control's 106/109 -- inside the control's range, not a thin arm.",
+    "The arm needs --allowedTools Workflow or the launch is BLOCKED headless and the arm records a parent that dispatched nothing. Confirmed live: turn 1 reported agent_tokens 1,019,867, so the flag worked and #85's subagents/workflows/<run_id>/ path read real transcripts. This was the one failure mode that would have reported a win on a silence."
+  ],
+  "caveats": [
+    "n=2, and by bar 4 the within-arm spread (1.157x) exceeds the arm-versus-control gap (1.026x), so no magnitude is established -- only the absence of a saving.",
+    "One call per replicate came back with a lower-bound output_tokens (incomplete_calls 1 in both). Output is ~0.4% of this arm's tokens so the dollar effect is negligible, but both figures are formally lower bounds -- and this arm is the one sitting closest to 1.0x.",
+    "CONFOUND: both replicates ran concurrently with each other and with relay1 r2, while the control and relay1 r1 did not. Concurrency is not expected to move token accounting but can move the cache read/write split, which is what dollars are made of.",
+    "The control ran on Windows; these four ran on macOS."
+  ]
+}
