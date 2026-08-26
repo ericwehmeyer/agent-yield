@@ -73,10 +73,19 @@ DEFAULT_WINDOW = 1_000_000
 RESTART_FACTOR = 2.0
 RESTART_HARD_FACTOR = 4.0
 
-# Tokens.
+# Tokens, and CRUDE ONES -- #52's defect at the scale of a day. These are
+# summed from `usage.total`, and ~97% of that sum is cache reads, which cost
+# 0.10x a base input token. A raw total therefore nearly counts the cheapest
+# thing in the system, and two days with the same total can differ by a factor
+# in what they actually cost.
+#
+# NOT re-denominated in dollars yet, on purpose. `gate._day_total` reads a
+# `calls.jsonl` that does not exist on either machine, so this band returns 0
+# and has never fired. Re-pricing an unreachable branch is not measurement:
+# it would look like progress and be untested against anything. Re-denominate
+# when the gate is actually wired, and score the change then.
 DAILY_CEILING = 750_000_000
 DAILY_WARN = 450_000_000
-SESSION_SOFT_BUDGET = 400_000_000
 
 # Dispatch model, from docs/case-study.md. This population is the un-briefed
 # subagent: left free to explore, no brief telling it not to.
