@@ -60,7 +60,7 @@ number** (it divided growth avoided by arrival paid); the real long-run figure i
 **3.55x**. **At the audit turn alone the arms are 1.20x apart, under the
 retraction bar** — the effect lives entirely in the turns *after* the reading,
 which is why the protocol had a tail. **And the arm that saved the money found
-half the defects, in both replicates.** #45. **#34 is answered too:** re-entry is
+half the defects, in both replicates.** #47. **#34 is answered too:** re-entry is
 fixed at a median **22,114** (19,800 was 12% low), and the brief moves it 11%.
 working-method **§11.2** and **§11.3**.
 
@@ -1031,7 +1031,7 @@ Do not build from it yet.~~
 measured, so this spec may now be built from — with one qualification that is
 not about cost.** The baton arm found **half the defects** the reading arm found,
 in both replicates, and the reader's findings are close to a superset rather than
-a different judgment call. Per defect found, the reader is 1.17x *cheaper*. #45
+a different judgment call. Per defect found, the reader is 1.17x *cheaper*. #47
 is that question, and #35-#38 should be read with it open.
 
 ### The baton, as discrete tickets: #33-#38
@@ -1041,7 +1041,7 @@ itself the input to #38.
 
 | | | |
 |---|---|---|
-| ~~**#33**~~ | **CLOSED 2026-08-26. 1.71x, and it passed.** Bars committed at `3017519` before the first call; result in §11.3 and `interventions.toml`. Baton 975,338 / 690,323 against reader 1,368,208 / 1,476,964, every baton run cheaper than every reader run. **At the audit turn alone: 1.20x, under the bar** — the tail of five turns is where the whole effect lives, and an experiment that stopped where Part E stopped would have reported no effect. **But the baton found 4 defects in both replicates and the reader 8 in both, so per defect found the reader is 1.17x cheaper and the headline reverses.** The pre-registered volume bar was on *claims counted* — the denominator — when the output of the task is *mismatches*: it would have passed an arm that returned zero defects. That is #45. |
+| ~~**#33**~~ | **CLOSED 2026-08-26. 1.71x, and it passed.** Bars committed at `76cbf08` before the first call; result in §11.3 and `interventions.toml`. Baton 975,338 / 690,323 against reader 1,368,208 / 1,476,964, every baton run cheaper than every reader run. **At the audit turn alone: 1.20x, under the bar** — the tail of five turns is where the whole effect lives, and an experiment that stopped where Part E stopped would have reported no effect. **But the baton found 4 defects in both replicates and the reader 8 in both, so per defect found the reader is 1.17x cheaper and the headline reverses.** The pre-registered volume bar was on *claims counted* — the denominator — when the output of the task is *mismatches*: it would have passed an arm that returned zero defects. That is #47. |
 | ~~**#34**~~ | **CLOSED 2026-08-26. It is fixed, and 19,800 was 12% low.** 79 dispatch-to-agent pairs on this machine, 0 unclaimed: median first call **22,114**, stdev 2,958. Price a dispatch at ~22,000 for `general-purpose`. The brief moves it 11% across the real interquartile range, so the five-part brief does **not** buy its own cost back and does not need to — write it. The fitted slope (780 per 1,000 chars pooled; 476 and 1,835 within projects) is 2-7x the mechanical price of the text, so brief length is a **proxy for something else** and must not be quoted as what a brief costs. **The lead worth two dispatches:** `general-purpose` arrives at 22,131 (n=74), `Explore` at 8,909 (n=1), `statusline-setup` at 9,440 (n=2). If that holds, a narrow type is a third of the price. working-method §11.2. |
 | **#35** | slice thin, batch fat | retires the 10-call cap as a target and replaces it. A row is a unit of verification, not of dispatch. |
 | **#36** | the index and the parent loop | as a practice, **no code** — `predict` is the standing example of shipping a subcommand for an unvalidated shape. |
@@ -1178,7 +1178,7 @@ working. `UNSCORABLE` needs to be a visible outcome, distinct from VOID.
 `agent-yield handoff` before you restart. Then read this.
 
 **#33 and #34 are closed. The baton is no longer blocked, and #35-#38 may
-proceed** — with #45 open beside them, because the thing #33 could not settle is
+proceed** — with #47 open beside them, because the thing #33 could not settle is
 whether the cheap arm is the worse arm.
 
 **What the next session should not re-derive.** All of it is in
@@ -1222,11 +1222,11 @@ defects found, so it would have passed an arm that returned nothing. `UNSCORABLE
 as a visible outcome is the fix #44 proposes; **a bar stated in the units of the
 finding** is the same fix one file over.
 
-### #45, and it is the one worth running next
+### #47, and it is the one worth running next
 
 | | |
 |---|---|
-| **#45** | **does dispatching systematically find less?** #33's baton arm returned 4 mismatches in both replicates against the reader's 8, and the reader's are close to a superset — two the baton missed twice were verified by hand and are real defects. Cost per defect *reverses* the headline. Candidate causes, none tested: an agent seeing 4 of 19 modules cannot use the other 15 as context; a "return only JSON" contract discourages a second pass; five agents at 24 calls total is 4.8 calls a module against the reader's 15 calls over 19. **The cheapest discriminating run** is the same task with the baton arm given *one* agent for all 19 modules — if the defect count recovers, it is packing, not dispatching. |
+| **#47** | **does dispatching systematically find less?** #33's baton arm returned 4 mismatches in both replicates against the reader's 8, and the reader's are close to a superset — two the baton missed twice were verified by hand and are real defects. Cost per defect *reverses* the headline. Candidate causes, none tested: an agent seeing 4 of 19 modules cannot use the other 15 as context; a "return only JSON" contract discourages a second pass; five agents at 24 calls total is 4.8 calls a module against the reader's 15 calls over 19. **The cheapest discriminating run** is the same task with the baton arm given *one* agent for all 19 modules — if the defect count recovers, it is packing, not dispatching. |
 
 ### Two lessons about the bars themselves, which outlast the numbers
 
@@ -1252,5 +1252,5 @@ swept **twice** and only the `(message_id, request_id)` dedup keeps the subagent
 bill from doubling. A test pins that now. `resume` claimed five silences where
 its own code comment says four of five outcomes are silences.
 
-**Both were missed by the baton arm in both replicates. That is #45 in its
+**Both were missed by the baton arm in both replicates. That is #47 in its
 smallest concrete form.**

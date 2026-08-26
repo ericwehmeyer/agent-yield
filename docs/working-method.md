@@ -594,7 +594,7 @@ says nothing about a parent that reads everything, which is what the baton
 claims to replace. Per-call arithmetic had by then predicted the wrong sign
 twice (§11's 6.2× measured 1.07×, §11.1's 1.5× measured 0.65×), so this one got
 its bars written into `interventions.toml` and committed *before the first
-call*: `3017519`.
+call*: `76cbf08`.
 
 **The task**, identical in both arms: audit the module docstring of all 19
 modules in `src/agent_yield` against their own code, return one JSON object.
@@ -690,7 +690,7 @@ shape of the work rather than the point of it.**
 
 So: **#33 passes on cost and opens a question it cannot answer** — whether
 splitting a task across agents systematically finds less. n=2 per arm, one task.
-That is #45.
+That is #47.
 
 ### Bar 4, the noise clause, scored rather than skipped
 
