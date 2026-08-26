@@ -1,4 +1,7 @@
 import json
+from pathlib import Path
+
+import pytest
 
 from agent_yield.ingest import (
     context_per_call,
@@ -41,21 +44,52 @@ def test_duplicate_message_and_request_pairs_are_counted_once(tmp_path):
     assert len(load_records([path])) == 1
 
 
-def test_a_subagent_transcript_reached_twice_is_billed_once(tmp_path):
+def _can_symlink(tmp_path: Path) -> bool:
+    """Windows refuses symlinks without Administrator or Developer Mode.
+
+    Probed rather than guessed from `sys.platform`: the privilege is a
+    machine setting, not a platform constant, and a Windows box with
+    Developer Mode on should run the symlink arm rather than skip it.
+    """
+    probe, link = tmp_path / "_probe", tmp_path / "_probe.link"
+    probe.write_text("x", encoding="utf-8")
+    try:
+        link.symlink_to(probe)
+    except (OSError, NotImplementedError):
+        return False
+    link.unlink()
+    return True
+
+
+@pytest.mark.parametrize("how", ["symlink", "copy"])
+def test_a_subagent_transcript_reached_twice_is_billed_once(tmp_path, how):
     """The 2026-08-26 layout: the agent transcript lives under the project
     directory and `tasks/<agentId>.output` is a SYMLINK to it, so a walk of both
     roots hands `load_records` the same file under two paths. 84 of the 142
     transcripts on the Mac are symlinks -- see `discovery`. Nothing but the
     `(message_id, request_id)` dedup stands between that and a doubled subagent
     bill, which is the number §3.1 decomposes.
+
+    Two arms because the symlink arm cannot run everywhere: Windows raises
+    WinError 1314 without Administrator or Developer Mode. The dedup key is
+    `(message_id, request_id)` and never inspects the inode, so the copy arm
+    exercises the identical code path and is the one that runs on an
+    unprivileged Windows box. The symlink arm is what reproduces the real Mac
+    layout, so it is kept and SKIPPED BY NAME rather than deleted -- an
+    unnamed skip here would be the silence issue #29 is about.
     """
     real = tmp_path / "agent-a1.jsonl"
     real.write_text(_line(req="r1", msg="m1", cr=90_000, sub=True, agent="a1") + "\n",
                     encoding="utf-8")
-    link = tmp_path / "a1.output"
-    link.symlink_to(real)
+    second = tmp_path / "a1.output"
+    if how == "symlink":
+        if not _can_symlink(tmp_path):
+            pytest.skip("symlink privilege not held (Windows without Developer Mode)")
+        second.symlink_to(real)
+    else:
+        second.write_bytes(real.read_bytes())
 
-    records = load_records([real, link])
+    records = load_records([real, second])
     assert len(records) == 1
     assert records[0].usage.cache_read_tokens == 90_000
     assert records[0].is_subagent
