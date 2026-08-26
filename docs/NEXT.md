@@ -576,6 +576,44 @@ was a *good* result, and good results do not invite scrutiny. The gap between
 measuring and quoting is where this gets expensive - the same shape as #29,
 where a contract was labelled "measured" because it had been read carefully.
 
+## [macOS 2026-08-25] `status` was measuring the wrong session
+
+Caught at the end of the session, while verifying the handoff. `agent-yield
+status` reported **357 calls, 535,788 context, 10.6x growth, cost band
+`restart`** for a session that had made **109 calls at 183,096 context**. It
+was measuring a photo-editing session in another repo that had written to its
+transcript a second earlier.
+
+`find_session(None)` fell back to *the most recently modified transcript under
+`~/.claude/projects`* — which spans **every project on the machine**. With two
+sessions open it picks whichever wrote last.
+
+**This is the same bug `boundary._stats_for` was fixed for, one function
+over**, and NEXT.md already recorded that fix: *"an enforcing boundary would
+have refused prompts in one session on another session's cost."* The fix was
+applied where it was found and not where else it lived. `status` exits **1** to
+mean *leave*, and `handoff` writes the same numbers into the file the next
+session inherits — so this reached the durable record, not just a display.
+
+**Fixed:** with no explicit session id, candidates are restricted to the
+project directory for the cwd; if none match, it returns `None` and measures
+nothing rather than measuring a stranger. An explicit `--transcripts` root is
+never second-guessed. Three regression tests.
+
+**Two things worth keeping:**
+
+- **It printed the right session id the whole time**, on line 1, and that was
+  not enough — the id was there and the number was quoted anyway. Labelling a
+  number correctly does not stop it being used wrongly.
+- **A fix applied at the site it was found is half a fix.** The pattern
+  "fall back to the most recent transcript" existed in two functions; one was
+  corrected, the other kept the bug for a day. When a fallback is wrong once,
+  grep for it.
+
+**Tonight's third retraction, and the shape does not change:** something
+confident, specific and wrong, past a green suite, caught by asking one more
+question of data already in hand.
+
 ## Two review routines still armed
 
 Both one-shot, cloud, reading only committed files. Everything is pushed, so they

@@ -206,3 +206,64 @@ def test_a_session_that_opens_in_a_band_crossed_the_ones_below_it_on_call_one(tm
         _line(session_id="s", index=i, cache_read=550_000) for i in range(3)
     ])
     assert cost_crossings(session_stats(path)) == {"dispatch": 1, "restart": 1}
+
+
+def test_find_session_does_not_reach_into_another_project(tmp_path, monkeypatch):
+    """Measured 2026-08-25: `status` reported another repo's session.
+
+    The unrestricted "most recently modified" fallback spans every project
+    under ~/.claude/projects. With two sessions open it picks whichever
+    wrote last -- and `agent-yield status` reported 357 calls, 535,788
+    context and 10.6x growth for a 109-call session, because a session in
+    another repo had touched its transcript a second earlier. `status`
+    exits 1 to mean "leave"; deciding that on another session's cost is the
+    same failure `boundary._stats_for` was fixed for.
+    """
+    from agent_yield.session import find_session, project_slug
+
+    projects = tmp_path / "projects"
+    mine = projects / project_slug(Path("/repo/mine"))
+    theirs = projects / "-some-other-project"
+    mine.mkdir(parents=True)
+    theirs.mkdir(parents=True)
+
+    ours = mine / "aaa.jsonl"
+    ours.write_text("{}\n", encoding="utf-8")
+    newer = theirs / "bbb.jsonl"
+    newer.write_text("{}\n", encoding="utf-8")
+    os.utime(ours, (1_000, 1_000))
+    os.utime(newer, (2_000, 2_000))  # the other project wrote more recently
+
+    monkeypatch.setattr(
+        "agent_yield.session.main_transcript_dir", lambda: projects
+    )
+    found = find_session(None, None, cwd=Path("/repo/mine"))
+    assert found == ours, "the newer file belongs to another project"
+
+
+def test_find_session_returns_none_when_this_project_has_no_transcript(
+    tmp_path, monkeypatch
+):
+    """Measure the session you can identify, or measure nothing."""
+    from agent_yield.session import find_session
+
+    projects = tmp_path / "projects"
+    other = projects / "-some-other-project"
+    other.mkdir(parents=True)
+    (other / "bbb.jsonl").write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "agent_yield.session.main_transcript_dir", lambda: projects
+    )
+    assert find_session(None, None, cwd=Path("/repo/mine")) is None
+
+
+def test_an_explicit_root_is_not_second_guessed(tmp_path, monkeypatch):
+    """`--transcripts <dir>` is a caller who has already scoped the search."""
+    from agent_yield.session import find_session
+
+    root = tmp_path / "anywhere"
+    root.mkdir()
+    only = root / "ccc.jsonl"
+    only.write_text("{}\n", encoding="utf-8")
+    assert find_session(None, root, cwd=Path("/repo/unrelated")) == only

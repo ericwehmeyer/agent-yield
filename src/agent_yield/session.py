@@ -65,8 +65,27 @@ class SessionStats:
     contexts: tuple[int, ...] = ()
 
 
-def find_session(session_id: str | None = None, root: Path | None = None) -> Path | None:
-    """The transcript for ``session_id``, or the most recently modified one.
+def project_slug(cwd: Path | None = None) -> str:
+    """The transcript directory name Claude Code derives from a cwd.
+
+    Measured against the real tree: `/Users/x/IdeaProjects/agent-yield`
+    becomes `-Users-x-IdeaProjects-agent-yield`.
+    """
+    base = Path(cwd) if cwd is not None else Path.cwd()
+    return str(base).replace("/", "-").replace(".", "-").replace("_", "-")
+
+
+def find_session(
+    session_id: str | None = None,
+    root: Path | None = None,
+    cwd: Path | None = None,
+) -> Path | None:
+    """The transcript for ``session_id``, or this project's most recent one.
+
+    With a ``session_id`` the match is exact. Without one, candidates are
+    restricted to the project directory for ``cwd`` (default: the process
+    working directory) -- see the comment below on why the unrestricted
+    fallback is a bug rather than a convenience.
 
     Returns ``None`` when nothing matches; never raises.
     """
@@ -90,6 +109,28 @@ def find_session(session_id: str | None = None, root: Path | None = None) -> Pat
             if path.name == wanted:
                 return path
         return None
+
+    # Scope to THIS project before falling back to "most recent". Without
+    # this the fallback reaches across every project on the machine, and with
+    # two sessions open it routinely picks the other one -- measured 2026-08-25:
+    # `agent-yield status` reported 357 calls, 535,788 context and 10.6x growth
+    # for a 109-call session, because a photo-editing session in another repo
+    # had written to its transcript a second earlier. It printed the right
+    # session id while doing it, which is not a defence: `status` exits 1 to
+    # mean "leave", and it was reading someone else's cost to decide.
+    #
+    # This is the same bug `boundary._stats_for` was fixed for, one function
+    # over, and the fix there was the same: measure the session you can
+    # identify, or measure nothing. A cross-project fallback is never right --
+    # there is no sense in which another repo's session is "this" session.
+    # Only when the root was NOT given explicitly: `--transcripts <dir>` is a
+    # caller who has already scoped the search, and second-guessing it would
+    # make the flag useless.
+    if root is None:
+        scoped = [p for p in paths if p.parent.name == project_slug(cwd)]
+        if not scoped:
+            return None
+        paths = scoped
 
     def modified(path: Path) -> float:
         try:
