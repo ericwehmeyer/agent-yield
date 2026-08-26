@@ -8,6 +8,7 @@
           "cache_creation_tokens": 0,
           "cache_read_tokens": 0,
           "context_window": 200000,
+          "cost_usd": 0.001556,
           "input_tokens": 1471,
           "output_tokens": 17
         },
@@ -15,6 +16,7 @@
           "cache_creation_tokens": 193932,
           "cache_read_tokens": 773418,
           "context_window": 1000000,
+          "cost_usd": 2.910729,
           "input_tokens": 76,
           "output_tokens": 42292
         }
@@ -28,6 +30,7 @@
           "cache_creation_tokens": 0,
           "cache_read_tokens": 0,
           "context_window": 200000,
+          "cost_usd": 0.001546,
           "input_tokens": 1471,
           "output_tokens": 15
         },
@@ -35,6 +38,7 @@
           "cache_creation_tokens": 143267,
           "cache_read_tokens": 539087,
           "context_window": 1000000,
+          "cost_usd": 2.18022475,
           "input_tokens": 62,
           "output_tokens": 38643
         }
@@ -48,6 +52,7 @@
           "cache_creation_tokens": 0,
           "cache_read_tokens": 0,
           "context_window": 200000,
+          "cost_usd": 0.001475,
           "input_tokens": 1390,
           "output_tokens": 17
         },
@@ -55,6 +60,7 @@
           "cache_creation_tokens": 212173,
           "cache_read_tokens": 1135705,
           "context_window": 1000000,
+          "cost_usd": 3.1972325,
           "input_tokens": 30,
           "output_tokens": 20300
         }
@@ -68,6 +74,7 @@
           "cache_creation_tokens": 0,
           "cache_read_tokens": 0,
           "context_window": 200000,
+          "cost_usd": 0.001475,
           "input_tokens": 1390,
           "output_tokens": 17
         },
@@ -75,6 +82,7 @@
           "cache_creation_tokens": 215062,
           "cache_read_tokens": 1242652,
           "context_window": 1000000,
+          "cost_usd": 3.252516,
           "input_tokens": 34,
           "output_tokens": 19216
         }
