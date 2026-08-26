@@ -183,3 +183,95 @@ def test_the_window_registry_matches_what_the_runs_observed(name):
 def test_an_unmeasured_model_has_no_window_rather_than_a_default():
     assert window_for("some-future-model") is None
     assert window_for(None) is None
+
+
+# --- #81: the two rates that were missing while 44% of a day's calls used them.
+#
+# These arms exist for one purpose: to make `claude-sonnet-5` and
+# `claude-fable-5` measurements instead of constants. The module's doctrine is
+# that an unreconciled rate is the thing it exists to refuse, so a rate typed in
+# from a price list would be exactly the defect. Each was solved from its own
+# `-p` run and checked back against that run's `costUSD`.
+
+RATE_FIXTURES = Path(__file__).parent / "fixtures" / "arms-81"
+RATE_TRUTH = json.loads((RATE_FIXTURES / "ground-truth.json").read_text())["arms"]
+RATE_ARMS = sorted(RATE_TRUTH)
+# The arm each rate was solved from, so a broken reconciliation names the model
+# whose number is now unsupported rather than just a filename.
+RATE_UNDER_TEST = {"sonnet-rate": "claude-sonnet-5", "fable-rate": "claude-fable-5"}
+
+
+def rate_transcript_split(name: str) -> dict[str, tuple[int, int]]:
+    """The 5m/1h cache-write split per model, which `modelUsage` aggregates away.
+
+    Measured, not assumed. Both arms came back 100% 1h, and that is load-bearing:
+    priced as 5m writes the same bills solve to $2.6253 and $13.0536 rather than
+    $2.00 and $10.00, so reading the TTL off the transcript is the difference
+    between a rate and a plausible number.
+    """
+    split: dict[str, list[int]] = {}
+    for record in load_records([RATE_FIXTURES / f"{name}.jsonl"]):
+        model = canonical(record.model) or "?"
+        held = split.setdefault(model, [0, 0])
+        held[0] += record.usage.cache_creation_5m
+        held[1] += record.usage.cache_creation_1h
+    return {model: (a, b) for model, (a, b) in split.items()}
+
+
+@pytest.mark.parametrize("name", RATE_ARMS)
+def test_the_new_rates_reproduce_their_own_arms_bill(name):
+    arm = RATE_TRUTH[name]
+    split = rate_transcript_split(name)
+    for model, totals in arm["model_usage"].items():
+        write_5m, write_1h = split.get(canonical(model), (0, 0))
+        usage = Usage(
+            input_tokens=totals["input_tokens"],
+            output_tokens=totals["output_tokens"],
+            cache_read_tokens=totals["cache_read_tokens"],
+            cache_creation_tokens=totals["cache_creation_tokens"],
+            cache_creation_5m=write_5m,
+            cache_creation_1h=write_1h,
+        )
+        priced = price({model: usage})
+        assert priced.dollars == pytest.approx(totals["cost_usd"], abs=CENT), model
+        assert priced.is_complete, priced.caveat()
+
+
+@pytest.mark.parametrize("name", RATE_ARMS)
+def test_the_haiku_control_still_holds_on_the_new_arms(name):
+    """The control. Both arms bill harness-side Haiku at a rate measured
+    elsewhere, on different traffic; if the model were wrong, the new numbers
+    could still be tuned to fit and this would not."""
+    totals = RATE_TRUTH[name]["model_usage"][UNTRANSCRIBED]
+    priced = price({UNTRANSCRIBED: usage_from_truth(totals)})
+    assert priced.dollars == pytest.approx(totals["cost_usd"], abs=CENT)
+
+
+@pytest.mark.parametrize("name", RATE_ARMS)
+def test_the_cache_writes_on_the_new_arms_were_all_one_hour(name):
+    """Pinned because the solved rate depends on it. If a future arm writes 5m
+    and this is relaxed rather than re-measured, the rates silently become the
+    2.6253/13.0536 numbers that fit the wrong multiplier."""
+    model = RATE_UNDER_TEST[name]
+    write_5m, write_1h = rate_transcript_split(name)[model]
+    assert write_1h > 0 and write_5m == 0
+
+
+@pytest.mark.parametrize("name", RATE_ARMS)
+def test_the_new_arms_windows_match_what_the_runs_observed(name):
+    for model, totals in RATE_TRUTH[name]["model_usage"].items():
+        assert window_for(model) == totals["context_window"], model
+
+
+def test_every_rate_in_the_table_is_backed_by_an_arm():
+    """The rule the table exists to enforce, turned on the table itself: a rate
+    with no archived run behind it is the unreconciled constant this module
+    refuses. #81 was that hole -- two models billed on real traffic and absent
+    here -- and this fails the moment a fifth rate is typed in without one."""
+    billed = {
+        canonical(model)
+        for truth in (TRUTH, RATE_TRUTH)
+        for arm in truth.values()
+        for model in arm["model_usage"]
+    }
+    assert set(BASE_RATE_PER_MTOK) <= billed, set(BASE_RATE_PER_MTOK) - billed

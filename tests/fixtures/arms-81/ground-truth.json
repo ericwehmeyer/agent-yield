@@ -1,0 +1,50 @@
+{
+ "_costBasis": "list -- every modelUsage block here carries costBasis: list, so these are list-price equivalents and not a bill",
+ "_source": "claude -p --output-format json --model claude-sonnet-5 / claude-fable-5, run 2026-08-26 to reconcile the two rates #81 says are missing. One prompt each, reading a file twice so the run bills a cache write AND a cache read rather than input alone -- a rate solved from input+output only is one equation that cannot see the multipliers. Both arms also bill claude-haiku-4-5 for harness-side work, which is the control: the existing $1.00 rate must still reproduce its costUSD exactly. The .jsonl beside this file are the real transcript records reduced to the fields parse_line reads; they are what supplies the cache-write TTL split, which modelUsage aggregates away.",
+ "arms": {
+  "fable-rate": {
+   "model_usage": {
+    "claude-haiku-4-5-20251001": {
+     "input_tokens": 919,
+     "output_tokens": 12,
+     "cache_read_tokens": 0,
+     "cache_creation_tokens": 0,
+     "cost_usd": 0.000979,
+     "context_window": 200000
+    },
+    "claude-fable-5": {
+     "input_tokens": 6,
+     "output_tokens": 397,
+     "cache_read_tokens": 60925,
+     "cache_creation_tokens": 6702,
+     "cost_usd": 0.21487499999999998,
+     "context_window": 1000000
+    }
+   },
+   "total_cost_usd": 0.215854,
+   "transcript_lines": 5
+  },
+  "sonnet-rate": {
+   "model_usage": {
+    "claude-haiku-4-5-20251001": {
+     "input_tokens": 919,
+     "output_tokens": 12,
+     "cache_read_tokens": 0,
+     "cache_creation_tokens": 0,
+     "cost_usd": 0.000979,
+     "context_window": 200000
+    },
+    "claude-sonnet-5": {
+     "input_tokens": 6,
+     "output_tokens": 299,
+     "cache_read_tokens": 91150,
+     "cache_creation_tokens": 9241,
+     "cost_usd": 0.058196000000000005,
+     "context_window": 1000000
+    }
+   },
+   "total_cost_usd": 0.059175000000000005,
+   "transcript_lines": 4
+  }
+ }
+}

@@ -26,7 +26,8 @@ The model, and it is exact rather than approximate:
             + 5.00 x output )
 
 Against `total_cost_usd` on the four archived #33 arms it reproduces
-$2.9123, $2.1818, $3.1987 and $3.2540 -- exact to the cent, all four. From
+$2.9123, $2.1818, $3.1987 and $3.2540 -- exact to the cent, all four -- and on
+the two #81 rate arms $0.059175 and $0.215854, exact to the microdollar. From
 transcripts alone it lands within 0.3-0.7% on five of six arms, and the
 residual is not slack: it is the priced value of the output tokens that #53
 identifies as missing, to the cent.
@@ -47,10 +48,23 @@ from .records import CallRecord
 from .usage import Usage
 
 # Dollars per million base input tokens. Verified 2026-08-26 against the
-# `modelUsage.costUSD` blocks of the four archived #33 arms; the test that does
-# it lives in tests/test_pricing.py and is the reason these are not guesses.
+# `modelUsage.costUSD` blocks of the four archived #33 arms and the two #81 rate
+# arms; the tests that do it live in tests/test_pricing.py and are the reason
+# these are not guesses.
+#
+# `claude-sonnet-5` and `claude-fable-5` were added 2026-08-26 for #81, which
+# found them billed on 44% of one real day's calls with no rate here at all. NOT
+# typed in from a price list -- each was SOLVED from its own `-p` run and then
+# checked back: the arm reads a file twice, so it bills a cache write and a cache
+# read as well as input and output, and a rate solved from input alone would be
+# one equation that cannot see the multipliers. Both arms also bill
+# `claude-haiku-4-5` for harness-side work, and the existing $1.00 reproduces its
+# `costUSD` to the microdollar on both -- the control that says the model, not
+# just the new number, is right.
 BASE_RATE_PER_MTOK: dict[str, float] = {
     "claude-opus-5": 5.00,
+    "claude-fable-5": 10.00,
+    "claude-sonnet-5": 2.00,
     "claude-haiku-4-5": 1.00,
 }
 
@@ -69,6 +83,8 @@ OUTPUT = 5.00
 # a computation.
 MODEL_WINDOWS: dict[str, int] = {
     "claude-opus-5": 1_000_000,
+    "claude-fable-5": 1_000_000,
+    "claude-sonnet-5": 1_000_000,
     "claude-haiku-4-5": 200_000,
 }
 
