@@ -2454,3 +2454,49 @@ changed the 20%→4% reading on the Windows corpus. That corpus is not on this
 machine, and this clone's reflog covers only its own shas. **#46's other three
 deferrals — S4, S5, S6, S7 — stay deferred**, and its falsifier date is still
 2026-09-09.
+
+## [macOS 2026-08-26 20:20] #66: two status lines cannot be composed by settings, and rendering one by hand writes fiction into the calibration log
+
+**#66 asked this machine to hand over "the nifty status line". The premise was
+wrong in a way worth recording: there are two, and `settings.json` cannot join
+them.** Project `.claude/settings.json` **replaces** `~/.claude/settings.json`
+for `statusLine` — it does not merge. So in this repo the Mac renders
+`agent-yield statusline` and nothing else, while the shell script the other
+machine wants renders everywhere *except* here.
+
+```
+this repo   ay 111K 11% 2.5x 7d 49% GROWING      .venv/bin/agent-yield statusline
+elsewhere   agent-yield  main*  py3.12(.venv)    sh ~/.claude/statusline-command.sh
+```
+
+The tool was not dropped and the script did not replace it — **they never
+met**, each being the whole line in its own scope. Having both requires a
+wrapper that runs both and joins the output, and neither machine has written
+one. Handed over in full on #66 (both stanzas, the script whole, per-segment
+payload fields, timings, failure table); the port itself is the other machine's
+half and the issue stays open for it.
+
+**Measured while answering, because the ticket asked and the answers were not
+written down anywhere:** ~70 ms per render, 5 renders in 0.352 s wall on a
+544,223-byte transcript, **no subprocess and no git at all** — against the
+other machine's `.ps1`, which shells out to git with a 1.5 s hard timeout, and
+against this machine's own sh script, which shells out three or four times per
+render with none. Failure behaviour is `ay -` and **exit 0** on empty stdin,
+malformed JSON, `{}`, and a dead transcript path.
+
+**THE HAZARD, and it is not cosmetic: rendering the status line by hand mutates
+real data.** A synthesized payload carrying invented `rate_limits` appends a row
+to `.agent-yield/allowance.jsonl`, which is the calibration input for
+`plan_window_dollars`. Mine put `7d 38%` / `$4.31` — both fiction — into a log
+of 19 genuine rows, and I removed it (row 19, 20:15:59 UTC). **Test with a
+payload that omits `rate_limits` entirely**: `read_allowance` returns `None`,
+nothing is written, and the line simply drops its `7d` segment. The general
+shape is this repo's own subject: a *read* command that is silently also a
+write, where the write feeds a number the tool later reports. **Not fixed.** A
+`--no-write` flag, or refusing to append when stdin is not the harness, is the
+obvious guard and it is not built.
+
+**What the tool renders that neither generic line does** is the cost band, on
+the one surface that costs zero tokens to look at. That is the whole argument
+for pointing `statusLine` at it, and it is now the recommendation on #66.
+
