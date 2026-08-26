@@ -42,6 +42,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
+from .records import json_lines
+
 SNAPSHOT_PATH = Path(".agent-yield") / "allowance.jsonl"
 
 # Below this the quantization error dominates: at 1-point resolution, a 4-point
@@ -153,7 +155,7 @@ def load(path: Path) -> list[Snapshot]:
     except OSError:
         return []
     out: list[Snapshot] = []
-    for line in text.splitlines():
+    for line in json_lines(text):
         if not line.strip():
             continue
         try:

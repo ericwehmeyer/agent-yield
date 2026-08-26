@@ -66,6 +66,30 @@ def _timestamp(raw: str | None) -> dt.datetime | None:
     return parsed.astimezone(dt.timezone.utc)
 
 
+def json_lines(text: str) -> list[str]:
+    """Cut JSONL into lines the way the FORMAT does, not the way the stdlib does.
+
+    `str.splitlines()` also breaks on \\v, \\f, \\x1c-\\x1e, \\x85, U+2028 and
+    U+2029. None of those end a line in JSONL and JSON does not require them to
+    be escaped inside a string, so a record carrying one was cut in half, both
+    halves failed `json.loads`, and `parse_line` returned None for each --
+    silently, because these walks are written to survive junk.
+
+    Measured over 286 transcripts here (#62): 5 files affected, 10,879 spurious
+    splits, 3 records lost, 5,326 output tokens. The loss is small because most
+    fragments are junk on both sides. What makes it worth a named function is
+    WHICH record it took on `a1f5f48f6b1fe2e91`: the terminal one, the only
+    member of its group carrying the call's real `output_tokens`. The call
+    survived through a sibling, so the count stayed right and #53's machinery
+    marked it `incomplete`. **A call that looks unfinished is this bug's
+    symptom**, which also means the corpus-wide incomplete count is inflated by
+    an unknown amount from this cause.
+
+    `\\r\\n` is handled because the trailing `\\r` leaves the JSON parseable.
+    """
+    return text.split("\n")
+
+
 def parse_line(line: str) -> CallRecord | None:
     """Return a record, or None for any line that is not a billable call."""
     line = line.strip()

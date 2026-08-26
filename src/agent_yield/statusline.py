@@ -74,7 +74,7 @@ from typing import TextIO
 from .allowance import SNAPSHOT_PATH, append as append_allowance, load as load_allowance, read_allowance
 from .hookio import read_payload
 from .pricing import window_for
-from .records import dedup, parse_line
+from .records import dedup, json_lines, parse_line
 from .session import SessionStats, resolve_transcript, session_stats
 from .thresholds import (
     DEFAULT_WINDOW,
@@ -148,7 +148,7 @@ def _records(text: str):
     slice rather than streamed. The slice is bounded by design.
     """
     parsed = []
-    for line in text.splitlines():
+    for line in json_lines(text):
         record = parse_line(line)
         if record is not None and not record.is_subagent:
             parsed.append(record)

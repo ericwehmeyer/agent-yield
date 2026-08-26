@@ -310,3 +310,40 @@ def test_the_incomplete_flag_survives_the_persisted_round_trip(tmp_path):
     assert held["m1"].incomplete and held["m1"].stop_reason is None
     assert not held["m2"].incomplete and held["m2"].stop_reason == "end_turn"
 
+
+def test_a_record_carrying_a_unicode_line_separator_survives_whole(tmp_path):
+    """#62. `str.splitlines()` cuts JSONL on seven characters JSONL does not.
+
+    The assertion is that the record is PRESENT AND COMPLETE, not that the
+    count is right. On the real transcript this was found on, the count WAS
+    right: the character sat in the terminal record, that record vanished, a
+    sibling kept the call alive, and the only visible symptom was the call
+    being marked incomplete with a 2,663-token lower bound for its output.
+    """
+    lines = []
+    for index, (text, output, stop) in enumerate([
+        ("plain", 40, None),
+        # The terminal record of the same call, carrying a NEL inside a string.
+        ("holds a \u0085 next-line", 2_663, "end_turn"),
+    ]):
+        lines.append(json.dumps({
+            "timestamp": f"2026-08-26T02:00:0{index}.000Z",
+            "sessionId": "s1",
+            "requestId": "req-1",
+            "message": {
+                "id": "msg-1",
+                "stop_reason": stop,
+                "content": [{"type": "text", "text": text}],
+                "usage": {"input_tokens": 1, "output_tokens": output,
+                          "cache_read_input_tokens": 10},
+            },
+        }))
+    path = tmp_path / "t.jsonl"
+    # json.dumps escapes it; the transcripts on disk carry it raw.
+    path.write_text(
+        "\n".join(lines).replace("\\u0085", "\u0085") + "\n", encoding="utf-8"
+    )
+
+    (record,) = load_records([path])
+    assert record.usage.output_tokens == 2_663
+    assert record.incomplete is False, "the terminal record was dropped"

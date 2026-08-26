@@ -37,7 +37,7 @@ from pathlib import Path
 from typing import Iterable
 
 from .discovery import find_transcripts
-from .records import CallRecord, dedup, parse_line
+from .records import CallRecord, dedup, json_lines, parse_line
 from .usage import Usage
 
 
@@ -57,7 +57,7 @@ def load_records(paths: Iterable[Path]) -> list[CallRecord]:
                 text = Path(path).read_text(encoding="utf-8", errors="replace")
             except OSError:
                 continue
-            for line in text.splitlines():
+            for line in json_lines(text):
                 record = parse_line(line)
                 if record is not None:
                     yield record
@@ -137,7 +137,7 @@ def load_ingested(path: Path) -> list[CallRecord]:
     if not path.exists():
         return []
     records: list[CallRecord] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
+    for line in json_lines(path.read_text(encoding="utf-8")):
         if not line.strip():
             continue
         raw = json.loads(line)
