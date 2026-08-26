@@ -1,0 +1,29 @@
+# Process changes, on the record, each with a prediction attached.
+#
+# `expect` is required and is enforced at load time. An intervention recorded
+# without a prediction is not an experiment -- the whole point is to be able to
+# be wrong on the record, in public, later.
+#
+# Write the prediction so a reader in two weeks can say "that happened" or "that
+# did not happen" without arguing about what was meant. Vague expectations are
+# unfalsifiable and therefore worthless here.
+
+[[intervention]]
+date   = "2026-08-25"
+name   = "brief-pack: dispatch by line range, agents forbidden to explore the repo"
+expect = "subagent context-per-call falls from the measured 89,721 median to under 30,000"
+
+[[intervention]]
+date   = "2026-08-25"
+name   = "central commits: agents write files and run their own tests, the parent verifies and commits named paths"
+expect = "commits per day rises while tokens per commit falls, because parallel work stops serialising on one writer"
+
+[[intervention]]
+date   = "2026-08-25"
+name   = "persisted ingest: analysis reads .agent-yield/calls.jsonl instead of the volatile OS temp tree"
+expect = "the number of subagent transcripts readable for a past day stops falling week over week"
+
+[[intervention]]
+date   = "2026-08-25"
+name   = "self-contained plan: every task carries literal code, exact paths, and its own interfaces"
+expect = "dispatched agents make under 20 tool calls each, against the 62-188 range on record"
