@@ -90,7 +90,25 @@ the share of main-thread calls it fires on: ~35%, ~13%, ~7%.
 agent-yield status     what this session costs, and whether to leave
 agent-yield handoff    write down what a restart destroys, before it does
 agent-yield boundary   UserPromptSubmit hook: advisory by default
+agent-yield resume     SessionStart hook: load the last handoff, exactly once
+agent-yield agents     audit dispatches: call counts, and which brief markers
 ```
+
+`agents` is the post-hoc half of the dispatch rubric, and the only half that
+can exist: **hooks do not fire inside a subagent**, so `gate` sees a brief and
+never learns what it cost. It joins each dispatch to its child's transcript —
+a heuristic join, because the parent's `tool_use` id appears nowhere in the
+child and the child's first record has `parentUuid: null`. It reports
+`unlinked` rather than guessing.
+
+**It also refuses to answer one question it is asked.** Pooled across
+projects, its first run reported briefed dispatches at a median 6 calls
+against 57 un-briefed — 9.5×, and entirely an artifact of comparing one
+repo's audit fleet against another repo's four short dispatches. Within a
+single project: 6.0 against 6.5. There is **no** current evidence that the
+three detectable markers predict dispatch length, and `agents` now groups by
+the dispatching `cwd` and prints per-project rows rather than a pooled figure.
+The fix was removing the code path, not remembering to check.
 
 `status` exits **1** when the session should end — past the hard growth factor,
 or in a cost band whose remedy is to leave — so a shell prompt, a `Makefile` or
