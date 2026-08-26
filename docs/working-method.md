@@ -690,7 +690,7 @@ shape of the work rather than the point of it.**
 
 So: **#33 passes on cost and opens a question it cannot answer** — whether
 splitting a task across agents systematically finds less. n=2 per arm, one task.
-That is #42.
+That is #45.
 
 ### Bar 4, the noise clause, scored rather than skipped
 

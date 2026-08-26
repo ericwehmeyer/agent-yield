@@ -52,10 +52,22 @@ one reclassification swings the medians from 6.0/6.5 to 3.0/9.0 — which is the
 real finding. **"No evidence the markers predict dispatch length" stands**, now
 for the sharper reason that the comparison is one row wide.
 
+**[macOS 2026-08-26] #33 IS ANSWERED, AND IT BLOCKED EVERYTHING — read this
+before the baton sections below, which were written without it.** The baton
+beats a reading parent **1.71x end to end**, n=2 an arm, every baton run cheaper
+than every reader run. **The 28x on this page is retracted as an end-to-end
+number** (it divided growth avoided by arrival paid); the real long-run figure is
+**3.55x**. **At the audit turn alone the arms are 1.20x apart, under the
+retraction bar** — the effect lives entirely in the turns *after* the reading,
+which is why the protocol had a tail. **And the arm that saved the money found
+half the defects, in both replicates.** #45. **#34 is answered too:** re-entry is
+fixed at a median **22,114** (19,800 was 12% low), and the brief moves it 11%.
+working-method **§11.2** and **§11.3**.
+
 ## State of the board
 
-**The tool is built and works.** Nineteen modules, **260 tests**, green on
-Windows and macOS, everything pushed, working tree clean.
+**The tool is built and works.** Nineteen modules, green on Windows and macOS,
+everything pushed, working tree clean.
 `docs/superpowers/plans/2026-08-25-agent-yield.md` is fully executed.
 
 ```
@@ -962,9 +974,15 @@ the rest of the session.** That asymmetry is what the arithmetic above leaves
 out, and it is the one thing the retraction commit says explicitly is untouched.
 
 A parent carrying 68,047 extra tokens over another 100 calls has spent 6.8M on
-carrying it. Twelve re-entries cost 238K. **The baton still wins by roughly 28x
-— but on the asymmetry, not on the split**, and this document should never again
-claim the split itself saves anything.
+carrying it. Twelve re-entries cost 238K. ~~**The baton still wins by roughly
+28x**~~ — **RETRACTED 2026-08-26 as an end-to-end number by #33, which measured
+it.** That 28x divides growth *avoided* by arrival *paid*: two different
+quantities, not a ratio of two runs. Measured end to end the baton wins by
+**1.71x over six turns**, tending to **3.55x** as a session lengthens. The
+direction was right — the first time in three tries — and the magnitude was out
+by about eight-fold. The asymmetry itself stands, and is now measured per call:
+a reading parent's turn costs ~127,600 tokens against a dispatching parent's
+~35,900. See working-method §11.3.
 
 The independent support is the attribution measured here: 55.4% of main-thread
 growth is the parent reading. Part E says nothing about that number. It compared
@@ -992,18 +1010,29 @@ read as evidence about the cap rather than about the dispatchers.
 
 - **The parent-stays-flat falsifier stands** and becomes the primary one. It
   tests the asymmetry, which is what survived.
-- **A new one is needed and is the sharper test:** total tokens for a baton run
-  against the same work done by a reading parent, end to end. Per-call economics
-  has now predicted the wrong sign twice — §11 promised 6.2x and measured 1.07x,
-  Part E promised >=1.5x and measured 0.65x. **Nothing in this document should be
-  believed until the end-to-end number exists.**
+- ~~**A new one is needed and is the sharper test:** total tokens for a baton run
+  against the same work done by a reading parent, end to end.~~ **RUN, 2026-08-26,
+  and it passed: 1.71x, n=2 an arm, every baton run cheaper than every reader
+  run** (§11.3, `interventions.toml`). Per-call economics had predicted the wrong
+  sign twice before this — §11 promised 6.2x and measured 1.07x, Part E promised
+  >=1.5x and measured 0.65x — and this is the first one to get the sign right.
+  **The number to carry forward is not the headline but the tail:** at the audit
+  turn alone the two arms are 1.20x apart, *under* the retraction bar. Everything
+  the baton is worth appears in the turns after the reading.
 - **Any falsifier resting on the markers is void** until `45e9c62`'s retraction
   is addressed, including the enforcement ladder's compliance score. `discipline`
   can still count markers; it may not claim they predict cost.
 
-**Status of this spec after reconciliation: the mechanism stands, the
+~~**Status of this spec after reconciliation: the mechanism stands, the
 justification is half retracted, and the end-to-end test has not been run.**
-Do not build from it yet.
+Do not build from it yet.~~
+
+**Status 2026-08-26: the end-to-end test has been run and the mechanism is
+measured, so this spec may now be built from — with one qualification that is
+not about cost.** The baton arm found **half the defects** the reading arm found,
+in both replicates, and the reader's findings are close to a superset rather than
+a different judgment call. Per defect found, the reader is 1.17x *cheaper*. #45
+is that question, and #35-#38 should be read with it open.
 
 ### The baton, as discrete tickets: #33-#38
 
@@ -1012,8 +1041,8 @@ itself the input to #38.
 
 | | | |
 |---|---|---|
-| **#33** | the end-to-end number | **blocks everything.** One task, two arms, total tokens. Per-call arithmetic has predicted the wrong sign twice (§11 6.2x→1.07x, Part E 1.5x→0.65x); this one gets a retraction bar before it runs. |
-| **#34** | re-entry cost across the corpus | ~19,800 is one number from one run and the whole cost model rests on it. Is it fixed, or does it scale with the brief? If it scales, the five-part brief buys its own cost back. |
+| ~~**#33**~~ | **CLOSED 2026-08-26. 1.71x, and it passed.** Bars committed at `3017519` before the first call; result in §11.3 and `interventions.toml`. Baton 975,338 / 690,323 against reader 1,368,208 / 1,476,964, every baton run cheaper than every reader run. **At the audit turn alone: 1.20x, under the bar** — the tail of five turns is where the whole effect lives, and an experiment that stopped where Part E stopped would have reported no effect. **But the baton found 4 defects in both replicates and the reader 8 in both, so per defect found the reader is 1.17x cheaper and the headline reverses.** The pre-registered volume bar was on *claims counted* — the denominator — when the output of the task is *mismatches*: it would have passed an arm that returned zero defects. That is #45. |
+| ~~**#34**~~ | **CLOSED 2026-08-26. It is fixed, and 19,800 was 12% low.** 79 dispatch-to-agent pairs on this machine, 0 unclaimed: median first call **22,114**, stdev 2,958. Price a dispatch at ~22,000 for `general-purpose`. The brief moves it 11% across the real interquartile range, so the five-part brief does **not** buy its own cost back and does not need to — write it. The fitted slope (780 per 1,000 chars pooled; 476 and 1,835 within projects) is 2-7x the mechanical price of the text, so brief length is a **proxy for something else** and must not be quoted as what a brief costs. **The lead worth two dispatches:** `general-purpose` arrives at 22,131 (n=74), `Explore` at 8,909 (n=1), `statusline-setup` at 9,440 (n=2). If that holds, a narrow type is a third of the price. working-method §11.2. |
 | **#35** | slice thin, batch fat | retires the 10-call cap as a target and replaces it. A row is a unit of verification, not of dispatch. |
 | **#36** | the index and the parent loop | as a practice, **no code** — `predict` is the standing example of shipping a subcommand for an unvalidated shape. |
 | **#37** | `BRIEF:` / `EXPLORE:` self-declaration | what §12 left open and what #32 says the detector cannot do. Makes the exploratory share measurable. Related: #27, #32. |
@@ -1143,3 +1172,85 @@ working. `UNSCORABLE` needs to be a visible outcome, distinct from VOID.
 | ~~**#42**~~ | **NEW, found, fixed, closed.** The handoff written at 23:48 never reached the 23:50 session; it is still on disk. `Path.rename` is `os.rename`, which **raises on Windows when the destination exists** and silently overwrites on POSIX. Once a machine has archived one handoff, every later `consume` hit the existing `.loaded`, raised, was swallowed by `except OSError`, and returned `None` — reported as `no_handoff`. Not the first handoff: **every handoff after the first, on this platform, forever.** `os.replace` fixes it. The old double-consume test never reached the rename, because the first consume moves the file away. |
 | ~~**#41**~~ | **Closed, and the macOS diagnosis was right to find nothing.** The file layer was never wrong — the shipped `§` round-trip test **passes on Windows**. Every `subprocess.run` in the package passed `text=True` with no `encoding=`, which decodes with the locale code page: cp1252 here. Git speaks UTF-8, so `git log --format=%s` returned `Â§12` where the same call with `encoding="utf-8"` returns `§12`, both real subjects from this history. **The "two write paths" were never two write paths — they were two *source* paths**, git-derived notes against literals, mixed into one payload by `build()`. Five call sites fixed. |
 | **#43** | **NEW, open, split out of #41.** `sys.stdout` is cp1252 here, so `agent-yield --help` emits a bare `0xA7` that is **not valid UTF-8** — a consumer decoding the stream gets an invalid start byte, not a replacement glyph. The `SessionStart` injection is safe **by accident**: `json.dumps` defaults to `ensure_ascii=True` and escapes the payload before it reaches the stream. Protected-by-accident is not a property to rely on; anything added later that prints outside a `json.dumps` inherits the bug silently. |
+
+## [macOS 2026-08-26] What this session added, and the one number to start from
+
+`agent-yield handoff` before you restart. Then read this.
+
+**#33 and #34 are closed. The baton is no longer blocked, and #35-#38 may
+proceed** — with #45 open beside them, because the thing #33 could not settle is
+whether the cheap arm is the worse arm.
+
+**What the next session should not re-derive.** All of it is in
+`working-method.md` §11.2 and §11.3, and in `interventions.toml` with the
+prediction that was recorded before the run:
+
+| | |
+|---|---|
+| end to end | **1.71x** to the baton over six turns, **3.55x** in the limit |
+| at the audit turn only | **1.20x** — *under* the 1.25x bar. The tail is the finding |
+| a reading parent's turn | ~127,600 tokens, and it grows: 22,424 → 127,510 across one run |
+| a dispatching parent's turn | ~35,900 tokens, roughly flat: 22,515 → 31,767 |
+| re-entry, per agent | median **22,114**, stdev 2,958, n=79. Not 19,800 |
+| what a brief adds | ~11% across the real interquartile range. Write the brief |
+| defects found | baton **4/4**, reader **8/8**. Per defect the reader is 1.17x cheaper |
+
+**The protocol is reusable and is committed**, which matters more than any single
+number here: `docs/experiments/33-end-to-end/` runs an arm end to end
+(`run.sh baton 1`), `measure.py` totals a session including every agent it
+started, `score.py` reads compliance out of the transcripts rather than trusting
+what an arm says it did, and `table.py` rebuilds the table from the committed
+snapshots without needing the transcripts, which are volatile.
+
+### Reconciled against #44, which landed while this was being written
+
+**#33's and #34's numbers do not come from `report` and do not inherit its
+defect.** #44 found the scorer summing tokens machine-wide and dividing by
+commits in this repo — a 25x error — so the question is fair and needs answering
+rather than assuming. Both measurements here go through `ingest.load_records`
+over **explicitly named transcripts**: `measure.py` takes one pinned session id,
+totals that session's own file plus only the agent transcripts under that
+session's directory, and snapshots after every turn. No machine-wide sum, no
+commit denominator, and each arm ran as its own `--session-id` so attribution is
+by construction rather than by heuristic. The one heuristic in play is
+`agents.join` in #34, which reports its failures — 0 unclaimed of 79.
+
+**The two findings agree about something more useful than either number.** #44's
+theme is three silences that each *looked* like they were working. #33's
+pre-registered VOID bar is a fourth: it was written on claims counted rather than
+defects found, so it would have passed an arm that returned nothing. `UNSCORABLE`
+as a visible outcome is the fix #44 proposes; **a bar stated in the units of the
+finding** is the same fix one file over.
+
+### #45, and it is the one worth running next
+
+| | |
+|---|---|
+| **#45** | **does dispatching systematically find less?** #33's baton arm returned 4 mismatches in both replicates against the reader's 8, and the reader's are close to a superset — two the baton missed twice were verified by hand and are real defects. Cost per defect *reverses* the headline. Candidate causes, none tested: an agent seeing 4 of 19 modules cannot use the other 15 as context; a "return only JSON" contract discourages a second pass; five agents at 24 calls total is 4.8 calls a module against the reader's 15 calls over 19. **The cheapest discriminating run** is the same task with the baton arm given *one* agent for all 19 modules — if the defect count recovers, it is packing, not dispatching. |
+
+### Two lessons about the bars themselves, which outlast the numbers
+
+**The bar has to be on the finding, not on the denominator.** #33 pre-registered
+its VOID condition on *claims counted* when the task's output is *mismatches*. A
+baton arm returning zero defects with a full set of claim counts would have
+passed. That is #26's failure and #32's failure a third time: **the test written
+to the shape of the work rather than to the point of it.**
+
+**A protocol that stops at the obvious turn measures the wrong half.** At t1 this
+experiment says "no effect, 1.20x". The five turns after it are the entire
+result. Part E stopped at t1 by construction, and that is *why* it could measure
+splitting and say nothing about the baton.
+
+### What was found by accident, and fixed
+
+The audit both arms ran was a real audit of this repo, and two of its findings
+were verified by hand and are now fixed (`aa973b0`): `discovery` claimed two
+transcript locations when there are **three** — newer sessions write
+`~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl` and leave
+`tasks/<id>.output` as a **symlink** to it, so every new agent transcript is
+swept **twice** and only the `(message_id, request_id)` dedup keeps the subagent
+bill from doubling. A test pins that now. `resume` claimed five silences where
+its own code comment says four of five outcomes are silences.
+
+**Both were missed by the baton arm in both replicates. That is #45 in its
+smallest concrete form.**
