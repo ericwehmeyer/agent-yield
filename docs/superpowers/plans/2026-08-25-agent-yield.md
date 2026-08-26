@@ -2176,6 +2176,12 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code) if exc.code else 2
     return args.func(args)
+
+
+if __name__ == "__main__":
+    # Without this, `python -m agent_yield.cli ...` exits 0 having done
+    # nothing -- a silent success, which is the worst way for a tool to fail.
+    raise SystemExit(main())
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
