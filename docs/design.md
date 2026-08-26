@@ -72,21 +72,50 @@ stdev / mean = 50.4%
 The two figures the case study compared (136,449 and 135,943) were adjacent days
 of similar work. **Two points agreeing is not stability; it is a sample of two.**
 
-What survives and what does not:
+A second machine measured it independently the same day (#11, macOS, an
+unrelated corpus: photo-library work, `model-migration-kit`, this repo) and
+reported **132,234** — and headlined it as *corroboration*. Both readings are
+correct, and together they say something neither says alone.
 
-- `cost ≈ tool_calls × context_size` is **unaffected** — it is near-definitional,
-  and the join it enables is unchanged.
-- **~136K as a usable constant is withdrawn.** The central tendency is real
-  (median 140,293 across 15 days, within 3% of the case-study figure), but the
-  spread is ±50% and a point estimate hides it.
+**The aggregate reproduces. The decomposition does not.**
 
-**Consequence for `predict` (§4.4).** Defaulting to a hardcoded
-`REFERENCE_CONTEXT` was reasonable when 136K looked stable and is not now. The
-projection should be driven by the session's *measured current context*, which
-is knowable at dispatch time, and fall back to the reference only when it cannot
-be read. The existing band already carries the 3× call-count spread; it must also
-carry the context spread, or it will read as far more precise than the data
-supports.
+| corpus | aggregate | decomposed |
+|---|---|---|
+| Windows, 20,273 calls, 15 days | 145,145 | day range 74,349 → 391,473 |
+| macOS, 4,745 calls | 132,234 | main 311,399 vs subagent 89,721 |
+| macOS, by working directory | — | 47,347 → 179,864 |
+
+Two machines, unrelated work, aggregates 3–6% either side of 136K. That is a
+real and reproducible central tendency. But on **both** machines it dissolves the
+moment you split it: 3.5× between main sessions and subagents, ~4× across
+workloads, ~5× across days.
+
+So ~136K is a property of *a typical mixture of work*, not a property of a call.
+It reproduces because both machines run a similar blend — not because context
+size is stable. Averaging a stable mixture of unstable things yields a stable
+average, and mistaking that for a constant is the same error the case study
+documents, one level up.
+
+**This strengthens §3's mode segmentation** rather than undermining it. Context
+size varies precisely along the axis the design already insists on splitting.
+Reporting one global context-per-call is the same class of error as reporting
+one global yield.
+
+**Consequence for `predict` (§4.4), and it is concrete.** A dispatch is not an
+average call. Measured: subagents run at **89,721**, and a subagent given a
+self-contained brief and forbidden to explore ran at **17,580**. Projecting such
+a dispatch with `REFERENCE_CONTEXT = 136,449` overestimates it by up to 7×.
+`predict` should take the context it is projecting *for* — the session's measured
+current context when projecting the parent, the observed subagent figure when
+projecting a dispatch — and fall back to a reference only when neither is
+readable. The band must then carry the context spread as well as the 3×
+call-count spread, or it will read as far more precise than the data supports.
+
+**Consequence for `subagent_tokens`.** Its error is not a constant either. The
+case study measured ~80×; the macOS run measured **3.7×** on one dispatch (25,874
+reported against 94,602 actual). It scales with how much cache the agent read, so
+**no correction factor can be applied to it**. Read the transcript or do not
+claim a number.
 
 **Consequence for §5.** The daily and session thresholds were calibrated from the
 same two-day sample. They should be treated as provisional in the strong sense —
