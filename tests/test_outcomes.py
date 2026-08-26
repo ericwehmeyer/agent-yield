@@ -79,3 +79,37 @@ def test_test_count_is_none_when_no_command_given(repo):
     day = dt.date(2026, 8, 24)
     outcomes = {o.day: o for o in daily_outcomes(repo, day, day)}
     assert outcomes[day].tests is None
+
+
+def test_git_output_is_decoded_as_utf8_not_the_locale_codepage(tmp_path):
+    """Git speaks UTF-8; `text=True` alone decodes it as cp1252 on Windows.
+
+    `subprocess.run(..., text=True)` with no `encoding=` decodes using
+    `locale.getpreferredencoding(False)`, which is cp1252 on Windows and
+    UTF-8 nearly everywhere else. A commit subject containing a section
+    mark came back as `Â§` on Windows only -- the mojibake in issue #41,
+    which the audit of `read_text`/`write_text` could not find because the
+    corrupting read is a subprocess, not a file.
+
+    The subject below is a real one from this repo's history.
+    """
+    from agent_yield import handoff as handoff_module
+    from agent_yield import outcomes as outcomes_module
+
+    subject = "working-method §12: the rubric, and an em dash — here"
+    work = tmp_path / "r"
+    work.mkdir()
+    _git(work, "init", "-b", "main")
+    (work / "a.txt").write_text("one\n", encoding="utf-8")
+    _git(work, "add", "a.txt")
+    _git(work, "commit", "-m", subject,
+         GIT_AUTHOR_DATE=WHEN, GIT_COMMITTER_DATE=WHEN)
+
+    for name, fn in (
+        ("outcomes", lambda: outcomes_module._git(work, "log", "--format=%s")),
+        ("handoff", lambda: handoff_module._git(work, "log", "--format=%s")),
+    ):
+        got = fn() or ""
+        assert "§" in got, f"{name}: section mark did not survive"
+        assert "—" in got, f"{name}: em dash did not survive"
+        assert "Â" not in got, f"{name}: mojibake -- decoded as cp1252"

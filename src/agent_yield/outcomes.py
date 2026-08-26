@@ -26,7 +26,7 @@ class DailyOutcome:
 
 def _git(repo: Path, *args: str) -> str:
     result = subprocess.run(
-        ["git", *args], cwd=repo, capture_output=True, text=True
+        ["git", *args], cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     return result.stdout if result.returncode == 0 else ""
 
@@ -133,18 +133,18 @@ def test_count_at(repo: Path, sha: str, command: list[str]) -> int | None:
         target = Path(tmp) / "wt"
         made = subprocess.run(
             ["git", "worktree", "add", "--detach", str(target), sha],
-            cwd=repo, capture_output=True, text=True,
+            cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         if made.returncode != 0:
             return None
         try:
             result = subprocess.run(
-                command, cwd=target, capture_output=True, text=True
+                command, cwd=target, capture_output=True, text=True, encoding="utf-8", errors="replace"
             )
             match = _COLLECTED.search(result.stdout + result.stderr)
             return int(match.group(1)) if match else None
         finally:
             subprocess.run(
                 ["git", "worktree", "remove", "--force", str(target)],
-                cwd=repo, capture_output=True, text=True,
+                cwd=repo, capture_output=True, text=True, encoding="utf-8", errors="replace",
             )
