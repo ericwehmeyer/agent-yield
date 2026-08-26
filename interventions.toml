@@ -37,3 +37,13 @@ expect = "a session started from a handoff opens under 60,000 context/call and i
 date   = "2026-08-26"
 name   = "cost thresholds: a level family at 20%/40% of window, separate from the capacity family"
 expect = "the share of calls made above 200K context falls below the measured 20%, and the share of the cache-read bill above 200K falls below the measured 47%"
+
+[[intervention]]
+date   = "2026-08-26"
+name   = "cost thresholds in absolute tokens: dispatch 300,000, restart 500,000, stop 700,000, each recorded with the share of main-thread calls it fires on"
+expect = "the two leave bands fire on under 15% of main-thread calls, and neither the boundary nor the status line is disabled or overridden in the next two weeks -- a threshold that fires on half of everything gets turned off, which is the failure this replaced (the 2026-08-25 family above fired on 42-50%)"
+
+[[intervention]]
+date   = "2026-08-26"
+name   = "dispatch rubric: every briefed dispatch carries line ranges plus a prohibition on exploring, one unit of work, a named output path, and a return contract"
+expect = "over the next 20 non-exploratory dispatches, those whose prompts carry all three detectable markers hold a median of 27 or fewer tool calls and 67,123 or less context/call -- the briefed range on record; a median above 40 calls or 85,000 context/call means the markers are cargo cult and the pre-dispatch half of this should be retracted, keeping only the post-hoc audit"
