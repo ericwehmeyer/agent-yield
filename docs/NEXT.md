@@ -1354,3 +1354,85 @@ been the thing in the way: 121 calls, opening 55,567 → current 219,255, **3.9x
 growth**, 16.1M tokens, 98% of them cache reads. The cost band still reads
 *cheap* and capacity still reads 22% — which is #17's whole argument in one
 line, on the session that wrote it down.
+
+## [macOS 2026-08-26] #47 ran, and it is AMBIGUOUS on purpose
+
+`agent-yield handoff` before you restart. Then read this.
+
+**#47 asked whether dispatching systematically finds less, or whether it was
+only the packing. The answer is: not only the packing, and the pre-registered
+bar refused to let it be called cleanly either way.** The one-agent baton
+returned **5 and 4** mismatches against the five-agent baton's 4 and 4 and the
+reader's 8 and 8.
+
+| | baton, 5 agents | **baton1, 1 agent** | reader |
+|---|---|---|---|
+| mismatches | 4, 4 | **5, 4** | 8, 8 |
+| ground-truth defects, of 2 | 0, 0 | **1, 0** | 2, 2 |
+| tokens end to end | 832,830 | **1,045,608** | 1,422,586 |
+| agent tokens | 481,942 | **859,292** | 0 |
+| dollars | $2.54 | **$1.81** | $3.23 |
+| tokens per defect | 208,208 | **232,357** | 177,823 |
+| dollars per defect | 0.636 | **0.402** | 0.403 |
+
+**Why AMBIGUOUS and not a verdict.** PACKING needed a ground-truth defect in
+*both* replicates and a mean of ≥ 7.0; it got 4.5. DISPATCHING needed *neither*
+defect in *either* replicate; r1 recovered `discovery-two-locations`, the
+third-transcript-location defect the five-agent baton missed twice. One
+replicate finding one of two while the other finds neither is the exact band the
+third outcome was written for. **#47 stays open.**
+
+**The actionable half does not need the verdict.** The defect count did not
+recover — 4.0 → 4.5 against a reader at 8.0 is not the 4 → 8 that would have
+made packing the answer, and the reader's set is still close to a superset of
+every baton set at either packing. **So #35 is not the answer to the quality
+gap, and #35–#38 each need a QUALITY bar in defects, not only a cost bar.**
+
+### The bar was pinned to a tree, and that was the whole experiment
+
+Both ground-truth defects **were fixed at HEAD in `0130b66`**, the commit right
+after #33 ran. Run at HEAD, an arm that finds nothing and an arm that finds
+everything score identically — unfalsifiable in the flattering direction. `src/`
+was pinned to `76cbf08` in a throwaway worktree, verified byte-identical to the
+tree #33 audited. **Anyone re-running this must pin it too.** `ground-truth.json`
+carries that instruction next to the defects it applies to.
+
+`defects.py` scores the two hand-verified defects by identity, and **it was
+validated against #33's four archived arms before a token was spent** —
+reproducing reader 2/2 and 2/2, baton 0/2 and 0/2. An instrument that cannot
+tell the known cases apart cannot tell the new one apart; #26, #32 and #44 all
+shipped one that could not.
+
+### FEWER AGENTS COST MORE TOKENS, and that was not predicted
+
+One agent over 19 modules spent **859,292** agent tokens against five agents'
+**481,942** on identical work — **1.78x** — and end to end the one-agent arm cost
+**1,045,608** against the five-agent arm's 832,830. **The five-agent baton is the
+cheapest arm in tokens, not the one-agent baton.**
+
+**#35's premise is falsified as stated.** It predicts cost falls as agents fall,
+because re-entry is ~22,114 an agent. Dropping 5 agents to 1 *did* save ~88,000
+of arrival — the parent fell to a mean 186,317 — and then paid **~377,000 of the
+single agent's own growth**, reading module 19 while carrying modules 1–18.
+That is #33's reading-parent mechanism **relocated into the agent, not removed**.
+**#35 must search for a minimum, not assume a floor at one agent.** It needs a
+ticket; do not pick the number locally.
+
+### The units disagree in sign, and #23 put the cost family in tokens
+
+In **dollars** the one-agent arm is the **cheapest** of the three — $1.81 against
+$2.54 and $3.23 — exactly reversing the token ranking. Per defect the dollar
+figures are 0.402, 0.636 and 0.403: **the one-agent baton and the reader tie and
+the five-agent baton is worst**, where in tokens per defect the reader wins.
+
+*Measured:* both totals — tokens through this repo's loader over explicitly named
+transcripts, dollars through the CLI's own `total_cost_usd`, which includes
+subagents (the reader arms have none and reconcile against parent usage alone).
+*Inferred and NOT verified:* that the divergence is cache creation priced against
+cache read — five agents each creating their own cache where one creates once and
+reads many times. **Do not quote the dollar ranking as a finding until that is
+measured. Quote the disagreement, which is real either way.** A cost family in
+one unit that reverses in another is the 28x error's family, one metric over.
+
+**Limits.** n=2, one task, and only two packings — 1 agent against 5, nothing
+between them, and the minimum this predicts is untested.
