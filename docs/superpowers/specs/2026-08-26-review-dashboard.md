@@ -49,6 +49,15 @@ part. The plan concedes the same-day contamination itself — *"This morning's
 this repo on 08-26 is the plan's own position, not my inference. Only the mapping
 from those 4 commits to those 2,135 lines is inferred.
 
+> **Correction, 2026-08-26 (#45's re-run, 8095e43; tracked as #67). Annotated,
+> not rewritten.** Both corrections above still divide one clone's tokens by a
+> denominator holding both clones' lines — they adjust for the foreign lines
+> this review could *identify*, which is the best that was reachable before the
+> reflog rule existed. Scoped properly, the same window reads **13,747
+> tokens/insertion against 08-25's 4,232, 3.25x worse**. This review got the
+> **sign** right against a plan that had it wrong, and it understated the size
+> for the same reason the plan did: 15-17% where the figure is 225%.
+
 **What to do instead.** Do not promote `(5)+(6)` to headline until the flat result
 has been recomputed against a denominator scoped to the measured machine. That is
 a one-off arithmetic exercise on data already in `docs/working-method.md` §11, not

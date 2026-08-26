@@ -2,7 +2,10 @@
 
 Two machines work this repo through GitHub (§7). Every git-denominated metric in
 `report` divides one machine's tokens by two machines' commits -- #44 measured
-that error at 25x, and the daily report's "24% worse" rests on it. #45 proposed
+that error at 25x, and the daily report's "24% worse" rested on it -- RE-RUN
+2026-08-26 on the reflog denominator, that figure is 225% worse, and two of the
+report's three ratios reverse sign (#45's obligation, #67; do not quote 24%,
+0.59x, 0.61x or 5,267). #45 proposed
 the fix: correlate commit timestamps against this machine's calls, +/- 6 min,
 with `unknown` a real outcome. The dashboard review (2026-08-26) warned that the
 acceptance check must not be a hand execution of the rule itself.

@@ -2349,3 +2349,39 @@ the tool's own two rules, called directly. The full-day figures are the CLI's.
 `settings.json` stanza, its scripts, and whether `agent-yield statusline` is in
 the chain. The status line is the only surface here that costs zero tokens to
 read, and this machine's is the generic one.
+
+## [macOS 2026-08-26 20:30] #67: the retraction had not left NEXT.md, and one design rule was still resting on the withdrawn premise
+
+**8095e43 retracted all three of the 08:30 report's ratios in `NEXT.md`, and
+three files outside it went on asserting them.** A retraction that lives only
+in the log is not a retraction: `working-method.md` §7.2 is the standing page
+on machine attribution and a reader reaches it without ever opening this file.
+Filed as **#67**, self-assigned, and closed the same hour.
+
+| file | was | now |
+|---|---|---|
+| `docs/working-method.md` §7.2 | "the daily report's *24% worse* rests on it", present tense, no outcome | first mention points forward; section ends with the three-ratio table, the 2.27x/6.59x over-attribution, and **do not quote 24%, 0.59x, 0.61x, 5,267** |
+| `docs/experiments/45-attribution/attribute.py` | same sentence in the file that implements the fix | docstring carries the re-run and the four withdrawn figures |
+| `docs/superpowers/specs/2026-08-26-plan-dashboard.md` | "**the finding this design exists to protect**: this morning's 2.2x was a mixture shift" | annotated: premise withdrawn, rule kept, **re-grounded** |
+| `docs/superpowers/specs/2026-08-26-review-dashboard.md` | "15-17% worse" from a two-machine denominator | annotated: sign right, size low for the same reason the plan's was |
+
+**The one that mattered was the third, and it is not a citation problem.** The
+dashboard's design rule — *no decomposable aggregate appears without its
+decomposition beside it* — was justified by the mixture finding, and 8095e43
+showed **the mixture argument was itself misattribution**: on this clone's own
+lines 08-26 was doc-heavy too, 833 code against 2,050 docs, so the code lines
+the argument leaned on were the other machine's. The rule is if anything better
+supported now (the aggregate moves 2.89x on the denominator alone) but it is
+supported by something else, and **a live rule still citing a withdrawn premise
+is this repo's own subject matter**.
+
+**The dated specs are annotated, never rewritten.** They record what was
+believed at that hour; editing them would delete the error rather than the
+claim, and the error is the evidence.
+
+**What this does not do.** It corrects prose. No number here was re-derived on
+this machine — every figure is 8095e43's, computed on the Windows clone's
+reflog, and this clone cannot reproduce them (its reflog covers its own shas
+only, which is precisely why `--machine` is per-clone). A macOS re-derivation
+of the same window would be a second measurement, not a check of this one.
+

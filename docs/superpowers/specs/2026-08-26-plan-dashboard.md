@@ -1,5 +1,22 @@
 # Plan: the daily impact dashboard
 
+> **Correction, 2026-08-26 (#45's re-run, 8095e43; tracked as #67). The premise
+> of the paragraph below is withdrawn, and this page is annotated rather than
+> rewritten because it is the record of what was believed when the design was
+> made.** The "2.2x improvement" was computed on the ±6-minute attribution rule,
+> which over-attributed this clone 2.27x on commits and 6.59x on code lines. On
+> the reflog denominator both apparent wins reverse: tokens/commit 1.35x *worse*,
+> tokens/code-insertion 4.02x *worse*. **And the mixture explanation was
+> misattribution too** — on this clone's own lines 08-26 was doc-heavy as well
+> (833 code against 2,050 docs), so the code lines the argument leaned on were
+> the other machine's.
+>
+> **The design rule below survives; its justification does not.** "No
+> decomposable aggregate appears without its decomposition beside it" is if
+> anything better supported now — the aggregate moved 2.89x on the denominator
+> alone — but it no longer rests on the mixture finding, and a rule left citing
+> a withdrawn premise is the failure this repo exists to catch.
+
 **The finding this design exists to protect: this morning's 2.2x "improvement" was a
 mixture shift, not an efficiency gain.** 08-25 was doc-heavy, 08-26 code-heavy;
 tokens per commit and tokens per code-line both "improved" ~2.2x while tokens per

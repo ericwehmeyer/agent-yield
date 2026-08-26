@@ -281,7 +281,8 @@ places is worse than no number, because both halves of the repo will cite it.
 
 Two machines through one queue means every git-denominated metric divides **one**
 machine's tokens by **both** machines' commits. #44 measured that at 25x on one
-day, and the daily report's "we got 24% worse" rests on it. #45 proposed
+day, and the daily report's "we got 24% worse" rested on it — **that figure is
+retracted at the end of this section**. #45 proposed
 correlating a commit's timestamp against this machine's calls, ±6 minutes.
 
 **Measured, that rule is 61% accurate and over-attributes 1.67x.** On this
@@ -337,6 +338,28 @@ typed it.
 `--machine` is **off by default**, on `outcomes` and on `report`, because
 scoping changes what a count means and a number whose meaning changed silently
 is the failure this whole tool documents.
+
+**What the correction cost the published numbers (#45's obligation, discharged
+2026-08-26, #67).** The daily report's "24% worse" was computed with the
+±6-minute rule. Re-run on the reflog denominator — same numerator to the token,
+same window — the rule claimed **50** of the window's 66 commits for this
+repo's Windows clone when the reflog shows it wrote **22**: 2.27x
+over-attribution on commits, **6.59x on code lines**. Two of the three ratios
+reverse sign:
+
+| ratio, 08-25 → 08-26 | published | re-run |
+|---|---|---|
+| tokens / commit | 1,056,044, *0.59x better* | **2,400,100, 1.35x worse** |
+| tokens / insertion | 5,267, 1.24x worse | **13,747, 3.25x worse** |
+| tokens / code insertion | 9,613, *0.61x better* | **63,388, 4.02x worse** |
+
+The published figure was argued as a **floor** and the direction held; the size
+was 13x low — 225% worse, not 24%. **Do not quote 24%, 0.59x, 0.61x or 5,267.**
+And the mixture argument that explained away the two apparent wins was
+misattribution one level up: on this clone's own lines 08-26 was **doc-heavy
+too** — 833 code against 2,050 docs — so the code lines that argument leaned on
+were the other machine's. Full re-run in `NEXT.md`, *[Windows 2026-08-26
+16:15]*.
 
 ## 8. Snapshot perishable data before you need it
 
