@@ -34,9 +34,11 @@ def _stamp(offset_seconds: float) -> str:
     return (BASE + dt.timedelta(seconds=offset_seconds)).isoformat()
 
 
-def _dispatch_line(session, offset, subagent_type, prompt, description="d"):
+def _dispatch_line(session, offset, subagent_type, prompt, description="d",
+                   cwd="/repo/proj-a"):
     return json.dumps({
         "sessionId": session,
+        "cwd": cwd,
         "timestamp": _stamp(offset),
         "type": "assistant",
         "message": {
@@ -241,7 +243,9 @@ def test_render_scores_both_rubrics_and_excludes_exempt(tmp_path):
     # the exempt 90-call run must not be scored against either rubric
     assert "§11 length: 1/2 over" in out
     assert "§12 brief:  1/2 carried all three markers" in out
-    assert "briefed median 4 calls vs un-briefed 40" in out
+    assert "proj-a" in out
+    assert "briefed n=1   median   4 calls" in out
+    assert "un-briefed n=1   median  40 calls" in out
 
 
 def test_render_says_when_the_join_failed(tmp_path):
@@ -255,3 +259,56 @@ def test_render_says_when_the_join_failed(tmp_path):
     assert "1 agent transcript(s) matched no dispatch" in out
     assert "agent-9" in out
     assert "unlinked" in out
+
+
+def test_a_cross_project_comparison_is_refused_not_pooled(tmp_path):
+    """The confound that made this audit's first headline wrong.
+
+    Pooled across projects the first run reported briefed dispatches at 6
+    calls against 57 -- 9.5x, and entirely spurious: one repo's long
+    un-briefed audit fleet against another repo's four short briefed ones.
+    Within a project the effect vanished (6.0 vs 6.5). The pooled number
+    must never be printed when the groups do not share a project.
+    """
+    main = _main(tmp_path, [
+        _dispatch_line("s1", 0, "general-purpose", BRIEFED, "b", cwd="/repo/alpha"),
+        _dispatch_line("s1", 300, "general-purpose", UNBRIEFED, "u", cwd="/repo/beta"),
+    ])
+    a1 = _write(tmp_path / "a1.output", [
+        _agent_call("s1", "agent-1", 1.5, "general-purpose", f"r{i}")
+        for i in range(3)
+    ])
+    a2 = _write(tmp_path / "a2.output", [
+        _agent_call("s1", "agent-2", 301.5, "general-purpose", f"q{i}")
+        for i in range(90)
+    ])
+    audits, orphans = join(read_dispatches(main), read_agent_runs([a1, a2]))
+    out = render(audits, orphans)
+
+    assert "no project has both groups" in out
+    assert "measuring the project, not the brief" in out
+    # the tempting, wrong headline must not appear anywhere
+    assert "median   3 calls   un-briefed" not in out
+
+
+def test_project_comes_from_the_dispatching_cwd(tmp_path):
+    main = _main(tmp_path, [
+        _dispatch_line("s1", 0, "general-purpose", BRIEFED,
+                       cwd="/Users/x/IdeaProjects/agent-yield"),
+    ])
+    assert read_dispatches(main)[0].project == "agent-yield"
+
+
+def test_a_dispatch_with_no_cwd_is_not_silently_grouped(tmp_path):
+    """An unknown project must not merge with a known one."""
+    line = json.dumps({
+        "sessionId": "s1",
+        "timestamp": _stamp(0),
+        "type": "assistant",
+        "message": {"role": "assistant", "content": [{
+            "type": "tool_use", "id": "toolu_x", "name": "Task",
+            "input": {"subagent_type": "general-purpose", "prompt": BRIEFED},
+        }]},
+    })
+    paths = [_write(tmp_path / "m.jsonl", [line])]
+    assert read_dispatches(paths)[0].project == "?"

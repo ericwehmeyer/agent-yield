@@ -98,6 +98,23 @@ class Dispatch:
     model: str | None
     description: str | None
     prompt: str | None
+    cwd: str | None = None
+
+    @property
+    def project(self) -> str:
+        """The last path segment of the dispatching session's cwd.
+
+        Not decoration. The first run of this audit pooled every project on
+        the machine and reported briefed dispatches at 6 calls against 57 --
+        a 9.5x effect that was entirely project: all 61 long un-briefed
+        dispatches came from one repo's audit fleet, and all 4 briefed ones
+        from another repo. Within a single project the difference vanished
+        (6.0 vs 6.5). A pooled comparison across projects is a confound, so
+        this field exists to make refusing one possible.
+        """
+        if not self.cwd:
+            return "?"
+        return self.cwd.rstrip("/").rsplit("/", 1)[-1] or "?"
 
     @property
     def exempt(self) -> bool:
@@ -207,6 +224,7 @@ def read_dispatches(paths: list[Path]) -> list[Dispatch]:
                     model=tool_input.get("model"),
                     description=tool_input.get("description"),
                     prompt=tool_input.get("prompt"),
+                    cwd=payload.get("cwd"),
                 ))
     out.sort(key=lambda d: (d.session_id or "", d.timestamp or dt.datetime.min.replace(tzinfo=dt.timezone.utc)))
     return out
@@ -356,13 +374,7 @@ def render(
         lines.append(
             f"§12 brief:  {len(briefed)}/{len(linked)} carried all three markers"
         )
-        # The whole point of joining: does the brief predict the length?
-        if briefed and len(briefed) < len(linked):
-            unbriefed = [a for a in linked if not a.briefed]
-            lines.append(
-                f"            briefed median {_median([a.run.calls for a in briefed])} calls "
-                f"vs un-briefed {_median([a.run.calls for a in unbriefed])}"
-            )
+        lines.extend(_brief_effect(linked))
 
     if orphans:
         lines.append("")
@@ -378,6 +390,57 @@ def render(
                     f"session {(run.session_id or '?')[:8]}"
                 )
     return "\n".join(lines)
+
+
+def _brief_effect(linked: list[Audit]) -> list[str]:
+    """Does the brief predict the length? Only ask within one project.
+
+    THE FIRST RUN OF THIS AUDIT GOT THIS WRONG, and the wrong answer was
+    published before anyone checked. Pooled over every project on the
+    machine it reported briefed dispatches at a median 6 calls against 57
+    un-briefed -- 9.5x, and entirely spurious. All 61 long un-briefed
+    dispatches were one repo's audit fleet; all 4 briefed ones were another
+    repo. Within a single project the effect vanished: 6.0 against 6.5, with
+    the briefed dispatches carrying MORE context.
+
+    So the pooled comparison is withheld whenever the two groups do not
+    share a project, and the per-project rows are printed instead. A tool
+    that reports a headline it cannot support is worse than one that
+    reports nothing: the number gets quoted, and this one was, in two
+    issue comments, within the hour.
+    """
+    briefed = [a for a in linked if a.briefed]
+    unbriefed = [a for a in linked if not a.briefed]
+    if not briefed or not unbriefed:
+        return []
+
+    out = ["", "brief vs length, per project (pooling across projects is a confound):"]
+    projects = sorted({a.dispatch.project for a in linked})
+    comparable = 0
+    for project in projects:
+        here = [a for a in linked if a.dispatch.project == project]
+        b = [a for a in here if a.briefed]
+        u = [a for a in here if not a.briefed]
+        if b and u:
+            comparable += 1
+            out.append(
+                f"  {project[:24]:24} briefed n={len(b):<3} median "
+                f"{_median([a.run.calls for a in b]):>3} calls   "
+                f"un-briefed n={len(u):<3} median "
+                f"{_median([a.run.calls for a in u]):>3} calls"
+            )
+        else:
+            side = "briefed" if b else "un-briefed"
+            out.append(
+                f"  {project[:24]:24} {len(here)} dispatch(es), all {side} "
+                "-- no within-project comparison"
+            )
+    if comparable == 0:
+        out.append(
+            "  no project has both groups, so there is NO comparison here "
+            "-- any pooled number would be measuring the project, not the brief"
+        )
+    return out
 
 
 def _median(values: list[int]) -> int:

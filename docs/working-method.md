@@ -492,37 +492,63 @@ scorable at all. Before it, the prompt was in the parent's transcript and the
 call count was in the child's, and **hooks do not fire inside a subagent**, so
 `gate` could see the brief and never learn what it cost.
 
-Scored over **73 dispatches** joined to their transcripts (0 unmatched):
+Scored over **73 dispatches** joined to their transcripts (0 unmatched).
 
-| | n | median calls | median ctx/call | median tokens |
-|---|---|---|---|---|
-| carried all three markers | 4 | **6** | 39,139 | 264,622 |
-| did not | 69 | **57** | 84,357 | 5,074,043 |
+**The first answer this produced was wrong, and it is kept here because the way
+it was wrong is worth more than the rubric.** Pooled across every project on the
+machine:
 
-**9.5x on calls, 2.2x on context, 19x on tokens.** This is the first evidence
-that the markers *predict* dispatch length rather than merely correlating with
-an author who was being careful anyway, and the direction is what §12 claimed.
+| | n | median calls | median ctx/call |
+|---|---|---|---|
+| carried all three markers | 4 | 6 | 39,139 |
+| did not | 69 | 57 | 84,357 |
 
-**Three things temper it, and they are the reason this reports rather than
-retunes:**
+9.5x on calls. Written up as the first evidence that the markers *predict*
+dispatch length, and posted to two issues, inside an hour.
 
-1. **n=4.** Four briefed dispatches is not a population. One of them ran 30
-   calls against a stated cap of 14 — stating a cap still does not enforce one.
-2. **The ranges overlap** — briefed 3–30, un-briefed 3–118. `thresholds.py`
-   previously recorded that the two populations "do not overlap at all"; that
-   was true of eight hand-picked dispatches and is not true of seventy-three.
-   Corrected in place.
-3. **Marker-detected ≠ hand-identified.** The four the regexes find are not the
-   four a human labelled briefed when the constants were fitted. Automatic
-   selection picks a different set, so this is a new measurement, not a
-   replication of the old one.
+**It was entirely project.** All 61 long un-briefed dispatches were one repo's
+audit fleet; all 4 briefed ones another repo's. Exactly one project contained
+both groups, and within it the effect disappears:
 
-**The finding nobody wanted: 4 of 73 dispatches carried all three markers, and
-60 of 73 exceeded the 10-call cap** (longest: 118 calls). The rubric is
-followed about 5% of the time, in a repo whose subject is the rubric, by the
-people who wrote it. That is not a discipline problem any more than the
-restart was — it is the argument for #27 Stage 2, which now has the data it
-was blocked on.
+| agent-yield only | n | median calls | median ctx/call |
+|---|---|---|---|
+| carried all three markers | 4 | **6.0** | 39,139 |
+| did not | 8 | **6.5** | 28,353 |
+
+**There is currently no evidence that the three detectable markers predict
+dispatch length.** The briefed dispatches were, if anything, slightly more
+expensive per call. `agent-yield agents` now refuses to print a pooled
+cross-project comparison and prints per-project rows instead, with a test
+asserting the tempting number never appears.
+
+**What does survive:**
+
+- **The ranges overlap.** `thresholds.py` recorded that the briefed and
+  un-briefed populations "do not overlap at all" (4-27 vs 62-188). Within
+  agent-yield: un-briefed 3-27 against briefed 3-30. True of eight hand-picked
+  dispatches, false of twelve measured ones. Retired.
+- **4 of 73 dispatches carried all three markers; 60 of 73 exceeded the
+  10-call cap** (longest 118). The rubric is followed about 5% of the time, in
+  the repo whose subject is the rubric.
+- **§12's asymmetry is untouched.** "The child pays for what it reads once; the
+  parent pays on every call afterwards" is per-call economics, measured
+  elsewhere. What is unsupported is the narrower claim that *these three
+  regex-detectable markers* are what produce the saving.
+
+**Three lessons, and the third is the general one:**
+
+1. **A between-groups comparison over a pooled corpus is a confound until
+   proven otherwise.** The corpus spanned projects because
+   `main_transcript_dir()` spans projects, and nothing in the first version
+   made that visible.
+2. **The tool made the confound invisible, so the tool was the bug.** The fix
+   is not "remember to check" -- it is that `render` cannot emit the pooled
+   number any more.
+3. **Speed of publication is a risk multiplier.** The wrong figure reached
+   `thresholds.py`, `NEXT.md`, a commit message and two issue comments before
+   it was checked, because it was a *good* result, and good results do not
+   invite scrutiny. The interval between measuring and quoting is where this
+   kind of error gets expensive.
 
 **The join is a heuristic and says so.** There is no structural link from a
 dispatch to its child: the parent's `tool_use` id appears nowhere in the

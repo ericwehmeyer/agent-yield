@@ -87,29 +87,32 @@ BRIEFED_CONTEXT_RANGE = (17_580, 67_123)  # low-high context/call across the fou
 BRIEFED_REFERENCE_CONTEXT = 31_618        # median context/call across the four, 2026-08-26
 BRIEFED_DEFAULT_EXPECTED_CALLS = 12       # median call count across the four, 2026-08-26
 BRIEFED_CALL_RANGE = (4, 27)              # observed spread across the hand-identified four, 2026-08-26
-# CORRECTION 2026-08-25 (#18 Part C, `agent-yield agents`). "Does not overlap
-# OBSERVED_CALL_RANGE" was the previous claim here and it does not survive a
-# bigger corpus. Scored automatically over 73 dispatches joined to their
-# transcripts, selecting "briefed" by the three detectable markers rather than
-# by hand:
+# CORRECTION 2026-08-25 (#18 Part C, `agent-yield agents`). Two corrections,
+# and the second retracts the first -- both kept, because the sequence is the
+# lesson.
 #
-#     marker-briefed  n=4    median  6 calls   39,139 ctx/call   range 3-30
-#     un-briefed      n=69   median 57 calls   84,357 ctx/call   range 3-118
+# FIRST, WRONG: pooled over 73 dispatches from every project on the machine,
+# marker-briefed dispatches showed a median 6 calls against 57 un-briefed, and
+# that 9.5x was written up as "the first evidence that the markers predict
+# length". It reached two issue comments before anyone checked it.
 #
-# The DIRECTION is strong -- 9.5x on calls, 2.2x on context -- and it is the
-# first evidence that the markers predict length rather than merely correlating
-# with a careful author. But the ranges OVERLAP, so "two populations that do not
-# overlap at all" is retired: it was true of eight hand-picked dispatches and is
-# not true of seventy-three.
+# SECOND, CORRECT: the effect was entirely PROJECT. All 61 long un-briefed
+# dispatches came from one repo's audit fleet; all 4 briefed ones from another.
+# Exactly one project held both groups, and within it:
 #
-# Two cautions that belong next to the numbers, not in a commit message:
-#   1. n=4. Four briefed dispatches is not a population, and one of them ran 30
-#      calls against a stated cap of 14.
-#   2. The marker-detected four are NOT the hand-identified four these constants
-#      were fitted to. Automatic selection picks a different set than human
-#      judgement did, so this is a new measurement, not a replication.
-# The constants below are therefore left alone; #18 Part C reports, it does not
-# retune. Retuning wants the prospective 20 dispatches #27 asked for.
+#     agent-yield   briefed n=4  median 6.0 calls, 39,139 ctx/call
+#               un-briefed n=8  median 6.5 calls, 28,353 ctx/call
+#
+# The call difference vanishes and the briefed dispatches carry MORE context.
+# **There is currently no evidence that the three detectable markers predict
+# dispatch length.** `agents.render` now refuses the pooled comparison.
+#
+# What survives: "does not overlap OBSERVED_CALL_RANGE" is still retired --
+# within agent-yield the un-briefed range is 3-27 against briefed 3-30. True
+# of eight hand-picked dispatches, false of the twelve measured here.
+#
+# The constants below are left alone. Part C reports, it does not retune, and
+# it has less to retune with than it appeared to an hour ago.
 
 
 def band_for_day(day_total: int) -> str:
