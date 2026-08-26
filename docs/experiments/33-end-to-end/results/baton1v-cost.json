@@ -1,0 +1,16 @@
+{
+  "note": "The cumulative-*.json beside this file report agent_tokens 0. That is #70, not a result: measure.py reads agent transcripts only from tasks/*.output, which on Windows exists and is 0 bytes, while the real 373KB transcript sits at ~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl. These figures are recomputed from the real transcripts with the current package. Do not quote the cumulative files for this arm.",
+  "instrument": "current src (post-#61, post-#62); audit target pinned to 76cbf08",
+  "platform": "windows, 2026-08-26; the three archived arms ran on macOS",
+  "replicates": {
+    "r1": {"parent_calls": 7, "parent_tokens": 350222, "agent_calls": 11, "agent_tokens": 783974,
+           "raw": 1134196, "weighted": 488320, "dollars": 2.4416},
+    "r2": {"parent_calls": 7, "parent_tokens": 359068, "agent_calls": 11, "agent_tokens": 732512,
+           "raw": 1091580, "weighted": 440816, "dollars": 2.2041}
+  },
+  "mean": {"raw": 1112888, "weighted": 464568, "dollars": 2.3229,
+           "mismatches": 8.5, "dollars_per_defect": 0.2733},
+  "defects": {"r1": {"mismatches": 5, "ground_truth": ["discovery-two-locations"]},
+              "r2": {"mismatches": 12, "ground_truth": ["discovery-two-locations", "resume-five-silences"]}},
+  "verdict": "BRIEF-FIXABLE on the bar pre-registered at issue 47 before the run: mean >= 7.0 and a ground-truth defect in both replicates. The 5-vs-12 spread is the standing caveat -- direction established, effect size not."
+}

@@ -2603,3 +2603,39 @@ admitting that is the move this file exists to prevent.
 open question the fix leaves behind, and the only evidence that would close it
 is a future `allowance.jsonl` row that has to be removed again.
 
+
+## [Windows 2026-08-26 16:45] #47 is closed: the dispatched agent stops after one pass, and one clause in the brief closes the gap
+
+**`baton1v` cleared the bar pre-registered on the issue before it ran. BRIEF-FIXABLE.** The arm is `baton1` with exactly one thing changed — the single agent's brief carries a required second pass, verbatim — and the defect count went past the reader's.
+
+| | mismatches | ground truth of 2 | raw | weighted | dollars | $/defect |
+|---|---|---|---|---|---|---|
+| baton, 5 agents | 4, 4 | 0, 0 | 832,830 | 315,922 | $2.54 | 0.636 |
+| baton1, 1 agent | 5, 4 | 1, 0 | 1,045,608 | 257,901 | $1.81 | 0.402 |
+| **baton1v** | **5, 12** | **1, 2** | **1,112,888** | **464,568** | **$2.32** | **0.273** |
+| reader | 8, 8 | 2, 2 | 1,422,586 | 484,730 | $3.23 | 0.403 |
+
+Mean **8.5** against the pre-registered **≥ 7.0**, with a ground-truth defect in both replicates. **Per defect found it is the cheapest arm on record** — 0.273 against the reader's 0.403, which is the figure #47 was opened to reverse — and it is cheaper than the reader in every unit while finding more. Method compliance was checked in the transcripts before scoring: exactly one `Agent` dispatch per replicate and zero `Read`/`Grep`/`Glob` calls by the parent.
+
+**The spread is 5 and 12, and the bar carried no variance clause.** r1 alone would not have cleared it — it scores exactly like `baton1`. I am not adding a variance clause after the fact; the honest reading is that the **direction is established and the effect size is not**. r2 found 12 mismatches across ten modules where r1 found 5 across four.
+
+**Cross-machine.** The three archived arms ran on macOS; this one ran on Windows on a later date. Agent-token magnitudes line up (783,974 / 732,512 here against `baton1`'s 859,292 there), but a same-machine `reader` replication is needed before the $/defect ordering is quoted as settled.
+
+### The instrument was blind on this platform, and the bug is this experiment's own subject
+
+`measure.py:arm_paths` reads agent transcripts only from `<scratch>/<slug>/<session>/tasks/*.output`. On Windows **that file exists and is 0 bytes**; the real 373KB transcript is at `~/.claude/projects/<slug>/<session>/subagents/agent-<id>.jsonl`. Both replicates measured **`agent_tokens: 0`** — a dispatching arm whose agents appear free, which is the flattering direction, for the sixth time. `discovery.scan_transcripts` is not at fault; its walk takes any `.jsonl` it meets. `arm_paths` never hands it the directory that holds one.
+
+**`discovery-two-locations` is the exact ground-truth defect this arm was scored on, and both replicates found it** — while the instrument scoring them was failing for that same reason. Filed as **#70**. The table above is recomputed from the real transcripts; `results/baton1v-cost.json` carries the correction and says not to quote the `cumulative-*.json` for this arm.
+
+**Follow-on: #71.** §12's rubric scores a brief on line ranges, a prohibition, an output path and a return contract. **None of those four is about effort, and effort is the term that moved.** A brief can score 3 of 3 and still get half the defects. #71 adds the clause with #32's lesson attached — the detector tests for the property, not the wording.
+
+### [Windows 16:45] The org dashboard: built, reviewed, RETHINK, and ticketed
+
+`docs/experiments/org-dashboard/` — a two-level drill-down (rollup over teams, ledger per team) tracking effective token usage over time, built by Fable against this repo's rules, reviewed adversarially by Opus. **Verdict RETHINK**, on two foundational decisions rather than a fix list: the numerator's unit and the aggregate's form. Review is committed beside it as `review-2026-08-26.md`; eight tickets are **#72–#79**, and **#72 must land first** because every number, axis and claim re-derives from it.
+
+The two findings worth carrying past this page:
+
+- **The headline is denominated in raw `usage.total`.** `thresholds.py` L76 already calls that unit crude — ~97% cache reads at 0.10x a base input token — and NEXT.md already rules it out for scoring comparisons of this shape. The design note defends the metric as the least gameable *denominator*, which is a claim about half the ratio. **The numerator was the unexamined half**, and the same blind spot is why #52 exists.
+- **The page's designated guard against #46 teaches a false mechanism.** It asserts a −23% headline was a code/docs mix shift. `tokens_per_insertion` is `tokens / (code + docs + other)`; the *composition* of that denominator does not appear in the expression, so a pure mix shift at a fixed line total moves the ratio by exactly nothing. The −23% was a 27% rise in line count. A guard that names the wrong mechanism is worse than no guard, because it will be used to dismiss a real movement.
+
+**Seven levels became two, and that cut was right** — a level that asks no new question is not a level. What is not yet true is the claim that makes the cut cheap: the renderer is not recursive, and a three-level tree throws (#78).
