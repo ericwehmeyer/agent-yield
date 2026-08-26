@@ -1,22 +1,28 @@
 # Start here after a session restart
 
-**Written 2026-08-25 20:45 EDT (Windows), updated 21:10 and 21:30 EDT (macOS),
-each time immediately before a deliberate restart.**
+**Written 2026-08-25 20:45 EDT (Windows), updated 21:10, 21:30 and 21:55 EDT
+(macOS), each time immediately before a deliberate restart.**
 
-The restart is itself the finding — three times now. See *Why these sessions
+The restart is itself the finding — four times now. See *Why these sessions
 ended* at the bottom; it is the most reusable thing on this page.
 
-**Everything below the Windows machine wrote at 20:45 still stands.** What the
-two macOS sessions changed is marked **[macOS 21:10]** and **[macOS 21:30]**.
+**Everything below the Windows machine wrote at 20:45 still stands, except its
+cost thresholds — see #23.** What the macOS sessions changed is marked
+**[macOS 21:10]**, **[macOS 21:30]** and **[macOS 21:55]**.
 
 **[macOS 21:30] The boundary and the handoff are built (#19), and the cost
 family is implemented (#17).** `agent-yield handoff` before you restart —
 that is now the first move of every session end, and the boundary is cleared
 by making it.
 
+**[macOS 21:55] The mechanism under all of it is measured. `UserPromptSubmit`
+exit 2 refuses the prompt** (#22, closed), **the status line is live** (#18
+Part B), **and the cost thresholds you are about to read are in the wrong
+units** — #23 is right and answered, and implementing it is the next action.
+
 ## State of the board
 
-**The tool is built and works.** Eighteen modules, **163 tests**, green on
+**The tool is built and works.** Nineteen modules, **187 tests**, green on
 Windows and macOS, everything pushed, working tree clean.
 `docs/superpowers/plans/2026-08-25-agent-yield.md` is fully executed.
 
@@ -39,6 +45,16 @@ agent-yield status    what this session costs; exit 1 means leave
 agent-yield handoff   write down what a restart destroys, before it does
 agent-yield boundary  UserPromptSubmit hook -- advisory unless --enforce
 ```
+
+**[macOS 21:55] One more, and it is the cheapest thing here:**
+
+```
+agent-yield statusline   one line, rendered continuously, at zero token cost
+```
+
+Both hooks are installed in `.claude/settings.json` on this machine (gitignored
+— reinstall from the README on any other). The status line is live; the
+boundary runs in `--probe` mode and advises.
 
 Two machines worked this repo in parallel through GitHub issues. That worked; it
 needs no Remote Control, and it is documented in `docs/working-method.md` §7.
@@ -79,8 +95,10 @@ both are corrected.
 
 | | |
 |---|---|
-| **#18** | Three levers. Parts A and D **done**; **B (statusline), C (agent-length audit) and E (the falsification test) are open.** Part B is the highest value left: the only lever that enforces itself at zero token cost, and #19 landed the scriptable half it can call (`agent-yield status`). |
-| **#22** | Read the boundary probe and decide whether `--enforce` is buildable. **Cannot be done by the session that installs the hook** — that is the whole ticket. Install the probe, start a *new* session, then read `.agent-yield/boundary-probe.jsonl`. |
+| **#23** | **Do this first.** The cost thresholds are fractions of the window and should be absolute tokens: cost is `context × rate` and the window is not in that expression, so `0.20 × W` moves when `W` changes while the bill does not. **The argument is right, it is conceded on the issue, and it is not implemented.** A full reply with the replication and a counter-proposal on the numbers is on the ticket — read it before touching `thresholds.py`. |
+| **#18** | Three levers. Parts A, B and D **done**; **C (agent-length audit) and E (the falsification test) are open.** E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
+| **#24** | The status line could carry `rate_limits.seven_day.used_percentage` — measured, free on every render, and on a subscription it is the operator's *real* currency. The design question is whether an allowance percentage counts as "money" under the tokens-never-money rule. **Retitle it: it says "Task 23" and collides with #23.** |
+| ~~**#22**~~ | **Closed 21:55.** Exit 2 refuses the prompt, stderr reaches the operator, and the harness echoes the prompt back. |
 | **#20, #21** | Opened by the Windows machine at 01:19–01:20 UTC while the macOS session was working: a blind re-measurement of context/call by model and role, and `report --by-model`. Not started. |
 | **#23** | **Cost thresholds should be absolute tokens, not fractions of the window.** `COST_KNEE = 0.20` moves when the window moves; the bill does not. Filed by Windows 21:33 against `thresholds.py` as shipped, per §4 — not edited. Argument, tables and the breaking case are in the issue. |
 | **#13** | `predict` must use the context it is projecting *for*. **Deliberately deferred** to the week-1 review — do not implement before 09-01. **Partly overtaken:** `bb2cbc0` split predict into two populations, which answers most of it. Read that commit before the review argues with the ticket. |
@@ -97,6 +115,12 @@ CACHE-READ BILL BY CONTEXT SIZE OF THE CALL
  200-400K   2,911 calls    817,724,501   27.8%
  400+       1,133 calls    574,603,095   19.5%
 ```
+
+**[macOS 21:55] Read this next paragraph with #23 in hand.** The 200K is a
+bucket edge, not a knee: plotted continuously the curve decays smoothly on both
+machines with no break anywhere, and the 47%/20% split is a Windows fact — on
+macOS, 47.9% of main-thread calls are above 200K and they carry 78.8% of the
+bill. The *shape* of the finding holds everywhere; the numbers do not travel.
 
 **47% of the bill comes from the 20% of calls made above 200K context.** §5's
 thresholds (warn 60%, compact 75/85%) are *capacity* thresholds — they answer
@@ -275,6 +299,97 @@ dispatch is not evidence about a model**; #21 is what turns that into a table.
 
 **Open, and mine, not the Mac's:** #20 (blind re-measurement, deliberately
 withheld the Windows numbers), #21 (`report --by-model`), #23 (the units).
+## [macOS 21:55] What this session added
+
+*Written in parallel with the Windows section above; the two machines were in
+this file within minutes of each other. Read them together — the Windows
+concentration readout is the same argument this section replicates, and its
+`restart 250,000 → 49.88% of calls` line is the number that made the macOS
+reply object to that constant.*
+
+**#22 closed, #18 Part B landed, #23 answered.** Four commits, 24 new tests
+(163 → 187), everything pushed.
+
+**`UserPromptSubmit` exit 2 refuses the prompt.** Measured by arming exactly
+one deliberate refusal (`agent-yield boundary --arm-refusal`, sentinel deleted
+*before* the refusal returns, so it can cost at most one re-send). The refused
+prompt never reached the model, and the operator saw:
+
+```
+UserPromptSubmit operation blocked by hook:
+  [/path/to/agent-yield boundary --probe]: <the hook's stderr, verbatim>
+
+Original prompt: <what they typed>
+```
+
+Three things follow and **the third is the one that moves the design**: stderr
+arrives in full so a boundary can explain itself; the hook is named by command
+path so a refusal is traceable; and **the harness echoes the prompt back**, so
+refusing costs a re-send rather than someone's typing — which was most of what
+the caution around `--enforce` was protecting. The mechanism is verified. **The
+policy did not move with it:** the boundary still fires only on "expensive AND
+nothing written down", `--enforce` is still off, and turning it on is an
+intervention that needs an `expect=` in `interventions.toml` first.
+
+**The boundary payload was measured, and it was hiding a correctness bug.**
+`UserPromptSubmit` carries `cwd, hook_event_name, permission_mode, prompt_id,
+session_id, transcript_path` and `prompt`; the transcript stem equals the
+session id, so the live session is identified twice over. But `_stats_for` fell
+back to *the most recently modified transcript* when a payload did not resolve
+— and with two sessions open that is routinely the other one. **An enforcing
+boundary would have refused prompts in one session on another session's cost.**
+Removed: an unresolvable payload now measures nothing.
+
+**The status line is live, and measuring its contract paid better than
+building it.** Two findings:
+
+- **`statusLine` config takes effect immediately, in the session that writes
+  it.** Hooks do not — theirs loads at session start, which is the entire
+  reason #22 had to exist. So this is the one lever you can install and see.
+- **The payload hands over `context_window.context_window_size`.**
+  `thresholds.DEFAULT_WINDOW` says "the tool cannot read the model's context
+  window, so a caller must say". In the status line it can. It also hands over
+  `current_usage`, which matched the transcript's last call to within one call
+  (105,788 vs 104,156), so the usual render reads no transcript at all. 3 ms
+  cold on a 1.5 MB transcript, 2 ms warm, and it fails silent four ways.
+
+`cost.total_cost_usd` arrives on every render and is deliberately dropped.
+`rate_limits.seven_day.used_percentage` also arrives, is the real currency on a
+subscription, and became #24 rather than being quietly added.
+
+**#23 is right and this session conceded it.** Cost is `context × rate`; the
+window is not in that expression. Both of its empirical claims replicate here
+on 5,052 macOS calls, independently of the Windows corpus:
+
+| | Windows | macOS |
+|---|---|---|
+| main vs subagent median context/call | 249,257 vs 97,341 (2.6×) | 188,011 vs 88,201 (2.1×) |
+| a knee at 200K | none — smooth decay | none — smooth decay |
+
+Two things were added to the ticket rather than just agreeing:
+
+1. **Abandoning fractions leaves no gap.** The obvious defence — "on a 200K
+   window an absolute 150K threshold never fires" — fails, because at that
+   window a 150K call is already 75% of capacity and `COMPACT_AT_BOUNDARY` is
+   firing. Capacity is genuinely fractional; cost genuinely is not; together
+   they cover both regimes. Put that in the comment so nobody reverts it.
+2. **The proposed `COST_RESTART = 250_000` is anchored to one machine's
+   median, and a threshold at the median fires on half of all calls.** The
+   proposed family fires on 60.6% / 41.7% / 25.1% of main-thread calls here.
+   That is exactly the failure `RESTART_HARD_FACTOR = 4.0` was set to avoid.
+   With no knee to anchor to, a threshold is a policy choice about *what share
+   of calls should trip it* — so record the percentile next to the constant.
+   Counter-proposal on the ticket: 300K / 500K / 700K ≈ p64 / p86 / p92 here.
+   **The Windows section above reaches the same number from the other side**
+   — its readout puts `restart 250,000` at 49.88% of calls. Both machines
+   measured a threshold that fires on half of everything; neither set out to.
+
+**The next action is implementing #23**: absolute tokens, `window` off the cost
+path, `cost_band` main-thread only, and the ordering test replaced — it
+currently asserts `COST_KNEE < COST_STEEP < PREFER_FRESH < CONTEXT_WARN`, which
+compares 0.20 against 0.60 across two families that measure different things.
+Once the units differ that comparison is meaningless, which is #23's point in
+test form.
 
 ## Two review routines still armed
 
@@ -351,6 +466,29 @@ because it had to: the boundary it had just built would not have fired, since
 the cost band was still cheap and growth was under the hard factor. It stopped
 at the natural boundary instead of running to one. That is the first session of
 the three to end that way, and it is the only one whose ending is worth copying.
+
+**[macOS 21:55] The fourth session also stopped on purpose, and earlier.** At
+the handoff it stood at **67 calls, 150,614 context, 3.2× growth from an
+opening 47,728** — #22 closed, #18 Part B landed, #23 answered, 187 tests
+green, everything pushed. The boundary would not have fired: cheap band, under
+the hard factor. It stopped because the next piece of work (#23's refactor) is
+well specified and mechanical, and the arithmetic says that work is ~2× cheaper
+in a fresh session:
+
+```
+cost(N) ≈ N × current_context + slope × N²/2
+```
+
+At 150K context and 1,262 tokens added per call, the next 40 calls bill ~6.2M
+here against ~2.9M starting fresh. **That formula is the whole argument for
+restarting**, and it is worth more than any of the thresholds: it is why "just
+one more thing" gets expensive, and it does not depend on a knee existing.
+
+**The falsification baseline for design.md §7 is recorded:** this session's
+last ten calls averaged 142,097 context against a 47,728 opening. A session
+started from this handoff should open under 60,000 and its first ten calls
+should cost less than 1.42M. If it does not, the restart lever is wrong and
+this page is cruelty rather than efficiency.
 
 `docs/working-method.md` is the full method, measured rather than asserted. The
 four things that matter most:
