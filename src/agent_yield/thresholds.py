@@ -26,21 +26,49 @@ PREFER_FRESH_SESSION_AT_BOUNDARY = 0.50
 # while the bill does not. The same 200,000-token call cannot be cheap on a
 # 2M window and expensive on a 500K one; it costs the same either way.
 #
-# MEASURED: the concentration is real and replicates on both corpora -- the
-# calls above 150K are ~60% of main-thread calls and ~87% of the context
-# tokens billed. CHOSEN: every number below. There is NO KNEE -- plotted
-# continuously the spend curve decays smoothly on both machines with no
-# break anywhere, so no threshold can be discovered here and each one is a
-# policy choice about what share of calls should trip it. That share is
-# recorded next to the constant, because it is the only honest way to
-# compare one corpus with another: the same token count sits at a different
-# percentile on a different machine.
+# MEASURED: the concentration is real, and it is the one thing here that
+# survives decomposition -- above 150K the share of the BILL runs well ahead
+# of the share of CALLS in every project measured, not just in the pooled
+# corpus. What does not survive is the pair of numbers: "~60% of calls, ~87%
+# of the bill" was the two-corpus pooled figure, and on 2026-08-26 the three
+# macOS projects give 28%/45%, 72%/93% and 72%/90% against a pooled 45%/74%
+# (#80). The direction replicates; the magnitudes are a mixture.
 #
-# Percentiles below are main-thread calls, macOS corpus, 1,165 calls,
-# 2026-08-25. The Windows corpus (20,255 calls) puts the same numbers lower.
-COST_DISPATCH = 300_000   # fires on ~35% of main calls (p65), 67% of the bill
-COST_RESTART = 500_000    # ~13% (p87), 36% of the bill
-COST_STOP = 700_000       # ~7% (p93), 23% of the bill
+# CHOSEN: every number below. There is NO KNEE -- plotted continuously the
+# spend curve decays smoothly on both machines with no break anywhere, so no
+# threshold can be discovered here and each one is a policy choice about what
+# share of calls should trip it. That share is recorded next to the constant,
+# because it is the only honest way to compare one corpus with another: the
+# same token count sits at a different percentile on a different machine --
+# and, #80, at a different percentile in a different PROJECT on the same
+# machine, by a wider margin than the two machines differ.
+#
+# The shares were first recorded 2026-08-25 as ONE POOLED FIGURE over a macOS
+# corpus of 1,165 main calls -- ~35% (p65) / ~13% (p87) / ~7% (p93). THAT FORM
+# WAS THE DEFECT (#80). The share is decomposable by PROJECT, and the pooled
+# number describes none of them. Re-measured 2026-08-26 over every main-thread
+# call under ~/.claude/projects, 300,000 sits at p46 in model-migration-kit and
+# at p100 in agent-yield -- same machine, same week. That spread is WIDER than
+# the macOS-vs-Windows gap the caveat was written to warn about. The pooled
+# figure itself moved 46% -> 18% between the two dates with nothing changed
+# about how any session is run: the mixture changed, from 100% Pictures +
+# model-migration-kit on the calibration day to 96% agent-yield today.
+#
+# So each constant carries a RANGE across projects first and the pooled figure
+# second. Main-thread calls, macOS, 2,425 calls over three projects,
+# 2026-08-26; n = 1,490 agent-yield / 437 model-migration-kit / 498 Pictures.
+# The Windows corpus (20,255 calls) has never been decomposed this way.
+#
+# DO NOT RETUNE THESE PER PROJECT. #23 put cost in absolute tokens so that a
+# threshold would stop being a property of the observer -- a fraction of the
+# window moved when the window moved. Retuning per repo is the same error with
+# `project` substituted for `window`: the same 300,000-token call costs the
+# same in either repo, and it cannot be expensive in one and cheap in the
+# other. A repo whose calls never get expensive SHOULD see this family stay
+# silent, which is the argument section 5 already makes for small windows.
+COST_DISPATCH = 300_000   # 0%-54% of main calls (p46-p100), 0%-84% of the bill; pooled 18% (p82), 48%
+COST_RESTART = 500_000    # 0%-33% (p67-p100), 0%-63% of the bill; pooled 7% (p93), 27%
+COST_STOP = 700_000       # 0%-19% (p81-p100), 0%-42% of the bill; pooled 4% (p96), 15%
 
 # The order the bands are entered in. Named for their remedy, not for a shape
 # in the curve, because the curve has no shape: what distinguishes the bands

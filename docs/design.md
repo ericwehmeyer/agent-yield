@@ -261,13 +261,41 @@ monotone throughout. §11's superlinear fit (`calls^1.54`) is why: a session doe
 not cross into an expensive state, it accumulates into one. **So no threshold
 here can be discovered; each is a policy choice about what share of calls should
 trip it**, and that share is recorded next to the constant, because the same
-token count sits at a different percentile on a different machine:
+token count sits at a different percentile on a different machine.
+
+**— and at a different percentile in a different *project on the same machine*,
+by a wider margin (#80, 2026-08-26).** The table below originally carried one
+pooled figure per constant — ~35% (p65) / ~13% (p87) / ~7% (p93), macOS, 1,165
+main calls, 2026-08-25. **That pooled form was the defect**, and it is the same
+one the dashboard rule names: no decomposable aggregate without its
+decomposition. Every main-thread call under `~/.claude/projects`, deduped,
+2026-08-26:
 
 | | tokens | share of main-thread calls | of the bill |
 |---|---|---|---|
-| `COST_DISPATCH` | 300,000 | ~35% (p65) | 67% |
-| `COST_RESTART` | 500,000 | ~13% (p87) | 36% |
-| `COST_STOP` | 700,000 | ~7% (p93) | 23% |
+| `COST_DISPATCH` | 300,000 | 0%–54% (p46–p100) · pooled 18% (p82) | 0%–84% · pooled 48% |
+| `COST_RESTART` | 500,000 | 0%–33% (p67–p100) · pooled 7% (p93) | 0%–63% · pooled 27% |
+| `COST_STOP` | 700,000 | 0%–19% (p81–p100) · pooled 4% (p96) | 0%–42% · pooled 15% |
+
+Ranges are across three macOS projects, n = 1,490 `agent-yield` / 437
+`model-migration-kit` / 498 `Pictures`, 2,425 calls pooled. **300,000 sits at
+p46 in one repo and p100 in another**, so the family fires on more than half of
+`model-migration-kit`'s main calls and on *none* of this repo's — whose peak main
+context, over 1,490 calls and 20 sessions, is 295,861. The pooled figure also
+moved 46% → 18% between the two measurement dates with nothing changed about how
+any session is run: on the calibration day the corpus was 100% `Pictures` +
+`model-migration-kit`, today it is 96% `agent-yield`. **The mixture moved, not
+the behaviour.**
+
+**These are not retuned per project, and must not be.** #23 put cost in absolute
+tokens so a threshold would stop being a property of the observer; a per-repo
+retune is that same error with *project* substituted for *window*. The same
+300,000-token call costs the same in either repo. **A repo whose calls never get
+expensive should see this family stay silent** — the argument two paragraphs up,
+about small windows, unchanged. Nor is `agent-yield`'s 295,861 peak a near-miss
+inviting a nudge: 8.5% of its calls pass 200K, 1.4% pass 250K, and the median
+*session* peak is 156,455. 300,000 is off the end of this repo's workload, not
+1.4% away from it.
 
 The original proposal on #23 was 150K/250K/400K, anchored to the Windows
 median. A threshold at the median fires on half of all calls — the failure

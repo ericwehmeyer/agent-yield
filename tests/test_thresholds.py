@@ -121,13 +121,25 @@ def test_the_thresholds_are_recorded_with_the_share_of_calls_they_fire_on():
     # only thing that makes one corpus comparable with another, so the file
     # has to carry it -- and a threshold at the median, firing on half of
     # everything, is the failure RESTART_HARD_FACTOR = 4.0 was set to avoid.
+    #
+    # A RANGE, not one pooled number, and this test is why the defect lasted:
+    # the earlier version demanded only a "%" and a "p" on the line, which a
+    # pooled aggregate satisfies. It did (#80). The share is decomposable by
+    # project -- 300,000 is p46 in one repo on this machine and p100 in
+    # another -- so a single figure describes no project that produced it.
+    # This is the dashboard's own rule (no decomposable aggregate without its
+    # decomposition, #67/#68) turned on the constants themselves.
+    import re
     from pathlib import Path
 
     source = Path(__file__).resolve().parents[1] / "src" / "agent_yield" / "thresholds.py"
     text = source.read_text()
     for name in ("COST_DISPATCH", "COST_RESTART", "COST_STOP"):
         line = next(ln for ln in text.splitlines() if ln.startswith(name))
-        assert "%" in line and "p" in line.split("#", 1)[1], name
+        comment = line.split("#", 1)[1]
+        assert "%" in comment, name
+        assert re.search(r"p\d+-p\d+", comment), f"{name} lost its per-project range"
+        assert "pooled" in comment, f"{name} lost the pooled figure the range is read against"
 
 
 def test_the_hard_restart_factor_sits_well_above_the_advisory():
