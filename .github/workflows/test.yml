@@ -25,7 +25,19 @@ jobs:
         os: [windows-latest, macos-latest, ubuntu-latest]
         python: ["3.11", "3.14"]
     steps:
+      # fetch-depth: 0, not the default 1. #82: `tests/test_arms_65.py` exports
+      # `ground-truth.json`'s `pinned_src` with `git archive`, and a depth-1
+      # clone holds one commit, so every sha that is not HEAD is absent. Six
+      # jobs went red on `exit status 128` for eighteen hours and twelve pushes
+      # landed on a signal nobody could read.
+      #
+      # The test also refuses to skip when CI is set, so removing this line
+      # turns those jobs red again rather than green-and-silent. The two halves
+      # are deliberate: the guard alone would have "fixed" CI by no longer
+      # running the test.
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}

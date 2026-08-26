@@ -31,7 +31,34 @@ REPO = HERE.parents[2]
 TRUTH = json.loads((HERE / "ground-truth.json").read_text(encoding="utf-8"))
 
 
+def have_commit(sha: str) -> bool:
+    """Is this commit in this clone at all?
+
+    Asked before `git archive` because the answer changes what the failure
+    MEANS. #82: CI checked out with `actions/checkout@v4`'s default
+    `fetch-depth: 1`, so the runner's clone held one commit and every SHA that
+    was not HEAD was simply absent. `git archive` exits 128 with nothing to
+    say about clone depth, so six jobs went red for eighteen hours reading as
+    a broken build script, and twelve pushes landed on a signal nobody read.
+
+    `-e` with `^{commit}` rather than a bare `cat-file -e`: the bare form is
+    true for a blob or a tree with the same name, and what `git archive` needs
+    is a commit.
+    """
+    return subprocess.run(["git", "cat-file", "-e", f"{sha}^{{commit}}"],
+                          cwd=REPO, capture_output=True).returncode == 0
+
+
 def export(sha: str, dest: Path) -> None:
+    if not have_commit(sha):
+        raise SystemExit(
+            f"{sha} is not in this clone, so it cannot be exported. The usual "
+            "cause is a shallow clone -- `git clone --depth` or CI checking out "
+            "with fetch-depth: 1 -- which holds only the tip. Fetch the history "
+            f"(`git fetch --unshallow`, or fetch-depth: 0 in the workflow) and "
+            "re-run. If the sha is genuinely gone, ground-truth.json's "
+            "`pinned_src` needs re-pinning, and that changes the corpus."
+        )
     if dest.exists():
         shutil.rmtree(dest)
     dest.mkdir(parents=True)

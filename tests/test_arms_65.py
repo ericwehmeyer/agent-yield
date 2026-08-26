@@ -17,6 +17,7 @@ the run is scored with:
 """
 import importlib.util
 import json
+import os
 from pathlib import Path
 
 import pytest
@@ -84,11 +85,62 @@ def test_the_slice_list_and_the_seeded_modules_agree(score):
         assert seed["module"] in score.SLICES
 
 
+def test_have_commit_can_tell_a_present_sha_from_an_absent_one():
+    """#82. The reachability question, asked directly.
+
+    `export` used to shell straight into `git archive` and let it exit 128,
+    which on a shallow clone reads as "the build script is broken" rather than
+    "this clone does not have that commit". CI ran on `actions/checkout@v4`'s
+    default `fetch-depth: 1` -- one commit -- and every job of every run went
+    red for eighteen hours on that error, so twelve pushes landed on a signal
+    nobody could read.
+    """
+    build = _load("build-corpus")
+    assert build.have_commit("HEAD"), "this clone cannot see its own HEAD"
+    # Well-formed and cannot exist: git would have to have hashed all zeroes.
+    assert not build.have_commit("0" * 40)
+
+
+def test_export_names_the_shallow_clone_when_the_pin_is_missing(tmp_path):
+    """The error a shallow clone gets is about clone depth, not about the pin."""
+    build = _load("build-corpus")
+    absent = "0" * 40
+    with pytest.raises(SystemExit) as raised:
+        build.export(absent, tmp_path / "corpus")
+    message = str(raised.value)
+    assert absent in message, f"the error does not name the sha: {message}"
+    assert "shallow" in message.lower(), (
+        f"the error does not name the cause a reader will actually have: {message}"
+    )
+
+
 def test_every_seed_lands_exactly_once_inside_a_module_docstring(tmp_path):
     import ast
 
     build = _load("build-corpus") if (EXPERIMENT / "build-corpus.py").exists() else None
     assert build is not None
+    # A shallow clone is a legitimate environment and this test depends on
+    # history it did not ask for, so it says so rather than failing (#82). The
+    # skip is loud -- CI runs `pytest -rs` for #29's reason -- and CI itself
+    # checks out with `fetch-depth: 0` so that it never takes this branch. A
+    # skip here on a CI run means the workflow lost its depth, not that the
+    # test is unimportant.
+    if not build.have_commit(TRUTH["pinned_src"]):
+        reason = (
+            f"pinned_src {TRUTH['pinned_src']} is not in this clone -- a shallow "
+            "checkout cannot export it. Fetch the history (`git fetch --unshallow`)."
+        )
+        # On CI this is a FAILURE, not a skip. A skip would turn the six red
+        # jobs #82 filed into six green ones that had silently stopped testing
+        # the thing -- the reassuring-direction failure this repo keeps
+        # filing, and the reason #82 asks for both halves of the fix rather
+        # than either. `.github/workflows/test.yml` sets `fetch-depth: 0`; if
+        # that ever comes back off, this line is what says so.
+        assert not os.environ.get("CI"), (
+            reason + " On CI the cause is fetch-depth on the checkout step: it "
+            "must be 0. See .github/workflows/test.yml and issue #82."
+        )
+        pytest.skip(reason)
     dest = tmp_path / "corpus"
     build.export(TRUTH["pinned_src"], dest)
     for seed in TRUTH["seeds"]:
