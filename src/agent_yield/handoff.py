@@ -125,16 +125,35 @@ def current_branch(repo: Path) -> str | None:
     return out.strip() if out and out.strip() else None
 
 
-def existing_notes(path: Path) -> list[str]:
+def existing_notes(path: Path, session_id: str | None = None) -> list[str]:
     """Notes already recorded in a handoff at ``path``.
 
     Regenerating a handoff must not silently delete the one section a human
-    wrote by hand, so previous notes are carried forward.
+    wrote by hand, so previous notes are carried forward -- but only within
+    one session. Notes written by a session that has ended describe a session
+    that no longer exists, which is the same argument that makes a stale
+    handoff worse than none (see `consume`). Carrying them forward was
+    harmless while a human read the file and chose what to believe; once
+    SessionStart injects it automatically, three sessions of accumulated
+    "NEXT ACTION" lines contradict each other and the newest is not
+    distinguishable from the oldest. Measured on the real file: it carried
+    "implement #23" twice, hours after #23 shipped.
+
+    ``session_id`` is the session doing the writing. When it is given and the
+    file names a different session, nothing is carried.
     """
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return []
+
+    if session_id is not None:
+        first = text.splitlines()[0] if text.splitlines() else ""
+        # The header render is `# Handoff -- session <id>`; a file that does
+        # not name this session is a previous session's, and is not carried.
+        if not first.startswith("# Handoff -- session ") or \
+                first[len("# Handoff -- session "):].strip() != session_id:
+            return []
 
     notes: list[str] = []
     inside = False

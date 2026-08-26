@@ -211,3 +211,33 @@ def test_sidechain_calls_are_not_counted_as_the_parents_context(tmp_path):
     text = render(build(tmp_path, session_stats(path), now=NOW))
     assert "| calls | 12 |" in text
     assert "900,000" not in text
+
+
+def test_notes_from_a_previous_session_are_not_carried_forward(tmp_path):
+    # Carrying notes forward across sessions was harmless while a human read
+    # the file and judged what to believe. Once SessionStart injects it
+    # automatically, three sessions of "NEXT ACTION" lines contradict each
+    # other and the newest is indistinguishable from the oldest -- the real
+    # file carried "implement #23" twice, hours after #23 had shipped.
+    path = tmp_path / "handoff.md"
+    path.write_text(
+        "# Handoff -- session old-session\n\n"
+        "## Claimed and unfinished\n\n"
+        "- NEXT ACTION: implement the thing that is now done\n",
+        encoding="utf-8",
+    )
+    assert handoff_module.existing_notes(path, "new-session") == []
+    assert handoff_module.existing_notes(path, "old-session") == [
+        "NEXT ACTION: implement the thing that is now done"
+    ]
+    # No session named: the old behaviour, for a caller that cannot know.
+    assert len(handoff_module.existing_notes(path)) == 1
+
+
+def test_a_handoff_without_the_session_header_carries_nothing(tmp_path):
+    path = tmp_path / "handoff.md"
+    path.write_text(
+        "## Claimed and unfinished\n\n- a note with no header above it\n",
+        encoding="utf-8",
+    )
+    assert handoff_module.existing_notes(path, "some-session") == []

@@ -259,7 +259,11 @@ def _cmd_handoff(args) -> int:
 
     # Notes already in the file are carried forward: regenerating a handoff
     # must not delete the one section a human wrote by hand.
-    notes = handoff_module.existing_notes(out) + list(args.note or [])
+    # Only this session's own notes are carried forward: a previous session's
+    # "NEXT ACTION" is routinely already done, and SessionStart now injects
+    # this file automatically rather than leaving a human to judge it.
+    notes = (handoff_module.existing_notes(out, path.stem if path else None)
+             + list(args.note or []))
     handoff = handoff_module.build(Path(args.repo), stats, notes)
     handoff_module.write(out, handoff_module.render(handoff))
 
