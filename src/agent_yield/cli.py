@@ -226,7 +226,10 @@ def _cmd_resume(args) -> int:
     """Load a handoff into a fresh session, once -- or read it back by hand."""
     out = Path(args.out)
     if args.hook:
-        return resume_module.main(["--out", str(out)])
+        argv = ["--out", str(out)]
+        if getattr(args, "probe", False):
+            argv.append("--probe")
+        return resume_module.main(argv)
     text = handoff_module.read(out)
     if text is None:
         print(f"no handoff at {out}")
@@ -413,6 +416,11 @@ def main(argv: list[str] | None = None) -> int:
                         "from stdin, emit the injection JSON")
     p.add_argument("--read", action="store_true",
                    help="print the handoff without consuming it (default)")
+    p.add_argument("--probe", action="store_true",
+                   help="with --hook, append the decision (not the handoff, "
+                        "and no payload values) to "
+                        f"{resume_module.PROBE_PATH} -- the hook fires once, "
+                        "before anyone can watch it")
     p.set_defaults(func=_cmd_resume)
 
     p = subs.add_parser(

@@ -161,7 +161,7 @@ was supposed to avoid.
       {
         "matcher": "startup|clear",
         "hooks": [
-          {"type": "command", "command": "agent-yield resume --hook"}
+          {"type": "command", "command": "agent-yield resume --hook --probe"}
         ]
       }
     ]
@@ -191,6 +191,27 @@ forked already carries the context, and injecting there pays for it twice.
 
 `agent-yield resume` on its own prints the handoff **without** consuming it, so
 looking is free.
+
+**`--probe` is not optional in practice, and the reason is a scar.** This hook
+shipped reading a key the harness does not send (`session_start_reason`; it is
+`source`), declined every real session start, and — because it fails open —
+said nothing about it for a day. On a *loader*, silence is indistinguishable
+from "nothing to load". So the outcomes are named and recorded to
+`.agent-yield/resume-probe.jsonl`:
+
+```
+injected  no_handoff  stale  reason_not_injecting  unparseable_payload
+```
+
+`has_reason_key: false` in that log is the single line that would have caught
+it the same day. The probe records payload **keys, never values** — no
+`session_title`, no handoff text, only its length — and there is a test
+asserting that.
+
+**The one hook a session cannot measure by installing it is the one that most
+needs a probe.** Hook config loads at session start, so no session can measure
+a hook it just installed; `UserPromptSubmit` at least fires again on the next
+prompt, while `SessionStart` fires exactly once, before anyone can watch.
 
 **Nothing in Claude Code can restart a session** — confirmed, not assumed: no
 hook kills and respawns one, and `SessionStart` cannot prevent or control a

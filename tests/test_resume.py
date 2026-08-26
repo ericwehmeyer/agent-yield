@@ -188,3 +188,148 @@ def test_the_abandoned_key_no_longer_injects(tmp_path):
     assert code == 0
     assert stdout.getvalue() == ""
     assert out.exists(), "a non-injecting start must not consume the handoff"
+
+
+# --- #29: the four silences are not the same event ----------------------
+
+
+def _classify(out: Path, payload, now=None):
+    from agent_yield.resume import classify
+
+    return classify(payload, out, now=now)
+
+
+def _handoff(out: Path) -> None:
+    write(out, "# Handoff\n\n## Claimed and unfinished\n\n- do the thing\n")
+
+
+def test_each_silence_is_named_separately(tmp_path):
+    """Before #29 these were one silence, which is how the bug survived."""
+    out = _out(tmp_path)
+
+    # nothing on disk
+    assert _classify(out, {"source": "startup"})[0] == "no_handoff"
+
+    # a reason that carries its own context
+    _handoff(out)
+    assert _classify(out, {"source": "resume"})[0] == "reason_not_injecting"
+    assert out.exists(), "a declined start must not consume the handoff"
+
+    # not a JSON object at all
+    assert _classify(out, None)[0] == "unparseable_payload"
+    assert out.exists()
+
+    # the ordinary success
+    decision, message, age = _classify(out, {"source": "startup"})
+    assert decision == "injected"
+    assert "do the thing" in message
+    assert age is not None
+    assert not out.exists(), "injection must consume"
+
+
+def test_stale_is_distinguishable_from_absent(tmp_path):
+    """Both used to return None. Only one of them is a bug worth chasing."""
+    import datetime as dt
+
+    out = _out(tmp_path)
+    _handoff(out)
+    later = dt.datetime.now(dt.timezone.utc) + dt.timedelta(hours=30)
+
+    decision, message, age = _classify(out, {"source": "startup"}, now=later)
+    assert decision == "stale"
+    assert message is None
+    assert age > 24
+    assert out.exists(), "a stale handoff stays readable by hand"
+
+
+def test_probe_records_the_decision_but_never_a_value(tmp_path, monkeypatch):
+    """The probe writes keys. `session_title` is a value; so is the handoff."""
+    import agent_yield.resume as resume_mod
+
+    probe = tmp_path / "resume-probe.jsonl"
+    monkeypatch.setattr(resume_mod, "PROBE_PATH", probe)
+
+    out = _out(tmp_path)
+    write(out, "# Handoff\n\n## Claimed and unfinished\n\n- SECRETNOTE\n")
+    payload = json.dumps({
+        "session_id": "s1",
+        "hook_event_name": "SessionStart",
+        "source": "startup",
+        "session_title": "SECRETTITLE",
+        "model": "claude-opus-5",
+    })
+
+    stdout = io.StringIO()
+    import contextlib
+
+    with contextlib.redirect_stdout(stdout):
+        code = main(["--out", str(out), "--probe"], stdin=io.StringIO(payload))
+    assert code == 0
+
+    raw = probe.read_text(encoding="utf-8")
+    entry = json.loads(raw.strip())
+    assert entry["decision"] == "injected"
+    assert entry["injected"] is True
+    assert entry["injected_chars"] > 0
+    assert entry["has_reason_key"] is True
+    assert "session_title" in entry["keys"]
+    # keys, never values
+    assert "SECRETTITLE" not in raw
+    assert "SECRETNOTE" not in raw
+
+
+def test_probe_records_a_decline_so_it_can_be_seen(tmp_path, monkeypatch):
+    """A loader that fails open must be able to say it declined, and why.
+
+    This is the whole point of #29: the broken hook declined every real
+    session start and left no trace of having done so.
+    """
+    import agent_yield.resume as resume_mod
+
+    probe = tmp_path / "resume-probe.jsonl"
+    monkeypatch.setattr(resume_mod, "PROBE_PATH", probe)
+
+    out = _out(tmp_path)
+    _handoff(out)
+    # the exact payload that used to be silently dropped
+    stale_key = json.dumps({
+        "hook_event_name": "SessionStart",
+        "session_start_reason": "startup",
+    })
+
+    stdout = io.StringIO()
+    import contextlib
+
+    with contextlib.redirect_stdout(stdout):
+        code = main(["--out", str(out), "--probe"], stdin=io.StringIO(stale_key))
+    assert code == 0
+    assert stdout.getvalue() == ""
+
+    entry = json.loads(probe.read_text(encoding="utf-8").strip())
+    assert entry["decision"] == "reason_not_injecting"
+    assert entry["injected"] is False
+    assert entry["has_reason_key"] is False, (
+        "the probe must show the reason key was absent -- that is the "
+        "single fact that would have caught this in a day"
+    )
+    assert out.exists()
+
+
+def test_hand_run_does_not_probe(tmp_path, monkeypatch):
+    """An operator reading is not a session start; it must not log one."""
+    import agent_yield.resume as resume_mod
+
+    probe = tmp_path / "resume-probe.jsonl"
+    monkeypatch.setattr(resume_mod, "PROBE_PATH", probe)
+
+    out = _out(tmp_path)
+    _handoff(out)
+    stdout = io.StringIO()
+    import contextlib
+
+    with contextlib.redirect_stdout(stdout):
+        code = main(["--out", str(out), "--probe"], stdin=io.StringIO(""))
+    assert code == 0
+    assert "do the thing" in stdout.getvalue()
+    assert not probe.exists()
+    assert out.exists(), "reading by hand must not consume"
