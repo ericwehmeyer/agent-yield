@@ -446,9 +446,18 @@ cheap, and the two are one lever: a fresh session opened blank and the operator
 re-explained, which is precisely the cost the restart was supposed to avoid.
 Half a lever is not a lever.
 
-**Measured contract.** `SessionStart` fires with matchers `startup`, `resume`,
-`clear`, `compact`, `fork`, names which one in `session_start_reason`, and
-injects context as `{"hookSpecificOutput": {"hookEventName": "SessionStart",
+**Contract, corrected 2026-08-25 after it silently failed.** `SessionStart`
+fires with matchers `startup`, `resume`, `clear`, `compact`, `fork`, and names
+which one in **`source`** — not `session_start_reason`, which is what this
+section claimed and the hook read for its first day alive. That string does not
+occur anywhere in the harness binary; `source` is what it constructs. The hook
+therefore read an absent key on every real session start, took the fail-open
+path, and injected nothing, while the unit tests passed because the fixture
+invented the same key the code read. **A contract labelled "measured" that was
+in fact read off documentation is the exact failure this repo exists to catch**,
+and it cost a session its handoff. `tests/test_resume.py` now pins the real
+payload shape verbatim rather than building it from the code's own assumption.
+`SessionStart` injects context as `{"hookSpecificOutput": {"hookEventName": "SessionStart",
 "additionalContext": ...}}`. **It cannot block a session from starting** — exit
 2 only surfaces stderr, and the session proceeds. Where `UserPromptSubmit` gave
 a verified refusal (§5, #22), this gives a loader. The asymmetry is the design

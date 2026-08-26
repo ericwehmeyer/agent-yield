@@ -110,7 +110,7 @@ both are corrected.
 | | |
 |---|---|
 | ~~**#23**~~ | **Closed 2026-08-26.** Cost is absolute tokens now — `COST_DISPATCH = 300_000` (p65) / `COST_RESTART = 500_000` (p87) / `COST_STOP = 700_000` (p93), each carrying the share of main-thread calls it fires on, and a test that fails if a constant loses its percentile. `window` is off the cost path: `cost_band` and `cost_advice` raise `TypeError` if handed one. Three bands because there are three actions; `cost_band` is main-thread only. design.md §5 rewritten. |
-| **#26** | ~~SessionStart loads the handoff~~ — **shipped 22:20, hook installed on this machine.** The falsification test is live and unscored: the next session must show the archive consumed, open under 60,000 context/call, and cost under 1.42M over its first ten calls. `interventions.toml` holds the prediction. |
+| **#26** | ~~SessionStart loads the handoff~~ — shipped 22:20, **and it never fired.** It read `session_start_reason`; the harness names the reason in **`source`**, a string that does not occur in the harness binary at all. Every session start took the fail-open path and injected nothing, and the unit tests passed because the fixture invented the same key the code read. **Fixed 2026-08-25**, with the real payload pinned verbatim in `tests/test_resume.py` and a test that the abandoned key does *not* inject. The 2026-08-26 falsification test is scored **VOID** in `interventions.toml`, not passed — the next session opened at 48,744 context/call, but it received no handoff, so that number says nothing about the loader. **Re-armed and still unscored.** The original text of the test: the next session must show the archive consumed, open under 60,000 context/call, and cost under 1.42M over its first ten calls. `interventions.toml` holds the prediction. |
 | **#27** | **Dispatch rubric enforcement. Stage 1 shipped**, warning only, `Explore`/`Plan` exempt. **Stage 2 — the compound refusal — is blocked on #18 Part C**, which has the per-dispatch call counts it needs. `--enforce-brief` exists and stays off; it is the eager form, and the eager form gets the hook disabled. |
 | **#28** | What a scheduler can and cannot do, measured: no session can replace itself, `claude -p` works non-interactively, **interactive launch from cron is undocumented**, routines run in Anthropic's cloud. Filed so the assumption stops being repeated without its caveat. Three things worth measuring are listed there. |
 | **#18** | Three levers. Parts A, B and D **done**; **C (agent-length audit) and E (the falsification test) are open.** E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
@@ -468,6 +468,32 @@ on 60%/42%/25% of main-thread calls; the shipped 300K/500K/700K fires on
 **there is no knee to anchor to** — a threshold here is a policy choice about
 what fraction of calls should trip it, and a threshold at the median fires on
 half of everything.
+
+## [macOS 2026-08-25] The handoff loader never fired
+
+The session that wrote the handoff below predicted its successor would arrive
+carrying it. The successor arrived blank, and the operator had to say so by
+hand. `resume.py` read `session_start_reason`; the harness sends `source`.
+
+**Three things about this are worth keeping, and none of them are the typo.**
+
+- **The contract was labelled "Measured contract" in design.md and was not
+  measured.** The five reason *values* were right, so the source was
+  documentation, read carefully and then trusted. `--probe` exists in this repo
+  precisely because reading a contract is not measuring it, and it was not used
+  on the one hook that could not measure itself.
+- **The tests could not have caught it.** `_payload()` built its fixture from
+  the same key `main()` read, so the suite verified that the code agreed with
+  itself. 226 green tests, one hook that had never run. Every payload fixture
+  in this repo should be a captured payload or an explicitly-labelled guess.
+- **Failing open hid it.** The hook is right to fail open, but silence on a
+  loader is indistinguishable from "nothing to load", so it never fired once
+  and never complained once. A loader that fails open needs a way to say it
+  declined and why — the boundary's `--probe` log is the shape to copy.
+
+**The one hook that cannot be measured by the session that installs it is the
+one that most needs a probe.** #22 established that for `UserPromptSubmit` and
+built the probe; `SessionStart` has the same property and shipped without one.
 
 ## Two review routines still armed
 

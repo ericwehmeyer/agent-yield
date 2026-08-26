@@ -25,7 +25,7 @@ def _payload(reason) -> str:
         "hook_event_name": "SessionStart",
     }
     if reason is not None:
-        body["session_start_reason"] = reason
+        body["source"] = reason
     return json.dumps(body)
 
 
@@ -140,3 +140,51 @@ def test_unreadable_handoff_exits_zero_and_prints_nothing(tmp_path):
     code, printed = _run(out, "startup")
     assert code == 0
     assert printed == ""
+
+
+def test_the_real_harness_payload_key_is_source(tmp_path):
+    """Regression: the reason key is `source`, and nothing else.
+
+    This hook shipped reading `session_start_reason` and silently never
+    fired -- the key is absent from a real payload, so every session start
+    fell through the fail-open path and the operator arrived blank. The old
+    unit tests passed because the fixture invented the same key the code
+    read. So this test does NOT use `_payload`: the body below is the shape
+    the 2.1.246 binary constructs, verbatim, and it must inject.
+    """
+    out = _out(tmp_path)
+    write(out, "# Handoff\n\n## Claimed and unfinished\n\n- do the thing\n")
+    real = json.dumps({
+        "session_id": "ee20b0fe-d582-4062-bdf2-df13cda1be5e",
+        "transcript_path": "/tmp/ee20b0fe.jsonl",
+        "cwd": "/repo",
+        "hook_event_name": "SessionStart",
+        "source": "startup",
+    })
+    stdout = io.StringIO()
+    import contextlib
+
+    with contextlib.redirect_stdout(stdout):
+        code = main(["--out", str(out)], stdin=io.StringIO(real))
+    assert code == 0
+    payload = json.loads(stdout.getvalue())
+    assert payload["hookSpecificOutput"]["hookEventName"] == "SessionStart"
+    assert "do the thing" in payload["hookSpecificOutput"]["additionalContext"]
+
+
+def test_the_abandoned_key_no_longer_injects(tmp_path):
+    """The guessed key must not work, or the bug can come back unnoticed."""
+    out = _out(tmp_path)
+    write(out, "# Handoff\n\n## Claimed and unfinished\n\n- do the thing\n")
+    stale = json.dumps({
+        "hook_event_name": "SessionStart",
+        "session_start_reason": "startup",
+    })
+    stdout = io.StringIO()
+    import contextlib
+
+    with contextlib.redirect_stdout(stdout):
+        code = main(["--out", str(out)], stdin=io.StringIO(stale))
+    assert code == 0
+    assert stdout.getvalue() == ""
+    assert out.exists(), "a non-injecting start must not consume the handoff"

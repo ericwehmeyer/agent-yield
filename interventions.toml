@@ -51,4 +51,6 @@ expect = "over the next 20 non-exploratory dispatches, those whose prompts carry
 [[intervention]]
 date   = "2026-08-26"
 name   = "SessionStart loads the handoff: the whole file injected once on startup or clear, consumed by archiving it, never if older than 24h"
+result = "VOID, not passed -- scored 2026-08-25 by the next session. The hook never fired: it read `session_start_reason`, and the harness names the reason in `source`, so every start took the fail-open path and injected nothing. The archive was NOT consumed. The session did open at 48,744 context/call (under 60,000) and its first calls were cheap, but it received no treatment, so those numbers are evidence about a fresh session, not about the handoff loader -- reading them as a pass would be confirming a mechanism that did not run. Key fixed and pinned to a captured payload; the prediction is re-armed and still unscored."
+
 expect = "the next session started after a handoff shows the archive consumed, opens under 60,000 context/call, and its first ten calls cost under 1,420,000 tokens against the 142,097/call the previous session's last ten averaged -- if it opens above 60,000 because of the ~950-token injection, fall back to a pointer; if it opens above 60,000 at this injection size, the restart lever itself is wrong"

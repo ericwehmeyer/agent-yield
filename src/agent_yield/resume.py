@@ -92,7 +92,14 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
         payload = json.loads(raw)
         if not isinstance(payload, dict):
             return 0
-        reason = payload.get("session_start_reason")
+        # The harness names the reason in "source" -- measured from the
+        # 2.1.246 binary, which constructs
+        #   {..., hook_event_name:"SessionStart", source:t, agent_type:...}
+        # and carries no "session_start_reason" string anywhere. That was
+        # this hook's original guess, and it silently never fired: the key
+        # was absent, so every real session start fell straight through the
+        # fail-open path. Do not rename this without a captured payload.
+        reason = payload.get("source")
         if reason not in INJECT_REASONS:
             return 0
         mtime = dt.datetime.fromtimestamp(out.stat().st_mtime, tz=dt.timezone.utc)
