@@ -415,8 +415,8 @@ footer {
       </tr>
       <tr>
         <td><span class="chip s">split it</span><br><span class="mono">10 calls</span></td>
-        <td><b>Any job that will run more than about ten calls should be two jobs.</b> Cost rises faster than length: one 27-call agent cost 1,879,466 tokens where three 9-call agents cost 840,036.</td>
-        <td class="n">2.2&times;<br><span class="dim">measured</span></td>
+        <td><b>Retracted 2026-08-25.</b> This said any job over ten calls should be two jobs, at 2.2&times;. That 2.2&times; compared a real 27-call agent against an <i>arithmetic</i> split nobody ran. Running it: the same task cost 385,109 tokens as three agents and 249,944 as one &mdash; <b>splitting cost 54% more</b>. Each extra agent pays ~19,800 tokens of re-entry before it reads anything, and a split does not divide the call count (5 calls became 12).</td>
+        <td class="n">0.65&times;<br><span class="dim">retracted</span></td>
       </tr>
     </tbody>
   </table>

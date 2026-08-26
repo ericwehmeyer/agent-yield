@@ -376,11 +376,17 @@ tokens *and* the latency.
 
 ### The three levers, in measured order
 
-**1. Cap agent length. Measured 2.2×.** One agent ran 27 calls and cost
-**1,879,466 tokens — 21% of the entire session in a single dispatch.** The same
-27 calls as three 9-call agents, priced at the *measured* 9-call cost, is
-840,036. §2's brief controls where an agent starts; nothing controlled where
-that one ended. Cap a dispatch at ~10 calls and split the task instead.
+**1. ~~Cap agent length. Measured 2.2×.~~ RETRACTED 2026-08-25 — splitting
+the same task cost 54% *more*.** See §11.1, which tested it directly. The
+original claim: one agent ran 27 calls and cost **1,879,466 tokens — 21% of the
+entire session in a single dispatch**, and the same 27 calls as three 9-call
+agents, priced at the *measured* 9-call cost, is 840,036. That 2.2× was
+**arithmetic, not a measurement**. It priced a split that was never run, and it
+assumed a split preserves the call count. It does not. What survives is the
+observation that prompted it — 27 calls in one dispatch is a lot of money in one
+place, and §2's brief controls where an agent starts while nothing controls
+where it ends. What does *not* survive is "cap at ~10 calls and split", which
+was the actionable half.
 
 **2. Restart the parent when context/call doubles. ~1.5×.** This session ran
 93 calls, **45,830 → 175,677 context/call**. By the end every call cost ~4× a
@@ -408,14 +414,94 @@ reported next to tokens/issue rather than instead of it.
 
 ### What would falsify this section
 
-- **If a task split into three short agents costs the same as one long one**,
-  the superlinear fit is an artefact and lever 1 is worthless. It is the
-  cheapest of the three to test: dispatch the same task both ways and compare.
+- ~~**If a task split into three short agents costs the same as one long one**,
+  the superlinear fit is an artefact and lever 1 is worthless.~~ **TESTED
+  2026-08-25, and it fired — worse than the bullet allowed for. The split did
+  not cost the same; it cost 54% more.** §11.1.
 - **If a restarted parent needs so much re-reading to become useful that it
   costs more than it saved**, lever 2 is a wash. Measure the first ten calls of
   a fresh session against the last ten of the one it replaced.
 - **If dispatched verification misses the class of defect the parent caught
   here**, lever 3 is a false economy no matter what it saves.
+
+---
+
+## 11.1 Lever 1, tested and retracted
+
+**The falsification test §11 asked for, run: the same audit dispatched as one
+agent over three units, and as three agents over one unit each.** Identical
+per-unit instructions, identical output schema, identical return contract, same
+subagent type. Prediction recorded in `interventions.toml` *before* either arm
+ran: the long agent costs **≥1.5×** the three short ones, and **<1.25×**
+retracts the lever.
+
+| | agents | calls | context/call | tokens |
+|---|---|---|---|---|
+| **split** (one unit each) | 3 | 12 | 31,836 | **385,109** |
+| single, replicate 1 | 1 | 5 | 56,417 | 282,568 |
+| single, replicate 2 | 1 | 5 | 43,411 | 217,321 |
+| **single, mean** | 1 | 5 | | **249,944** |
+
+**0.65×. Splitting the same task cost +135,164 tokens — 54% more.** The three
+short agents landed within 6% of each other (123,809 / 129,897 / 131,403), so
+the split arm's number is not noise.
+
+### It is not that the cheap arm did less
+
+| | split | single r1 | single r2 |
+|---|---|---|---|
+| tests enumerated | 17 / 21 / 19 | 17 / 21 / 19 | 17 / 21 / 19 |
+| defects returned | 15 | 14 | 14 |
+
+Agreement on the one *judgment* the task asked for: **75%** across arms, **82%**
+between the two single agents. Two agents in the *same* arm disagreed about as
+much as agents in different arms, so the disagreement is judgment
+irreproducibility between any two agents, not an effect of splitting. That
+control is why the second single-agent replicate was run, and it is what keeps
+this a FAIL rather than a VOID.
+
+### Why it failed, measured
+
+Per-call context, every agent's run in order:
+
+```
+split-1   19,777  30,741  35,166  37,990
+split-2   19,782  32,387  37,192  40,396
+split-3   19,782  30,720  37,644  40,452
+single    20,034  51,468  64,859  72,704  73,021
+```
+
+**Every agent's first call costs ~19,800 tokens before it reads anything.**
+That is the fixed price of re-entry — system prompt, tool schemas, brief — and
+it is nearly identical across all four. The split pays it three times:
+**+39,307 tokens, 38% of the gap.**
+
+The other 62% is the part the fit got wrong. **Splitting does not divide the
+call count.** One agent read six files in 5 calls by batching; three agents
+needed 12. Lower context per call (31,836 against 56,417) did not recover it,
+because 12 × 31,836 still loses to 5 × 56,417.
+
+**The superlinear effect itself is real and visible** — context grew 1.9× over
+a short agent's four calls and 3.6× over the single agent's five. It is simply
+too small to pay for re-entering three times. `cost ≈ calls^1.54` was fitted
+across agents doing *different* tasks, so it conflated "longer agents cost
+superlinearly more" with "agents given bigger tasks cost more". Holding the
+task fixed separates them, and the second effect was doing the work.
+
+The fit even says so once you use it honestly. Given the split arm's four calls
+per agent, `calls^1.54` predicts the single agent is **cheaper** at 6 calls
+(0.62×) and does not break even until about 11 — and it took 5.
+
+### Limits, which decide how far this generalises
+
+One task, six files, units of 4–5 calls, reads that batch cleanly. **Re-entry
+is a fixed cost, so it amortises**: a split into genuinely long units may still
+win, and a task where one agent would exhaust its context is not a choice at
+all. The 27-call dispatch that motivated lever 1 is exactly that untested
+regime. **The claim retracted is "splitting saves", not "splitting never
+saves".** What replaces it is narrower and has a number attached: *a split
+costs ~19,800 tokens per extra agent before any work happens, and only pays if
+it also reduces total calls — which, on this task, it did not.*
 
 ---
 
@@ -451,7 +537,7 @@ them produced a median 85,195 — the same model, the same repo, ~5× the cost.
 | | part | why it is there |
 |---|---|---|
 | a | **Line ranges, not filenames** — "read `x.py` lines 22–58 via `sed -n`", plus *"do not explore; if you need a file not listed, say so and stop"* | the un-briefed population's cost is search, not work |
-| b | **One unit of work, capped at ~10 calls** | cost is `calls^1.54`: one 27-call agent billed 1,879,466 against 840,036 for the same calls split three ways |
+| b | **One unit of work** — ~~capped at ~10 calls~~ | ~~cost is `calls^1.54`: one 27-call agent billed 1,879,466 against 840,036 for the same calls split three ways~~ **Retracted 2026-08-25 — the 840,036 was arithmetic on a split nobody ran, and §11.1 ran it: the split cost 54% more.** One unit of work still earns its place, for (a) and (d)'s reasons — it bounds what the child reads and what it returns. The call cap does not; do not split a unit to meet a number |
 | c | **A named output path the child writes to** | child transcripts evaporate — 249 of 352 were already empty before anyone looked |
 | d | **A stated return contract** — "return the file:line list and one verdict line, nothing else" | the return lands in the parent's context and is re-billed on every later call |
 

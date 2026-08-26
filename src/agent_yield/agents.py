@@ -5,6 +5,8 @@ two halves of a dispatch live in different files:
 
 - **§11's length rule** -- cost is superlinear in the length of one unit of
   work (agents fit `calls^1.54`), so cap a dispatch at ~10 calls and split.
+  **The "and split" half was retracted 2026-08-25 by §11.1** -- splitting the
+  same task cost 54% more. The cap is now a length flag only.
   The call count is only in the *child's* transcript.
 - **§12's brief rubric** -- three markers visible in the dispatch prompt. The
   prompt is only in the *parent's* transcript.
@@ -80,10 +82,16 @@ DISPATCH_TOOLS = ("Agent", "Task")
 # both as ambiguous rather than guessing.
 MAX_JOIN_LAG_SECONDS = 120.0
 
-# docs/working-method.md §11: one 27-call agent cost 1,879,466 tokens against
-# 840,036 for the same work as three measured 9-call agents. The cap is the
-# remedy that finding implies, and it is deliberately soft -- this module
-# reports over-cap dispatches, it does not refuse anything.
+# RETRACTED JUSTIFICATION, 2026-08-25. This constant used to cite §11's
+# "one 27-call agent cost 1,879,466 against 840,036 for three 9-call agents".
+# That 840,036 was arithmetic on a split nobody ran. §11.1 ran it: the same
+# task as three agents cost 385,109 against 249,944 as one -- splitting cost
+# 54% MORE, because each extra agent pays ~19,800 tokens of re-entry before it
+# reads anything and a split does not divide the call count (5 calls became 12).
+#
+# The cap stays, with a smaller claim: it flags long dispatches, which are
+# where the money is concentrated, and says nothing about what splitting one
+# would save. Soft by design -- this module reports, it refuses nothing.
 DISPATCH_CALL_CAP = 10
 
 
@@ -368,7 +376,8 @@ def render(
         lines.append("")
         lines.append(
             f"§11 length: {len(over)}/{len(linked)} over the {DISPATCH_CALL_CAP}-call "
-            f"cap (max {max(a.run.calls for a in linked)})"
+            f"cap (max {max(a.run.calls for a in linked)}) -- a length flag, not "
+            f"a saving: see §11.1, where splitting cost 54% more"
         )
         briefed = [a for a in linked if a.briefed]
         lines.append(
