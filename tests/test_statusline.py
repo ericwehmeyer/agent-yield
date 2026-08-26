@@ -290,3 +290,75 @@ def test_the_opening_baseline_counts_calls_and_not_content_blocks(tmp_path):
     held = json.loads((tmp_path / "cache.json").read_text(encoding="utf-8"))
     # Mean of calls 1-10, not of the three blocks each of calls 1-4.
     assert held == {"blocks:10": sum(reads[:10]) / 10}
+
+
+# --- composition (#66) -----------------------------------------------------
+#
+# `statusLine` takes one command and a project settings.json REPLACES the user
+# one, so an operator cannot have this line and their own from configuration
+# alone. These pin the join, and above all that a broken segment cannot take
+# the measurement down with it.
+
+def test_compose_puts_segments_in_front_so_the_band_marker_ends_the_line():
+    from agent_yield.statusline import SEPARATOR, compose_line
+
+    line = compose_line("ay 111K 11% 2.5x GROWING",
+                        ["echo alpha", "echo beta"], payload="{}")
+    assert line == SEPARATOR.join(["alpha", "beta", "ay 111K 11% 2.5x GROWING"])
+    # The marker is the point of the line, and the end is where it is seen.
+    assert line.endswith("GROWING")
+
+
+def test_a_segment_that_fails_contributes_nothing_and_the_line_survives():
+    # Four ways to fail, and none of them may cost the measurement. A status
+    # line is not a place to report that a status line broke.
+    from agent_yield.statusline import compose_line
+
+    own = "ay 111K 11% 2.5x"
+    for command in ("exit 1", "definitely-not-a-command-xyz",
+                    "echo boom >&2", "true"):
+        assert compose_line(own, [command], payload="{}") == own
+
+
+def test_a_slow_segment_is_dropped_rather_than_delaying_the_line():
+    from agent_yield.statusline import compose_line
+
+    own = "ay 111K 11% 2.5x"
+    assert compose_line(own, ["sleep 5; echo late"], payload="{}",
+                        timeout=0.3) == own
+
+
+def test_every_segment_gets_the_same_payload_on_stdin():
+    # The payload arrives on stdin exactly ONCE. Any wrapper has to buffer it
+    # and hand each consumer its own copy; a wrapper that pipes it through
+    # gives the second command an empty stream.
+    from agent_yield.statusline import SEPARATOR, compose_line
+
+    line = compose_line("ay -", ["cat", "cat"], payload='{"a":1}')
+    assert line == SEPARATOR.join(['{"a":1}', '{"a":1}', "ay -"])
+
+
+def test_only_the_first_line_of_a_chatty_segment_is_used():
+    from agent_yield.statusline import SEPARATOR, compose_line
+
+    line = compose_line("ay -", ["printf 'one\\ntwo\\n'"], payload="{}")
+    assert line == SEPARATOR.join(["one", "ay -"])
+
+
+def test_no_commands_leaves_the_line_byte_identical():
+    from agent_yield.statusline import compose_line
+
+    own = "ay 111K 11% 2.5x GROWING"
+    assert compose_line(own) == own
+    assert compose_line(own, [], payload="{}") == own
+
+
+def test_main_composes_from_argv_and_still_prints_exactly_one_line(tmp_path,
+                                                                  capsys):
+    from agent_yield.statusline import main
+
+    main(["--with", "echo alpha"], stdin=io.StringIO("{}"))
+    out = capsys.readouterr().out
+    assert out.count("\n") == 1
+    assert out.startswith("alpha")
+    assert out.rstrip().endswith("ay -")

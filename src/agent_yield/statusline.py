@@ -92,6 +92,7 @@ __all__ = [
     "payload_window",
     "render",
     "line_for",
+    "compose_line",
     "main",
 ]
 
@@ -107,6 +108,68 @@ PROBE_PATH = Path(".agent-yield") / "statusline-probe.jsonl"
 # What a failure looks like: short, neutral, and obviously this tool's, so a
 # persistently blank measurement is visible rather than mistaken for calm.
 QUIET = "ay -"
+
+# COMPOSITION (issue #66). `statusLine` takes ONE command, and a project
+# `.claude/settings.json` REPLACES the user one rather than merging with it, so
+# an operator who wants this line AND their own general-purpose one cannot have
+# both from configuration. `--with` is the join: each command is run with the
+# SAME payload on stdin and its first line becomes a segment.
+#
+# Why here rather than a shell script: the payload arrives on stdin exactly
+# once, so any wrapper has to buffer it and hand each consumer its own copy --
+# and a shell wrapper would have to be written twice, once per machine. This
+# runs wherever the tool already runs.
+#
+# 1.5 seconds because that is what the other machine's PowerShell line already
+# chose for its git calls, and composition is the moment latency starts adding
+# up: this tool shells out to nothing, but the lines it may be composed with
+# shell out to git with no timeout of their own.
+COMPOSE_TIMEOUT = 1.5
+
+
+# `\u00b7`, not an ASCII bar. The sh status line on this machine picks its ⚠
+# glyph by sniffing LC_ALL/LC_CTYPE/LANG, and carries a comment about that
+# glyph crashing a Windows console at chcp 437 -- but that script writes raw
+# bytes to whatever the console is. This tool does not: `cli.main` forces
+# stdout to UTF-8 with `errors="replace"` (#43, where a bare 0xA7 on a cp1252
+# Windows stream broke a consumer decoding the WHOLE read). So the console's
+# own code page cannot corrupt this, and an ASCII fallback here would be a
+# branch that can never be taken -- a safety feature that is really dead code.
+SEPARATOR = "  \u00b7  "
+
+
+def _compose(commands, payload: str, timeout: float = COMPOSE_TIMEOUT) -> list[str]:
+    """Run each command with `payload` on stdin; collect its first line.
+
+    A command that fails, times out, writes only to stderr or prints nothing
+    contributes NOTHING -- no placeholder, no error text. A status line is not
+    a place to report that a status line broke, and the segments that did work
+    are still worth showing. Same reasoning as `QUIET`, one level up.
+
+    `shell=True` deliberately: the commands come from the operator's own
+    `settings.json`, they are the same strings `statusLine` itself would run,
+    and they need `$HOME`/quoting handled the way the operator wrote them.
+    """
+    out: list[str] = []
+    if not commands:
+        return out
+    import subprocess
+    for command in commands:
+        try:
+            # encoding= named, never inherited: #41's guard, and a status
+            # line composed of another program's output is exactly where a
+            # cp1252 default would mangle a glyph on Windows and nowhere else.
+            done = subprocess.run(
+                command, shell=True, timeout=timeout,
+                input=payload, capture_output=True, text=True,
+                encoding="utf-8", errors="replace")
+        except Exception:
+            continue
+        for candidate in (done.stdout or "").splitlines():
+            if candidate.strip():
+                out.append(candidate.rstrip())
+                break
+    return out
 
 
 def _slice(path: Path, size: int, from_end: bool) -> str:
@@ -353,6 +416,25 @@ def line_for(
     return render(current, growth, window, seven_day=seven_day)
 
 
+def compose_line(
+    own: str,
+    commands=(),
+    payload: str = "",
+    timeout: float = COMPOSE_TIMEOUT,
+) -> str:
+    """This tool's line, with any `--with` segments in front of it.
+
+    Composition can only ADD to the line. With no commands, or with commands
+    that all fail, the result is exactly what this tool would have printed
+    alone -- a broken segment must not be able to take the measurement down
+    with it.
+    """
+    segments = _compose(commands, payload, timeout)
+    if not segments:
+        return own
+    return SEPARATOR.join([*segments, own])
+
+
 def _probe(payload: dict, line: str) -> None:
     """Record the shape of what arrived. Keys only -- never their values.
 
@@ -398,11 +480,21 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
             asked_window = int(args[args.index("--window") + 1])
         except (IndexError, ValueError):
             asked_window = None
+    # `--with` repeats; each occurrence is one segment, in the order given.
+    with_commands = [args[i + 1] for i, a in enumerate(args)
+                     if a == "--with" and i + 1 < len(args)]
+    with_timeout = COMPOSE_TIMEOUT
+    if "--with-timeout" in args:
+        try:
+            with_timeout = float(args[args.index("--with-timeout") + 1])
+        except (IndexError, ValueError):
+            with_timeout = COMPOSE_TIMEOUT
 
     line = QUIET
     payload: dict = {}
+    raw = ""
     try:
-        raw = read_payload(stdin)
+        raw = read_payload(stdin) or ""
         loaded = json.loads(raw or "{}")
         if isinstance(loaded, dict):
             payload = loaded
@@ -440,7 +532,13 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
 
     if probing:
         _probe(payload, line)
-    print(line)
+
+    # Composed segments go FIRST so that this tool's own band marker --
+    # `EXPENSIVE`, `GROWING`, `-- handoff + restart` -- stays at the end of the
+    # whole line, which is where a marker is seen. The probe records the
+    # tool's own line, never the composition: what arrived is this tool's
+    # contract to measure, and another command's output is not.
+    print(compose_line(line, with_commands, raw, with_timeout))
     return 0
 
 

@@ -364,6 +364,20 @@ def test_statusline_subcommand_prints_one_line_and_exits_0(monkeypatch, capsys):
     assert "$" not in out
 
 
+def test_statusline_with_reaches_the_module(monkeypatch, capsys):
+    # `--with` cannot use argparse's derived dest -- `with` is a keyword and
+    # `args.with` does not parse -- so the plumbing is explicit and worth a
+    # test. Repeatable, and the segments keep the order they were given in.
+    import io
+    import sys
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
+    assert main(["statusline", "--with", "echo alpha",
+                 "--with", "echo beta"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("\n") == 1
+    assert out.index("alpha") < out.index("beta") < out.index("ay -")
+
+
 def test_arming_a_refusal_is_an_explicit_command(tmp_path, monkeypatch, capsys):
     from agent_yield import boundary as boundary_module
     monkeypatch.chdir(tmp_path)

@@ -529,9 +529,23 @@ def main(argv: list[str] | None = None) -> int:
                    help="record the shape of the stdin payload (keys only)")
     p.add_argument("--window", type=int, default=None,
                    help="override the window the harness reports (rarely needed)")
+    p.add_argument("--with", dest="compose", action="append", metavar="COMMAND",
+                   help="run COMMAND with the same payload on stdin and put "
+                        "its first line in front of this one; repeatable. "
+                        "`statusLine` takes one command and a project "
+                        "settings.json replaces the user one, so this is the "
+                        "only way to have both lines (issue #66)")
+    p.add_argument("--with-timeout", dest="with_timeout", type=float,
+                   default=None, metavar="SECONDS",
+                   help=f"per-command timeout for --with "
+                        f"(default {statusline_module.COMPOSE_TIMEOUT}); a "
+                        f"command that overruns contributes nothing")
     p.set_defaults(func=lambda args: statusline_module.main(
         (["--probe"] if args.probe else [])
         + ([] if args.window is None else ["--window", str(args.window)])
+        + [x for c in (args.compose or []) for x in ("--with", c)]
+        + ([] if args.with_timeout is None
+           else ["--with-timeout", str(args.with_timeout)])
     ))
 
     p = subs.add_parser("gate", help="PreToolUse hook entry point")
