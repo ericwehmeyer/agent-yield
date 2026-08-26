@@ -14,6 +14,7 @@ was free".  This module is read-only; it never writes a file.
 from __future__ import annotations
 
 import datetime as dt
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -137,11 +138,24 @@ def find_session(
     # over, and the fix there was the same: measure the session you can
     # identify, or measure nothing. A cross-project fallback is never right --
     # there is no sense in which another repo's session is "this" session.
+    #
+    # `normcase` and not `.lower()`, and it is the whole of #51. Windows does
+    # not canonicalise path case -- `os.getcwd()` returns whatever case was
+    # typed to enter the directory -- so a lowercase drive letter yields a
+    # slug that can never equal the `C--...` directory Claude Code wrote, and
+    # `find_session` returned None for the entire project while `status`
+    # printed nothing and exited 0. `normcase` folds on Windows and is the
+    # identity on POSIX, where `/repo/Mine` and `/repo/mine` really are two
+    # projects and folding would hand one of them the other's cost. (It also
+    # maps `/` to `\` on Windows; a slug contains neither, so that is inert.)
     # Only when the root was NOT given explicitly: `--transcripts <dir>` is a
     # caller who has already scoped the search, and second-guessing it would
     # make the flag useless.
     if root is None:
-        scoped = [p for p in paths if p.parent.name == project_slug(cwd)]
+        wanted_slug = os.path.normcase(project_slug(cwd))
+        scoped = [
+            p for p in paths if os.path.normcase(p.parent.name) == wanted_slug
+        ]
         if not scoped:
             return None
         paths = scoped

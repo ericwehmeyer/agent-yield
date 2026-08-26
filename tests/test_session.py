@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from agent_yield.session import (
     cost_crossings,
     find_session,
@@ -208,10 +210,44 @@ def test_a_session_that_opens_in_a_band_crossed_the_ones_below_it_on_call_one(tm
     assert cost_crossings(session_stats(path)) == {"dispatch": 1, "restart": 1}
 
 
-def test_project_slug_handles_windows_separators():
-    """Measured on Windows 2026-08-26, against the real tree.
+# Eight path shapes, seven of them read off the real transcript tree on this
+# machine (`~/.claude/projects`) and the eighth -- the lowercase drive letter --
+# the input #51 is about. A table rather than one example, because every slug
+# bug so far has been a shape nobody had a reason to type: the fix for Windows
+# separators (68f062f) was written and tested on the affected machine, by
+# someone who had just diagnosed the class, and still missed the case variant
+# one `cd` away.
+_SLUG_SHAPES = [
+    # measured: the directory this repo's own transcripts live in
+    (r"C:\Users\ewehm\repos\agent-yield", "C--Users-ewehm-repos-agent-yield"),
+    # the #51 input. The slug stays case-PRESERVING -- the comparison folds,
+    # not the slug, because the slug is also what a human reads in an error.
+    (r"c:\Users\ewehm\repos\agent-yield", "c--Users-ewehm-repos-agent-yield"),
+    # measured: two levels up, and the scratchpad tree
+    (r"C:\Users\ewehm", "C--Users-ewehm"),
+    (r"C:\Users\ewehm\AppData\Local\Temp", "C--Users-ewehm-AppData-Local-Temp"),
+    # measured, and the only real evidence for the `.` rule on either machine:
+    # `\.claude\` becomes `--claude-`, the doubled dash being separator-then-dot.
+    (
+        r"C:\Users\ewehm\Documents\SampleProject\.claude\worktrees\summary-wt",
+        "C--Users-ewehm-Documents-SampleProject--claude-worktrees-summary-wt",
+    ),
+    # measured on macOS: no drive, so the leading separator is a single dash
+    ("/Users/x/IdeaProjects/agent-yield", "-Users-x-IdeaProjects-agent-yield"),
+    ("/Users/x/.claude/projects", "-Users-x--claude-projects"),
+    # NOT measured against a real tree -- no project on either machine has an
+    # underscore in its path. It pins a rule the code already implements so a
+    # refactor cannot drop it silently; if a real underscore project ever
+    # appears and disagrees, this row is the one that is wrong.
+    ("/Users/x/agent_yield", "-Users-x-agent-yield"),
+]
 
-    `C:\\Users\\ewehm\\repos\\agent-yield` is stored by Claude Code as
+
+@pytest.mark.parametrize("path,expected", _SLUG_SHAPES)
+def test_project_slug_matches_the_real_transcript_directory_names(path, expected):
+    r"""Measured on Windows 2026-08-26, against the real tree.
+
+    `C:\Users\ewehm\repos\agent-yield` is stored by Claude Code as
     `C--Users-ewehm-repos-agent-yield`: the drive colon and every backslash
     become a dash, which is why the doubled dash appears after the drive
     letter. The slug replaced `/`, `.` and `_` and neither of those, so on
@@ -219,20 +255,68 @@ def test_project_slug_handles_windows_separators():
     `parent.name`, and `find_session` returned None for *every* session --
     `status` measured nothing on that machine and said so silently.
 
-    The POSIX case is asserted alongside it so a future edit cannot fix one
-    platform by breaking the other. §3.1 is the standing reminder: a constant
-    measured on one machine is not a constant.
+    The POSIX rows are asserted alongside the Windows ones so a future edit
+    cannot fix one platform by breaking the other. Section 3.1 is the standing
+    reminder: a constant measured on one machine is not a constant.
     """
     from agent_yield.session import project_slug
 
-    assert (
-        project_slug(Path(r"C:\Users\ewehm\repos\agent-yield"))
-        == "C--Users-ewehm-repos-agent-yield"
+    assert project_slug(Path(path)) == expected
+
+
+@pytest.mark.skipif(
+    os.name != "nt", reason="path case-folding is a Windows-only property (#51)"
+)
+def test_find_session_matches_when_only_the_drive_letter_case_differs(
+    tmp_path, monkeypatch
+):
+    r"""#51, proven by hand on this machine before it was filed.
+
+    Windows does not canonicalise path case: `os.getcwd()` returns whatever
+    case was used to enter the directory, and `cd c:\users\ewehm\repos` is an
+    ordinary thing to type. The slug that comes out can never equal the
+    directory name Claude Code wrote, `find_session` returns None for the
+    whole project, and `status` prints nothing and exits 0 -- so every session
+    measurement taken here was conditional on how the drive letter happened to
+    be capitalised, including the growth figures quoted in NEXT.md.
+
+    The input is LOWERCASE on purpose. The same test written with the natural
+    `C:` passes against the broken code, which is exactly how this survived
+    68f062f, the morning fix of this same function.
+    """
+    projects = tmp_path / "projects"
+    canonical = projects / "C--Users-ewehm-repos-agent-yield"
+    canonical.mkdir(parents=True)
+    ours = canonical / "aaa.jsonl"
+    ours.write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "agent_yield.session.main_transcript_dir", lambda: projects
     )
-    assert (
-        project_slug(Path("/Users/x/IdeaProjects/agent-yield"))
-        == "-Users-x-IdeaProjects-agent-yield"
+    found = find_session(None, None, cwd=Path(r"c:\Users\ewehm\repos\agent-yield"))
+    assert found == ours
+
+
+@pytest.mark.skipif(
+    os.name == "nt", reason="POSIX path case-sensitivity cannot be shown on Windows"
+)
+def test_find_session_stays_case_sensitive_on_posix(tmp_path, monkeypatch):
+    """The other half of #51's fix, and the reason it is not a `.lower()`.
+
+    On POSIX `/repo/Mine` and `/repo/mine` are two directories, so two slugs
+    differing only in case are two projects. Folding unconditionally would let
+    `status` in one of them measure the other -- the cross-project read
+    `find_session` was scoped to prevent, reintroduced by the fix for #51.
+    """
+    projects = tmp_path / "projects"
+    theirs = projects / "-repo-Mine"
+    theirs.mkdir(parents=True)
+    (theirs / "aaa.jsonl").write_text("{}\n", encoding="utf-8")
+
+    monkeypatch.setattr(
+        "agent_yield.session.main_transcript_dir", lambda: projects
     )
+    assert find_session(None, None, cwd=Path("/repo/mine")) is None
 
 
 def test_find_session_does_not_reach_into_another_project(tmp_path, monkeypatch):
