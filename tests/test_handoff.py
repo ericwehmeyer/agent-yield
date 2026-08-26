@@ -319,3 +319,28 @@ def test_a_section_mark_survives_write_then_inject(tmp_path):
     injected = json.loads(stdout.getvalue())["hookSpecificOutput"]["additionalContext"]
     assert note in injected
     assert "Â§" not in injected
+
+
+def test_consume_replaces_an_archive_left_by_an_earlier_handoff(tmp_path):
+    """The second handoff on a machine, which is where Windows broke.
+
+    `Path.rename` is `os.rename`, and on Windows that raises FileExistsError
+    when the destination exists, where POSIX silently overwrites. The archive
+    from the previous consume was enough to make every later handoff vanish
+    into `except OSError` and report itself as `no_handoff` (#42).
+
+    Consuming twice in a row does not reach the rename -- the first consume
+    moves the file away, so the second returns None at the read. Only a
+    *newly written* handoff gets there.
+    """
+    path = tmp_path / "handoff.md"
+    archive = tmp_path / f"handoff.md{ARCHIVE_SUFFIX}"
+
+    _written_at(path, "# first\n", NOW)
+    assert consume(path, now=NOW) == "# first\n"
+    assert archive.read_text(encoding="utf-8") == "# first\n"
+
+    _written_at(path, "# second\n", NOW)
+    assert consume(path, now=NOW) == "# second\n"
+    assert not path.exists()
+    assert archive.read_text(encoding="utf-8") == "# second\n"

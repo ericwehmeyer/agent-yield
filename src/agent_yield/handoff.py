@@ -21,6 +21,7 @@ the one saying what is claimed and unfinished.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -367,7 +368,12 @@ def consume(
     if age_hours > max_age_hours:
         return None
     try:
-        path.rename(path.with_name(path.name + ARCHIVE_SUFFIX))
+        # os.replace, not Path.rename: on Windows os.rename raises
+        # FileExistsError when the destination exists, so every handoff
+        # after the first on a machine failed to archive, was swallowed by
+        # this except, and reported itself as `no_handoff` (#42). os.replace
+        # overwrites atomically on both platforms.
+        os.replace(path, path.with_name(path.name + ARCHIVE_SUFFIX))
     except OSError:
         return None
     return text
