@@ -1789,8 +1789,8 @@ At the optimistic corner cost never argues for splitting anything anyone has
 dispatched; at the pessimistic corner it starts to argue at the median. **That
 band is dominated by the orientation term, which rests on two runs of one
 task** — dispatch one agent over k slices against k agents over one slice each
-and count CALLS. That is one experiment and it retires the widest error bar on
-the page. working-method **§11.4**; the falsifier is pre-registered in
+and count CALLS. That is one experiment, **filed as #63**, and it retires the
+widest error bar on the page. working-method **§11.4**; the falsifier is pre-registered in
 `interventions.toml` and is scored on **defects found** and dollars, never on
 claims counted — #33's bar was on the denominator and would have passed an arm
 that found nothing.
