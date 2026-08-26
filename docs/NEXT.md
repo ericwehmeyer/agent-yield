@@ -1,18 +1,23 @@
 # Start here after a session restart
 
-**Written 2026-08-25 20:45 EDT (Windows), updated 21:10 EDT (macOS), both
-immediately before a deliberate restart.**
+**Written 2026-08-25 20:45 EDT (Windows), updated 21:10 and 21:30 EDT (macOS),
+each time immediately before a deliberate restart.**
 
-The restart is itself the finding — twice now, independently. See *Why these
-sessions ended* at the bottom; it is the most reusable thing on this page.
+The restart is itself the finding — three times now. See *Why these sessions
+ended* at the bottom; it is the most reusable thing on this page.
 
-**Everything below the Windows machine wrote at 20:45 still stands.** The macOS
-session then ran another hour; what it changed is marked **[macOS 21:10]**.
+**Everything below the Windows machine wrote at 20:45 still stands.** What the
+two macOS sessions changed is marked **[macOS 21:10]** and **[macOS 21:30]**.
+
+**[macOS 21:30] The boundary and the handoff are built (#19), and the cost
+family is implemented (#17).** `agent-yield handoff` before you restart —
+that is now the first move of every session end, and the boundary is cleared
+by making it.
 
 ## State of the board
 
-**The tool is built and works.** Sixteen modules, **110 tests**, green on Windows
-and macOS, everything pushed, working tree clean.
+**The tool is built and works.** Eighteen modules, **163 tests**, green on
+Windows and macOS, everything pushed, working tree clean.
 `docs/superpowers/plans/2026-08-25-agent-yield.md` is fully executed.
 
 ```
@@ -26,7 +31,14 @@ agent-yield gate      PreToolUse hook -- all three bands, fails open
 
 **[macOS 21:10] Two modules added since:** `session.py` (measure the live session,
 say when to restart) and `report_html.py` (the self-contained dashboard, #16).
-`session.py` has no CLI subcommand yet — that is #19 Part A.
+
+**[macOS 21:30] Two more, and three subcommands:**
+
+```
+agent-yield status    what this session costs; exit 1 means leave
+agent-yield handoff   write down what a restart destroys, before it does
+agent-yield boundary  UserPromptSubmit hook -- advisory unless --enforce
+```
 
 Two machines worked this repo in parallel through GitHub issues. That worked; it
 needs no Remote Control, and it is documented in `docs/working-method.md` §7.
@@ -67,10 +79,12 @@ both are corrected.
 
 | | |
 |---|---|
-| **#19** | Automate the boundary and the handoff. **Do this first** — Part B (handoff) before Part C (the hook), or you build a wall with no door. |
-| **#18** | Three levers. Parts A and D **done** on macOS; **B (statusline), C (agent-length audit) and E (the falsification test) are open.** Part B is the highest value left: the only lever that enforces itself at zero token cost. |
-| **#17** | §5 cost thresholds. **Decision half done** (`c9bc11a`); the implementation in `thresholds.py` is still open. |
+| **#18** | Three levers. Parts A and D **done**; **B (statusline), C (agent-length audit) and E (the falsification test) are open.** Part B is the highest value left: the only lever that enforces itself at zero token cost, and #19 landed the scriptable half it can call (`agent-yield status`). |
+| **#22** | Read the boundary probe and decide whether `--enforce` is buildable. **Cannot be done by the session that installs the hook** — that is the whole ticket. Install the probe, start a *new* session, then read `.agent-yield/boundary-probe.jsonl`. |
+| **#20, #21** | Opened by the Windows machine at 01:19–01:20 UTC while the macOS session was working: a blind re-measurement of context/call by model and role, and `report --by-model`. Not started. |
 | **#13** | `predict` must use the context it is projecting *for*. **Deliberately deferred** to the week-1 review — do not implement before 09-01. **Partly overtaken:** `bb2cbc0` split predict into two populations, which answers most of it. Read that commit before the review argues with the ticket. |
+| ~~**#19**~~ | **Closed 21:30.** Handoff, status, boundary — B before A before C, as it insisted. |
+| ~~**#17**~~ | **Closed 21:30.** `COST_KNEE`/`COST_STEEP` implemented; the family is surfaced by `status` and the boundary, and gate still does not carry it. |
 
 **#17's finding**, which is what set the whole last hour going:
 
@@ -154,6 +168,54 @@ corrected the trigger I had just built. Opus for cross-cutting verification,
 Haiku for mechanical work. **Fable is not a cost lever — it is the most expensive
 model. Use it where being wrong is expensive.**
 
+## [macOS 21:30] What this session added
+
+**#19 and #17, both closed.** Four commits, 53 new tests, everything pushed.
+
+**The boundary fires on "expensive AND nothing written down", never on
+"expensive".** That one condition is the whole design, and it is what makes it
+a door rather than a wall: it cannot fire twice for the same reason, it is
+cleared by doing the very thing it exists to protect, and one
+`agent-yield handoff` silences it for the session. "Written down" means
+*written during this session* — a handoff from yesterday describes a session
+that no longer exists, and any freshness rule keyed to the last call goes stale
+one call later and makes the boundary unclearable.
+
+**The blanket hard stop #19 asked for was rejected, and the argument is in
+design.md §5.** A bug in `gate` blocks dispatches; a bug in a prompt gate locks
+the operator out of their own session. Against that, an unconditional stop buys
+one extra nudge aimed at the operator who has already written the handoff and
+therefore does not need stopping.
+
+**`UserPromptSubmit` exit 2 is UNMEASURED, and no session can measure a hook it
+installs** — hook config loads at session start. That is structural, not
+laziness, and it is why #22 exists. `boundary` advises by default, refuses only
+under `--enforce`, and ships `--probe`, which records the event name, the
+payload keys and whether it would have stopped — **never the prompt text**, and
+there is a test asserting that. design.md §5 records *in advance* that "exit 2
+does not block ⇒ `--enforce` is not buildable" is a legitimate outcome, so it
+cannot be quietly skipped later.
+
+**#17's cost family is real code now.** `COST_KNEE = 0.20`, `COST_STEEP = 0.40`
+of window, and a test asserts the whole ordering
+`COST_KNEE < COST_STEEP < PREFER_FRESH < CONTEXT_WARN < COMPACT_AT_BOUNDARY <
+COMPACT_NOW`, so nobody can tune one family into the other's territory quietly.
+"Once per band per session" needed no state: `session.cost_crossings` reads the
+crossing out of the transcript, and a session that *opens* steep is recorded as
+crossing the knee on call 1 — otherwise the sessions the 47% finding is about
+would report "never past the knee".
+
+**`status` exits 1 for two conditions, not the one #19 named:** past
+`RESTART_HARD_FACTOR` (4.0, deliberately well above the 2.0 advisory, because a
+boundary that fires in every working session gets disabled), or in the steep
+band. To a caller both mean *leave*.
+
+**Two interventions recorded with predictions, before the results are known.**
+The handoff one is the falsification test the whole restart lever rests on: a
+session started from a handoff should open under 60,000 context/call, and its
+first ten calls should cost less than the last ten of the session it replaced.
+It is design.md §7 as well, so it can fail in public.
+
 ## Two review routines still armed
 
 Both one-shot, cloud, reading only committed files. Everything is pushed, so they
@@ -220,6 +282,15 @@ a fresh session costs nothing and this one costs ~6x per call
 It printed that, and the session kept running for another twenty minutes.
 **Measurement without enforcement changes nothing** — which is the whole premise
 of #19. Two machines, two operators, same failure. It is not a discipline problem.
+
+**[macOS 21:30] The third session stopped on purpose, at 2.6x.** At the handoff
+it stood at **43 calls, 132,259 context, 2.6x growth from an opening 50,801** —
+work landed,
+163 tests green, everything pushed, `agent-yield handoff` written first. Not
+because it had to: the boundary it had just built would not have fired, since
+the cost band was still cheap and growth was under the hard factor. It stopped
+at the natural boundary instead of running to one. That is the first session of
+the three to end that way, and it is the only one whose ending is worth copying.
 
 `docs/working-method.md` is the full method, measured rather than asserted. The
 four things that matter most:
