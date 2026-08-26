@@ -1055,8 +1055,9 @@ wins, the 10-call cap should be un-retracted rather than left quietly retired.**
 
 ## [Windows 2026-08-26 08:30] The first daily report, and what it says about progress
 
-**The honest answer to "are we getting more effective" is: not measurably yet,
-and the number that says we are is a mixture shift.** This is the first time
+**The honest answer to "are we getting more effective" is: on the least gameable
+measure, we got 24% worse — and the first version of this section said "flat"
+because it divided one machine's tokens by two machines' commits.** This is the first time
 the daily question has been asked against the real corpus (20,757 calls,
 re-ingested this morning), scoped to this project's `cwd` and bucketed by
 **UTC** day, which is what the corpus timestamps are. Bucket git any other way
@@ -1064,22 +1065,36 @@ and the join silently misaligns — a bare `git log --since=<date>` does exactly
 that, and it is the same approxidate trap already recorded against `outcomes.py`.
 
 ```
-agent-yield only, UTC days
+agent-yield only, UTC days, and BOTH sides scoped to the machine that was measured
 day        tokens   calls  commits    ins  code-ins  docs-ins  main ctx/call  >300K  sub ctx/call
 2026-08-25  17.79M   146      10    4,203    1,127     2,931       177,068     20%      45,766
-2026-08-26  52.80M   398      66   12,979    7,960     4,716       142,095      4%      48,480
+2026-08-26  52.80M   398      50   10,025    5,493     4,274       142,095      4%      48,480
+              (macOS, same 08-26 UTC day: 18 commits, 3,069 insertions, 82% of them code)
 
-tokens/commit        1,778,703 -> 800,033   2.22x "better"
-tokens/code-line        15,784 ->   6,633   2.38x "better"
-tokens/line-of-any-kind  4,232 ->   4,068   FLAT
+tokens/commit         1,778,703 -> 1,056,044   0.59x  better
+tokens/code-line         15,783 ->     9,613   0.61x  better
+tokens/line-of-any-kind   4,232 ->     5,267   1.24x  WORSE
 ```
 
-**The first two ratios are the third one wearing a costume.** 08-25 was
-doc-heavy (2,931 doc lines against 1,127 of code); 08-26 was code-heavy (7,960
-against 4,716). Tokens per line of any kind did not move. Nothing got cheaper —
-the work changed shape. This is `design.md` §3.1 recurring exactly: **the
-aggregate dissolves under decomposition**, and this time it dissolved a headline
-that would have been reported as a win.
+**Corrected 2026-08-26 09:00, before anything was built on it.** The first
+version of this table divided a Windows-only token count by a two-machine commit
+count, and reported tokens-per-line as *flat*. It is not flat. Attributing every
+commit in the window to the machine that was awake when it landed — Windows call
+timestamps against committer time, +/-6 minutes — gives macOS **18 commits and
+3,069 insertions** on the 08-26 UTC day, not the 4 commits first estimated, and
+**82% of macOS's lines were code**, which is exactly the column the headline
+leaned on. The independent review of the dashboard plan caught this
+before the plan's own figure caption was written; it reached 15-17% worse by a
+different route (§11's 11.4M-token macOS session against its 2,135 lines).
+**Three estimates, two methods, one sign.** The 6-minute window can only
+misattribute macOS commits *to* Windows, so 10,025 is an upper bound on the
+Windows denominator and 24% is a **floor** on how much worse it got.
+
+**So the honest headline is worse than "no progress."** Tokens per line of any
+kind rose 24%. The two ratios that still look like wins — per commit, per line of
+*code* — are the mixture artefact: 08-25 was doc-heavy, 08-26 code-heavy, and
+both denominators move with that mix while the token count does not. The least
+gameable denominator is the one that got worse.
 
 **What does survive the decomposition, with its caveat attached.** Main-thread
 context/call fell 177,068 → 142,095 and the share of main calls above
