@@ -120,8 +120,10 @@ at session start, so a hook installed now first runs in the *next* session. So
 }
 ```
 
-Run that for a session, read `.agent-yield/boundary-probe.jsonl`, and only then
-decide whether `--enforce` is buildable. Everything here fails **open**: a hook
+Hooks do not inherit an activated virtualenv, so use an absolute path to the
+binary unless `agent-yield` is on the system `PATH`. Run that for a session,
+read `.agent-yield/boundary-probe.jsonl`, and only then decide whether
+`--enforce` is buildable. Everything here fails **open**: a hook
 that crashes is indistinguishable from one that refused, and a boundary that
 crashes locks the operator out of their own session. `AGENT_YIELD_BOUNDARY_OVERRIDE=1`
 silences it — named, never silent, and distinct from the gate's override so
