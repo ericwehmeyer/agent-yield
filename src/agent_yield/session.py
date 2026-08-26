@@ -19,7 +19,7 @@ from pathlib import Path
 
 from .discovery import find_transcripts, main_transcript_dir
 from .ingest import load_records, total_usage
-from .thresholds import DEFAULT_WINDOW, RESTART_FACTOR, cost_band
+from .thresholds import COST_LADDER, RESTART_FACTOR, cost_band
 from .usage import Usage
 
 __all__ = [
@@ -195,9 +195,7 @@ def session_stats(path: Path, baseline_calls: int = 10) -> SessionStats:
     )
 
 
-def cost_crossings(
-    stats: SessionStats, window: int = DEFAULT_WINDOW
-) -> dict[str, int]:
+def cost_crossings(stats: SessionStats) -> dict[str, int]:
     """Call number at which each cost band was first entered.
 
     Section 5 says each band fires once per session, at the crossing. That
@@ -206,17 +204,16 @@ def cost_crossings(
     entered are absent from the mapping -- never present with a 0, which
     would read as "crossed on the first call".
     """
-    ladder = ("knee", "steep")
     seen: dict[str, int] = {}
     for index, context in enumerate(stats.contexts, start=1):
-        band = cost_band(context, window)
+        band = cost_band(context)
         if band == "cheap":
             continue
-        # A session that opens in the steep band crossed the knee too -- on
+        # A session that opens in the restart band crossed dispatch too -- on
         # its first call. Recording only the band it landed in would report
-        # "never past the knee" for exactly the sessions the 47% finding is
-        # about, which open expensive rather than growing into it.
-        for name in ladder[: ladder.index(band) + 1]:
+        # "never past dispatch" for exactly the sessions the concentration
+        # finding is about, which open expensive rather than growing into it.
+        for name in COST_LADDER[: COST_LADDER.index(band) + 1]:
             seen.setdefault(name, index)
     return seen
 

@@ -69,7 +69,7 @@ from .session import (
     resolve_transcript,
     session_stats,
 )
-from .thresholds import DEFAULT_WINDOW, RESTART_HARD_FACTOR, cost_band
+from .thresholds import RESTART_HARD_FACTOR, cost_band, cost_says_leave
 
 __all__ = [
     "OVERRIDE_ENV",
@@ -120,13 +120,16 @@ def boundary_message(
     stats: SessionStats,
     handoff_path: Path,
     hard_factor: float = RESTART_HARD_FACTOR,
-    window: int = DEFAULT_WINDOW,
 ) -> str | None:
     """The one line, or ``None`` when this session may continue.
 
     Two independent reasons to stop, both meaning "leave": context/call has
-    grown past the hard factor, or the session sits in the steep cost band.
-    Neither fires while a handoff written in this session exists.
+    grown past the hard factor, or this call sits in a cost band whose remedy
+    is to end the session. Neither fires while a handoff written in this
+    session exists.
+
+    No window: the cost bands are absolute tokens (issue #23), and the
+    boundary asks what the next call bills, never how much room is left.
     """
     reasons = []
     if stats.growth is not None and stats.growth >= hard_factor:
@@ -135,12 +138,13 @@ def boundary_message(
             f"context/call has grown {stats.growth:.1f}x "
             f"({opening:,} -> {stats.current_context:,} over {stats.calls:,} calls)"
         )
-    if window > 0 and cost_band(stats.current_context, window) == "steep":
-        crossed = cost_crossings(stats, window).get("steep")
+    if cost_says_leave(stats.current_context):
+        band = cost_band(stats.current_context)
+        crossed = cost_crossings(stats).get(band)
         where = f", crossed at call {crossed:,}" if crossed else ""
         reasons.append(
-            f"this call sits at {stats.current_context / window:.0%} of a "
-            f"{window:,} window, deep in the expensive band{where}"
+            f"this call carries {stats.current_context:,} tokens, in the "
+            f"{band} band{where}"
         )
     if not reasons:
         return None
@@ -252,7 +256,6 @@ def decide(
     enforce: bool = False,
     handoff_path: Path | None = None,
     hard_factor: float = RESTART_HARD_FACTOR,
-    window: int = DEFAULT_WINDOW,
     stats: SessionStats | None = None,
 ) -> tuple[int, str | None]:
     """Return (exit_code, message). Exit 2 only under ``enforce``."""
@@ -265,7 +268,7 @@ def decide(
         stats = _stats_for(payload)
     if stats is None:
         return 0, None
-    message = boundary_message(stats, handoff_path, hard_factor, window)
+    message = boundary_message(stats, handoff_path, hard_factor)
     if message is None:
         return 0, None
     return (2 if enforce else 0), message

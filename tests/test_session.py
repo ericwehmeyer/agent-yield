@@ -184,27 +184,25 @@ def test_cost_crossings_report_the_call_each_band_was_entered_on(tmp_path):
     path = _write(tmp_path / "s.jsonl", [
         _line(session_id="s", index=i, cache_read=read)
         for i, read in enumerate(
-            [10_000, 50_000, 250_000, 300_000, 450_000, 500_000]
+            [10_000, 50_000, 350_000, 400_000, 550_000, 750_000]
         )
     ])
-    crossings = cost_crossings(session_stats(path), window=1_000_000)
-    assert crossings == {"knee": 3, "steep": 5}
+    crossings = cost_crossings(session_stats(path))
+    assert crossings == {"dispatch": 3, "restart": 5, "stop": 6}
 
 
 def test_a_band_never_entered_is_absent_rather_than_zero(tmp_path):
     path = _write(tmp_path / "s.jsonl", [
         _line(session_id="s", index=i, cache_read=10_000) for i in range(5)
     ])
-    assert cost_crossings(session_stats(path), window=1_000_000) == {}
+    assert cost_crossings(session_stats(path)) == {}
 
 
-def test_a_session_that_opens_steep_crossed_the_knee_on_call_one(tmp_path):
+def test_a_session_that_opens_in_a_band_crossed_the_ones_below_it_on_call_one(tmp_path):
     # Main sessions open expensive rather than growing into it: one machine
     # averaged 311,399 context/call with no doubling anywhere. Reporting
-    # "never past the knee" for those would miss the whole finding.
+    # "never past dispatch" for those would miss the whole finding.
     path = _write(tmp_path / "s.jsonl", [
-        _line(session_id="s", index=i, cache_read=500_000) for i in range(3)
+        _line(session_id="s", index=i, cache_read=550_000) for i in range(3)
     ])
-    assert cost_crossings(session_stats(path), window=1_000_000) == {
-        "knee": 1, "steep": 1,
-    }
+    assert cost_crossings(session_stats(path)) == {"dispatch": 1, "restart": 1}

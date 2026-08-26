@@ -32,6 +32,7 @@ from .report import (
     render_table,
 )
 from .thresholds import (
+    COST_LADDER,
     DEFAULT_EXPECTED_CALLS,
     DEFAULT_WINDOW,
     REFERENCE_CONTEXT,
@@ -39,6 +40,7 @@ from .thresholds import (
     RESTART_HARD_FACTOR,
     cost_advice,
     cost_band,
+    cost_says_leave,
 )
 
 DEFAULT_CALLS_PATH = Path(".agent-yield") / "calls.jsonl"
@@ -137,7 +139,8 @@ def _cmd_status(args) -> int:
     """One measurement of the session you are in, and what it costs to stay.
 
     Exit 1 means this session should end: either context/call has grown past
-    the hard factor, or the session is in the steep cost band. Both are
+    the hard factor, or this call is in a cost band whose remedy is to leave.
+    Both are
     "leave"; everything else is exit 0, so a prompt, a Makefile or CI can
     branch on it without parsing this text.
     """
@@ -154,7 +157,7 @@ def _cmd_status(args) -> int:
 
     usage = stats.total
     window = args.window
-    band = cost_band(stats.current_context, window)
+    band = cost_band(stats.current_context)
     print(f"session {path.stem}")
     print(f"  calls           {stats.calls:,}")
     print(f"  context/call    opening {_num(stats.opening_context_per_call)}  "
@@ -167,16 +170,22 @@ def _cmd_status(args) -> int:
           f"cache write {usage.cache_creation_tokens:,}  "
           f"cache read {usage.cache_read_tokens:,}  "
           f"(total {usage.total:,})")
-    of_window = (f" ({stats.current_context / window:.0%} of a {window:,} window)"
-                 if window > 0 else "")
-    print(f"  cost band       {band}{of_window}")
+    # Two families, printed apart, because they answer different questions
+    # in different units (issue #23): the band is absolute tokens -- what the
+    # next call bills -- and the window fraction is capacity, how much room
+    # is left. Merging them into one line is what made this tool say "21% of
+    # window, no action needed" to a session deep in the expensive band.
+    print(f"  cost band       {band} ({stats.current_context:,} tokens)")
+    if window > 0:
+        print(f"  capacity        "
+              f"{stats.current_context / window:.0%} of a {window:,} window")
 
-    crossings = session_module.cost_crossings(stats, window)
-    for name in ("knee", "steep"):
+    crossings = session_module.cost_crossings(stats)
+    for name in COST_LADDER:
         if name in crossings:
-            print(f"  crossed {name:<7} at call {crossings[name]:,}")
+            print(f"  crossed {name:<8} at call {crossings[name]:,}")
 
-    advice = cost_advice(stats.current_context, window)
+    advice = cost_advice(stats.current_context)
     if advice:
         print(f"\n{advice}")
     growth_advice = session_module.restart_advice(stats, args.factor)
@@ -184,7 +193,7 @@ def _cmd_status(args) -> int:
         print(f"\n{growth_advice}")
 
     past_hard = stats.growth is not None and stats.growth >= args.hard_factor
-    if past_hard or band == "steep":
+    if past_hard or cost_says_leave(stats.current_context):
         print("\nExit 1: write findings down (`agent-yield handoff`) "
               "and start a fresh session.")
         return 1

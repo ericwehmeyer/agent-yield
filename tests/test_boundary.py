@@ -41,9 +41,9 @@ def _grown(tmp_path: Path):
     return session_stats(_transcript(tmp_path, reads))
 
 
-def _steep(tmp_path: Path):
+def _expensive(tmp_path: Path):
     """A session deep in the cost band without ever doubling."""
-    return session_stats(_transcript(tmp_path, [500_000] * 20, name="deep"))
+    return session_stats(_transcript(tmp_path, [550_000] * 20, name="deep"))
 
 
 def _cheap(tmp_path: Path):
@@ -68,11 +68,15 @@ def test_growth_past_the_hard_factor_stops_the_session(tmp_path):
     assert "agent-yield handoff" in message
 
 
-def test_the_steep_band_stops_a_session_that_never_doubled(tmp_path):
-    stats = _steep(tmp_path)
+def test_a_leave_band_stops_a_session_that_never_doubled(tmp_path):
+    stats = _expensive(tmp_path)
     assert stats.growth is not None and stats.growth < 2.0
     message = boundary_message(stats, tmp_path / "none.md")
-    assert "expensive band" in message
+    # Tokens, not a share of a window: the boundary asks what this call
+    # bills, and the window is not in that expression (issue #23).
+    assert "550,000 tokens" in message
+    assert "restart band" in message
+    assert "window" not in message
 
 
 def test_a_handoff_written_this_session_clears_the_boundary(tmp_path):

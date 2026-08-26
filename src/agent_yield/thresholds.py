@@ -20,13 +20,41 @@ COMPACT_NOW = 0.85
 PREFER_FRESH_SESSION_AT_BOUNDARY = 0.50
 
 # Cost: the second family, answering "what does the next call bill" rather
-# than "how much room is left". Measured 2026-08-25 over 20,273 calls: 47% of
-# the cache-read bill came from the 20% of calls made above 200K context, a
-# band every capacity rule above is silent in. Fractions, not token counts,
-# so the family survives a model change. PROVISIONAL and calibrated on a 1M
-# window only; on smaller windows it is conservative. See design.md section 5.
-COST_KNEE = 0.20
-COST_STEEP = 0.40
+# than "how much room is left". ABSOLUTE TOKENS, and the units are the point
+# (issue #23): cost is `context x rate`, and the window does not appear in
+# that expression, so a fraction of the window moves when the window moves
+# while the bill does not. The same 200,000-token call cannot be cheap on a
+# 2M window and expensive on a 500K one; it costs the same either way.
+#
+# MEASURED: the concentration is real and replicates on both corpora -- the
+# calls above 150K are ~60% of main-thread calls and ~87% of the context
+# tokens billed. CHOSEN: every number below. There is NO KNEE -- plotted
+# continuously the spend curve decays smoothly on both machines with no
+# break anywhere, so no threshold can be discovered here and each one is a
+# policy choice about what share of calls should trip it. That share is
+# recorded next to the constant, because it is the only honest way to
+# compare one corpus with another: the same token count sits at a different
+# percentile on a different machine.
+#
+# Percentiles below are main-thread calls, macOS corpus, 1,165 calls,
+# 2026-08-25. The Windows corpus (20,255 calls) puts the same numbers lower.
+COST_DISPATCH = 300_000   # fires on ~35% of main calls (p65), 67% of the bill
+COST_RESTART = 500_000    # ~13% (p87), 36% of the bill
+COST_STOP = 700_000       # ~7% (p93), 23% of the bill
+
+# The order the bands are entered in. Named for their remedy, not for a shape
+# in the curve, because the curve has no shape: what distinguishes the bands
+# is what to do, and a band that shares another's remedy should not exist.
+COST_LADDER = ("dispatch", "restart", "stop")
+
+# Why abandoning fractions leaves no gap, so nobody "fixes" this back later.
+# The defence of the fraction form was that on a small-window model an
+# absolute 300K threshold never fires and the family goes quiet exactly when
+# a session is in trouble. It does not hold: on a 200K window a 150K call is
+# already 75% of capacity and COMPACT_AT_BOUNDARY is firing. Capacity is
+# genuinely fractional; cost genuinely is not; together they cover both
+# regimes, and the cost family being silent on a small window is correct
+# behaviour rather than a hole.
 
 # The tool cannot read the model's context window, so a caller must say. 1M
 # is this operator's working default, not a fact about any model.
@@ -70,46 +98,72 @@ def band_for_day(day_total: int) -> str:
     return "silent"
 
 
-def cost_band(context: int, window: int = DEFAULT_WINDOW) -> str:
-    """Which cost band one call's context sits in: cheap, knee, or steep.
+def cost_band(context: int) -> str:
+    """Which cost band one call's context sits in, in tokens.
+
+    MAIN-THREAD CALLS ONLY. Main and subagent are two populations 2.1x-2.6x
+    apart -- median 184,905 against 88,201 here -- and a subagent above these
+    numbers is a brief that failed, not a session to restart. Same token
+    count, different diagnosis, different remedy; one family cannot serve
+    both, so this one does not try.
+
+    No ``window`` argument, deliberately: a call's bill is `context x rate`
+    and the window is not in that expression (issue #23). Capacity questions
+    take the window; this one cannot.
 
     Level, not growth. `session.restart_advice` catches sessions that run
     away; this catches sessions that open expensive, which is the norm --
     one machine's main sessions averaged 311,399 context/call with no
     doubling anywhere.
     """
-    if window <= 0:
-        return "cheap"
-    fraction = context / window
-    if fraction >= COST_STEEP:
-        return "steep"
-    if fraction >= COST_KNEE:
-        return "knee"
+    if context >= COST_STOP:
+        return "stop"
+    if context >= COST_RESTART:
+        return "restart"
+    if context >= COST_DISPATCH:
+        return "dispatch"
     return "cheap"
 
 
+def cost_says_leave(context: int) -> bool:
+    """Whether the band's remedy is "end this session"."""
+    return cost_band(context) in ("restart", "stop")
+
+
 # Deliberately not the capacity wording, and it never says compact: a compact
-# pays a summarization pass to stay in the expensive band.
+# pays a summarization pass to stay in the expensive band. Each band names one
+# action, and the actions differ -- otherwise the band would not be here.
 _COST_ADVICE = {
-    "knee": (
-        "Past the cost knee ({fraction:.0%} of a {window:,} window). Calls "
-        "from here bill about 3x the cheap band. Dispatch reads and searches "
-        "to subagents and keep this context flat. This is spend, not space "
-        "-- capacity is fine."
+    "dispatch": (
+        "This call carries {context:,} tokens, past {COST_DISPATCH:,}. Every "
+        "call from here re-reads all of it. Dispatch reads and searches to "
+        "briefed subagents and keep this context flat. This is spend, not "
+        "space -- capacity is a separate question and may be fine."
     ),
-    "steep": (
-        "Deep in the expensive band ({fraction:.0%} of a {window:,} window). "
-        "At the next natural boundary, write findings down and start fresh. "
-        "Do not compact -- a compact pays a summarization pass to stay in "
-        "the expensive band; a restart leaves it."
+    "restart": (
+        "This call carries {context:,} tokens, past {COST_RESTART:,}. At the "
+        "next natural boundary -- work landed, checks green, pushed -- write "
+        "findings down and start fresh. Do not compact: a compact pays a "
+        "summarization pass to stay in the expensive band; a restart leaves "
+        "it."
+    ),
+    "stop": (
+        "This call carries {context:,} tokens, past {COST_STOP:,}. Do not "
+        "wait for a boundary. Run `agent-yield handoff`, then start a fresh "
+        "session; the next 40 calls here bill several times what they would "
+        "there."
     ),
 }
 
 
-def cost_advice(context: int, window: int = DEFAULT_WINDOW) -> str | None:
+def cost_advice(context: int) -> str | None:
     """What to do about the band, or ``None`` in the cheap band."""
-    band = cost_band(context, window)
-    template = _COST_ADVICE.get(band)
-    if template is None or window <= 0:
+    template = _COST_ADVICE.get(cost_band(context))
+    if template is None:
         return None
-    return template.format(fraction=context / window, window=window)
+    return template.format(
+        context=context,
+        COST_DISPATCH=COST_DISPATCH,
+        COST_RESTART=COST_RESTART,
+        COST_STOP=COST_STOP,
+    )

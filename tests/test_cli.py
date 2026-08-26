@@ -248,8 +248,8 @@ def test_handoff_without_a_transcript_still_writes_and_says_cost_is_unmeasured(
     assert "no cost measurement" in out.read_text(encoding="utf-8")
 
 
-def _steep_root(tmp_path, cache_read: int, calls: int = 20):
-    root = tmp_path / "steep"
+def _band_root(tmp_path, cache_read: int, calls: int = 20):
+    root = tmp_path / "band"
     root.mkdir()
     lines = []
     for index in range(calls):
@@ -273,19 +273,31 @@ def test_status_prints_the_four_fields_apart_and_the_cost_band(tmp_path, capsys)
     assert "$" not in out
 
 
-def test_status_exits_1_in_the_steep_band(tmp_path, capsys):
-    root = _steep_root(tmp_path, cache_read=500_000)
+def test_status_exits_1_in_a_leave_band(tmp_path, capsys):
+    root = _band_root(tmp_path, cache_read=550_000)
     assert main(["status", "--transcripts", str(root)]) == 1
     out = capsys.readouterr().out
-    assert "steep" in out
+    assert "cost band       restart (550,000 tokens)" in out
     assert "handoff" in out
-    # Steep advice argues against compaction rather than recommending it.
+    # The advice argues against compaction rather than recommending it.
     assert "Do not compact" in out
-    assert "start fresh" in out
+    assert "natural boundary" in out
+
+
+def test_status_prints_cost_and_capacity_as_separate_lines(tmp_path, capsys):
+    # The two families are in different units and must not be merged into
+    # one line: merging them is what let this tool say "21% of window, no
+    # action needed" to a session deep in the expensive band (issue #23).
+    root = _band_root(tmp_path, cache_read=350_000)
+    assert main(["status", "--transcripts", str(root),
+                 "--window", "1000000"]) == 0
+    out = capsys.readouterr().out
+    assert "cost band       dispatch (350,000 tokens)" in out
+    assert "capacity        35% of a 1,000,000 window" in out
 
 
 def test_status_is_quiet_and_exits_0_in_the_cheap_band(tmp_path, capsys):
-    root = _steep_root(tmp_path, cache_read=20_000)
+    root = _band_root(tmp_path, cache_read=20_000)
     assert main(["status", "--transcripts", str(root)]) == 0
     assert "Exit 1" not in capsys.readouterr().out
 
@@ -319,9 +331,9 @@ def test_status_with_no_transcript_says_so_and_exits_0(tmp_path, capsys):
 
 
 def test_status_reports_where_the_bands_were_crossed(tmp_path, capsys):
-    root = _steep_root(tmp_path, cache_read=250_000)
+    root = _band_root(tmp_path, cache_read=350_000)
     assert main(["status", "--transcripts", str(root)]) == 0
-    assert "crossed knee    at call 1" in capsys.readouterr().out
+    assert "crossed dispatch at call 1" in capsys.readouterr().out
 
 
 def test_boundary_subcommand_fails_open_on_junk(monkeypatch):

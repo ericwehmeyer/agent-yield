@@ -79,7 +79,12 @@ Measured over 20,273 calls, **47% of the cache-read bill came from the 20% of
 calls made above 200K context** — a band every capacity threshold is silent in,
 because at 200K on a 1M window a session is at 20% of capacity and in no danger
 of running out of room at all. Capacity and cost are different questions with
-different trigger points.
+different trigger points — and different **units**: capacity is a fraction of
+the window (warn 60%, compact 75/85%), cost is absolute tokens (dispatch
+300,000, restart 500,000, stop 700,000), because a call's bill is `context ×
+rate` and the window does not appear in that expression. There is no knee in
+the curve to anchor to, so each cost threshold is a policy choice recorded with
+the share of main-thread calls it fires on: ~35%, ~13%, ~7%.
 
 ```
 agent-yield status     what this session costs, and whether to leave
@@ -88,8 +93,8 @@ agent-yield boundary   UserPromptSubmit hook: advisory by default
 ```
 
 `status` exits **1** when the session should end — past the hard growth factor,
-or in the steep cost band — so a shell prompt, a `Makefile` or CI can branch on
-it without parsing text.
+or in a cost band whose remedy is to leave — so a shell prompt, a `Makefile` or
+CI can branch on it without parsing text.
 
 **Nothing in Claude Code can restart a session.** No hook kills and respawns
 one, so "automate the restart" is two jobs: make continuing refuse to work, and

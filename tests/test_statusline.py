@@ -40,9 +40,9 @@ def test_growth_past_the_advisory_factor_is_marked(tmp_path):
     assert "3.0x" in line and "GROWING" in line
 
 
-def test_the_steep_band_says_leave(tmp_path):
-    line = line_for(_transcript(tmp_path, [500_000] * 20))
-    assert "STEEP" in line
+def test_a_leave_band_says_leave(tmp_path):
+    line = line_for(_transcript(tmp_path, [550_000] * 20))
+    assert "RESTART" in line
     assert "handoff" in line
 
 
@@ -132,8 +132,12 @@ def test_tokens_never_money(tmp_path):
     assert "$" not in render(500_000, 6.0)
 
 
-def test_the_harness_window_beats_the_provisional_constant(tmp_path, capsys):
-    """A 200K window makes 100K steep; DEFAULT_WINDOW would call it cheap."""
+def test_the_harness_window_sets_the_capacity_share_not_the_cost_band(tmp_path, capsys):
+    """The window moves the percentage on the line and nothing else.
+
+    It used to move the band as well, which is issue #23: the same 100,000
+    tokens cost the same whatever window they sit in.
+    """
     path = _transcript(tmp_path, [100_000] * 20, name="live")
     payload = json.dumps({
         "transcript_path": str(path), "session_id": "live",
@@ -144,7 +148,9 @@ def test_the_harness_window_beats_the_provisional_constant(tmp_path, capsys):
                                              "output_tokens": 4_000}},
     })
     assert main([], stdin=io.StringIO(payload)) == 0
-    assert "STEEP" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "50%" in out
+    assert "STEEP" not in out and "RESTART" not in out and "DISPATCH" not in out
 
 
 def test_an_explicit_window_overrides_the_harness(tmp_path, capsys):
@@ -156,7 +162,7 @@ def test_an_explicit_window_overrides_the_harness(tmp_path, capsys):
     })
     assert main(["--window", "1000000"], stdin=io.StringIO(payload)) == 0
     out = capsys.readouterr().out
-    assert "STEEP" not in out and "10%" in out
+    assert "10%" in out
 
 
 def test_output_tokens_are_not_context(tmp_path):

@@ -74,6 +74,7 @@ from .thresholds import (
     RESTART_FACTOR,
     RESTART_HARD_FACTOR,
     cost_band,
+    cost_says_leave,
 )
 
 __all__ = [
@@ -249,13 +250,17 @@ def render(
     # `-`, never `0`: an unmeasurable growth is not flat growth.
     parts.append("-" if growth is None else f"{growth:.1f}x")
 
-    band = cost_band(current_context, window) if window > 0 else "cheap"
+    # The band reads the token count, never the window fraction beside it:
+    # cost is absolute, capacity is fractional, and the line shows both
+    # because they disagree (issue #23).
+    band = cost_band(current_context)
     if band != "cheap":
         parts.append(band.upper())
     elif growth is not None and growth >= factor:
         parts.append("GROWING")
 
-    leave = band == "steep" or (growth is not None and growth >= hard_factor)
+    leave = cost_says_leave(current_context) or (
+        growth is not None and growth >= hard_factor)
     if leave:
         parts.append("-- handoff + restart")
     return " ".join(parts)

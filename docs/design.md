@@ -215,7 +215,7 @@ written down. **Precondition: findings are written down first.** One fleet lost
 eleven agents at a token limit with ten having written nothing, and that work is
 gone.
 
-### Cost thresholds (added 2026-08-25, provisional)
+### Cost thresholds (added 2026-08-25; units corrected 2026-08-26, issue #23)
 
 The family above is capacity: it answers "am I about to run out of window."
 Measured over 20,273 calls on 2026-08-25, 47% of the cache-read bill came from
@@ -224,61 +224,116 @@ in. On a 1M window, 200K is 20% of capacity; the 60% warn fires near 600K, by
 which point each call bills roughly 3x what it did at 200K. This tool told its
 own operator "21% of window, no action needed" on a session already deep in the
 expensive band. That was the design being wrong, not the operator. So a second
-family, answering "how much does the next call cost," anchored at the measured
-200K knee:
+family, answering "how much does the next call cost":
 
 ```
-cost:      knee 20% of window     steep 40% of window
+cost:      dispatch 300,000 tokens    restart 500,000    stop 700,000
 ```
 
-`COST_KNEE = 0.20`, `COST_STEEP = 0.40`. Two bands, because the measurement has
-two regimes above the knee — 200-400K produced 27.8% of the bill from 14.4% of
-calls, 400K+ produced 19.5% from 5.6% — and because the right response differs:
-past the knee, stop growing; past steep, leave. A third band would add a message
-without adding a distinct action. Fractions, not token counts, so the family
-survives a model change: on a 1M window the bands open at 200K and 400K,
-matching the measurement; on a 200K window (Haiku 4.5) they open at 40K and
-80K, ahead of every capacity threshold. The 0.20 anchor was calibrated on a 1M
-window only; on small windows it is conservative and gets recalibrated when
-small-window data exists.
+**Absolute tokens, not fractions of the window.** The first version of this
+family shipped as `COST_KNEE = 0.20` and `COST_STEEP = 0.40`, on the reasoning
+that fractions survive a model change. They survive it syntactically and break
+it semantically. Cost is `context × rate`; the window does not appear in that
+expression, so `0.20 × W` moves when `W` changes while the bill does not:
+
+| window | `0.20 × W` fires at | what a 200,000-token call costs |
+|---|---|---|
+| 500,000 | 100,000 | 200,000 tokens |
+| 1,000,000 | 200,000 | 200,000 tokens |
+| 2,000,000 | 400,000 | 200,000 tokens |
+
+Same call, same bill, three different verdicts. The code's own comment conceded
+it — *"calibrated on a 1M window only"* — and **a cost threshold that needs a
+window caveat is measuring the wrong thing.**
+
+**Abandoning fractions leaves no gap**, and this is written down so nobody
+reverts it: the obvious defence is that on a 200K-window model an absolute
+150K threshold barely fires and the family goes quiet exactly when a session is
+in trouble. It fails, because at that window a 150K call is already 75% of
+capacity and `COMPACT_AT_BOUNDARY` is firing. **Capacity is genuinely
+fractional and cost genuinely is not; together they cover both regimes**, and
+the cost family being silent on a small window is correct rather than a hole.
+
+**There is no knee, and 200,000 was a bucket edge.** Plotted continuously the
+spend curve decays smoothly on both machines with no break anywhere — main-thread
+share of the bill above each threshold runs 95% → 87% → 78% → 67% → 54% → 36%,
+monotone throughout. §11's superlinear fit (`calls^1.54`) is why: a session does
+not cross into an expensive state, it accumulates into one. **So no threshold
+here can be discovered; each is a policy choice about what share of calls should
+trip it**, and that share is recorded next to the constant, because the same
+token count sits at a different percentile on a different machine:
+
+| | tokens | share of main-thread calls | of the bill |
+|---|---|---|---|
+| `COST_DISPATCH` | 300,000 | ~35% (p65) | 67% |
+| `COST_RESTART` | 500,000 | ~13% (p87) | 36% |
+| `COST_STOP` | 700,000 | ~7% (p93) | 23% |
+
+The original proposal on #23 was 150K/250K/400K, anchored to the Windows
+median. A threshold at the median fires on half of all calls — the failure
+`RESTART_HARD_FACTOR = 4.0` was set to avoid, since **a boundary that fires in
+every working session gets disabled, and a boundary that gets disabled is worth
+nothing.** Both machines measured that family firing on 42–50% of main calls;
+neither set out to. The numbers above are the counter-proposal, agreed on the
+issue.
+
+**Three bands, because there are three distinct actions** — a band that shares
+another's remedy should not exist. Past `COST_DISPATCH`, stop growing: push
+reads and searches out to briefed subagents. Past `COST_RESTART`, leave at the
+next natural boundary. Past `COST_STOP`, leave now, without waiting for one.
+The bands are named for their remedies rather than for a shape in the curve,
+since the curve has no shape.
+
+**Main-thread calls only.** Main and subagent are two populations 2.1–2.6×
+apart — median 184,905 against 88,201 on macOS, 249,257 against 97,341 on
+Windows — and a subagent above these numbers is a brief that failed, not a
+session to restart. Same token count, different diagnosis, different remedy;
+one family cannot serve both, so `cost_band` does not try.
 
 Each band fires once per session, at the crossing, in the next report — never
 as an interrupt. The wording is not the capacity wording and never says
 compact:
 
-- knee: "Past the cost knee (20% of window). Calls from here bill about 3x the
-  cheap band. Dispatch reads and searches to subagents and keep this context
-  flat. This is spend, not space — capacity is fine."
-- steep: "Deep in the expensive band (40% of window). At the next natural
-  boundary, write findings down and start fresh. Do not compact — a compact
-  pays a summarization pass to stay in the expensive band; a restart leaves
-  it."
+- dispatch: "This call carries N tokens, past 300,000. Every call from here
+  re-reads all of it. Dispatch reads and searches to briefed subagents and keep
+  this context flat. This is spend, not space — capacity is a separate question
+  and may be fine."
+- restart: "…past 500,000. At the next natural boundary — work landed, checks
+  green, pushed — write findings down and start fresh. Do not compact: a
+  compact pays a summarization pass to stay in the expensive band; a restart
+  leaves it."
+- stop: "…past 700,000. Do not wait for a boundary. Run `agent-yield handoff`,
+  then start a fresh session; the next 40 calls here bill several times what
+  they would there."
 
 Level, not growth — and both families stay. `session.restart_advice` already
 fires on context/call doubling from the session's opening calls; a growth
 trigger catches runaway sessions but is blind to sessions that open expensive,
 and those are the norm: one machine's main sessions averaged 311,399
 context/call against 89,721 for subagents, no doubling anywhere. Level says
-where the session is; growth says where it is going; the 47% finding is about
-where sessions are.
+where the session is; growth says where it is going; the concentration finding
+is about where sessions are.
 
-The knee will fire on nearly every working main session. That is the finding,
-not a false alarm — mains live in the expensive band, and a rule that stays
-polite about it is the rule that said "no action needed." The habituation risk
-attaches to repetition, not to firing: one message per band per session, with
-operator action reserved for steep, is a status change, not a siren.
+The dispatch band will fire on a third of working main calls. That is the
+finding, not a false alarm — mains live in the expensive band, and a rule that
+stays polite about it is the rule that said "no action needed." The habituation
+risk attaches to repetition, not to firing: one message per band per session,
+with operator action reserved for the two leave bands, is a status change, not
+a siren.
 
-`gate` does not carry this family. Gate refuses dispatches, and past the knee a
-dispatch is the remedy — subagents ran at 89,721 context/call against parents'
-311,399, and the knee advice is precisely "dispatch more." A cost-band refusal
-would block the cheapest path and force inline work in the most expensive
-context, and a hook that fails open cannot fail politely: wrong once, it does
-maximum damage in exactly the sessions that most need to dispatch. Gate keeps
-its daily-ceiling refusal; the cost family is advisory only.
+`gate` does not carry this family. Gate refuses dispatches, and past the
+dispatch threshold a dispatch is the remedy — subagents ran at 89,721
+context/call against parents' 311,399, and the advice there is precisely
+"dispatch more." A cost-band refusal would block the cheapest path and force
+inline work in the most expensive context, and a hook that fails open cannot
+fail politely: wrong once, it does maximum damage in exactly the sessions that
+most need to dispatch. Gate keeps its daily-ceiling refusal; the cost family is
+advisory only.
 
 The two families coexist: capacity protects the window, cost protects the
 bill. Capacity thresholds above are unchanged and still correct for what they
-measure; the correction recorded here is that they were the only family.
+measure; the correction recorded here is that they were the only family — and
+the second correction, three days later, is that they were the only *units*.
 
 ### The session boundary (added 2026-08-26)
 
