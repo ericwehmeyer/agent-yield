@@ -227,7 +227,7 @@
 <div class="wrap">
   <div class="masthead">
     <h1>Agent Yield Drilldown</h1>
-    <span class="metric-name">tokens per inserted line, over time, down the org</span>
+    <span class="metric-name">list-price dollars per 1,000 inserted lines, over time, down the org</span>
   </div>
   <div class="synth-banner">
     <strong>SYNTHETIC SCAFFOLD.</strong> This corpus has one user and two machines. Every
@@ -256,6 +256,22 @@ const THRESHOLDS = {
   source: "src/agent_yield/thresholds.py, read 2026-08-26",
 };
 
+/* The numerator's unit. LIST-PRICE EQUIVALENTS, not a bill: `pricing.py` says
+   plainly that on a subscription the ranking of two ways of working survives
+   and the absolute figure does not. Raw `usage.total` is not scoreable --
+   `thresholds.py` L76 calls it crude in the same file this page was told to
+   read, because ~97% of that sum is cache reads at 0.10x a base input token,
+   so two teams with the same tok/ins can differ by a factor in dollars.
+   Constants below are pricing.py's, copied, and the model is its formula:
+     cost = base(model) x (input + 0.10*cache_read + 1.25*cw_5m
+                           + 2.00*cw_1h + 5.00*output) */
+const PRICING = {
+  baseRatePerMTok: { "claude-opus-5": 5.00, "claude-haiku-4-5": 1.00 },
+  cacheRead: 0.10, cacheWrite5m: 1.25, cacheWrite1h: 2.00, output: 5.00,
+  source: "src/agent_yield/pricing.py, read 2026-08-26",
+  basis: "list",
+};
+
 /* The real leaf: `agent-yield report --since 2026-08-25 --machine` and
    `agent-yield outcomes --since 2026-08-25 --machine`, run 2026-08-26 on the
    Windows clone. Numerator: calls whose recorded cwd is this repo. Denominator:
@@ -264,12 +280,17 @@ const REAL_SCOPE = {
   calls: "1,096 of 4,114 calls on this machine, made in C:\\Users\\ewehm\\repos\\agent-yield",
   outcomes: "commits and insertions from this clone's reflog (--machine); unattributable: 0 on both days",
   captured: "captured 2026-08-26; the second day was still running",
+  numerator: "list-price equivalents from pricing.py over those same 1,096 calls, priced per model",
 };
 const REAL_DAYS = [
   { day: "2026-08-25", tokens: 17787031, calls: 146, commits: 10, merges: 0,
-    code: 1127, docs: 3025, other: 51, mainCtx: 178226, subCtx: 42095, bands: [20, 0, 0] },
+    code: 1127, docs: 3025, other: 51, mainCtx: 178226, subCtx: 42095, bands: [20, 0, 0],
+    dollars: 14.0976, crUsd: 7.0399, crTok: 16900225,
+    unpricedTok: 3018736, unpricedModels: ["claude-sonnet-5"] },
   { day: "2026-08-26", tokens: 138660430, calls: 950, commits: 50, merges: 0,
-    code: 3208, docs: 4273, other: 1012, mainCtx: 155668, subCtx: 58705, bands: [4, 0, 0] },
+    code: 3208, docs: 4273, other: 1012, mainCtx: 155668, subCtx: 58705, bands: [4, 0, 0],
+    dollars: 102.1609, crUsd: 65.9404, crTok: 135569943,
+    unpricedTok: 4064607, unpricedModels: ["claude-fable-5", "claude-sonnet-5"] },
 ];
 const REAL_MACHINES = [
   { name: "windows (this clone)", real: true },
@@ -293,14 +314,29 @@ const DAY_MS = 86400000;
 const END_DAY = Date.UTC(2026, 7, 26);
 function dayISO(i) { return new Date(END_DAY - (N_DAYS - 1 - i) * DAY_MS).toISOString().slice(0, 10); }
 
+/* `cr`/`cw`/`out` are shares of the day's raw tokens and `opus` is the share
+   of the spend on the dear model. They are what makes dollars something other
+   than a rescaled token count: Payments and Trading Tools sit 6% apart on
+   tok/ins and 2.6x apart in dollars, which is the whole reason the headline
+   changed unit. Chosen, like every other synthetic shape here, and held still
+   across the window so a team's period-over-period delta stays a fact about
+   its work rather than about a profile that was made to drift. */
 const SYNTH_PARAMS = [
-  { id: "payments",   name: "Payments",       seed: 11, tok: 60e6, ins: 5200, tokTrend: 1.00, mixA: [0.55, 0.35, 0.10], mixB: [0.55, 0.35, 0.10], noise: 0.10 },
-  { id: "risk",       name: "Risk Analytics", seed: 23, tok: 55e6, ins: 4800, tokTrend: 1.90, mixA: [0.52, 0.38, 0.10], mixB: [0.52, 0.38, 0.10], noise: 0.10 },
-  { id: "platform",   name: "Platform",       seed: 37, tok: 75e6, ins: 6100, tokTrend: 1.05, mixA: [0.60, 0.30, 0.10], mixB: [0.60, 0.30, 0.10], noise: 0.09 },
-  { id: "portal",     name: "Client Portal",  seed: 41, tok: 48e6, ins: 4000, tokTrend: 1.00, insTrend: 1.55, mixA: [0.52, 0.38, 0.10], mixB: [0.27, 0.63, 0.10], noise: 0.09 },
-  { id: "marketdata", name: "Market Data",    seed: 53, tok: 40e6, ins: 3600, tokTrend: 0.85, mixA: [0.58, 0.32, 0.10], mixB: [0.58, 0.32, 0.10], noise: 0.10 },
-  { id: "trading",    name: "Trading Tools",  seed: 67, tok: 66e6, ins: 5400, tokTrend: 1.00, mixA: [0.56, 0.34, 0.10], mixB: [0.56, 0.34, 0.10], noise: 0.20 },
+  { id: "payments",   name: "Payments",       seed: 11, tok: 60e6, ins: 5200, tokTrend: 1.00, mixA: [0.55, 0.35, 0.10], mixB: [0.55, 0.35, 0.10], noise: 0.10, cr: 0.985, cw: 0.010, out: 0.003, opus: 0.55 },
+  { id: "risk",       name: "Risk Analytics", seed: 23, tok: 55e6, ins: 4800, tokTrend: 1.90, mixA: [0.52, 0.38, 0.10], mixB: [0.52, 0.38, 0.10], noise: 0.10, cr: 0.970, cw: 0.018, out: 0.006, opus: 0.95 },
+  { id: "platform",   name: "Platform",       seed: 37, tok: 75e6, ins: 6100, tokTrend: 1.05, mixA: [0.60, 0.30, 0.10], mixB: [0.60, 0.30, 0.10], noise: 0.09, cr: 0.975, cw: 0.015, out: 0.005, opus: 0.80 },
+  { id: "portal",     name: "Client Portal",  seed: 41, tok: 48e6, ins: 4000, tokTrend: 1.00, insTrend: 1.55, mixA: [0.52, 0.38, 0.10], mixB: [0.27, 0.63, 0.10], noise: 0.09, cr: 0.960, cw: 0.024, out: 0.008, opus: 0.85 },
+  { id: "marketdata", name: "Market Data",    seed: 53, tok: 40e6, ins: 3600, tokTrend: 0.85, mixA: [0.58, 0.32, 0.10], mixB: [0.58, 0.32, 0.10], noise: 0.10, cr: 0.980, cw: 0.012, out: 0.004, opus: 0.70 },
+  { id: "trading",    name: "Trading Tools",  seed: 67, tok: 66e6, ins: 5400, tokTrend: 1.00, mixA: [0.56, 0.34, 0.10], mixB: [0.56, 0.34, 0.10], noise: 0.20, cr: 0.945, cw: 0.033, out: 0.010, opus: 1.00 },
 ];
+
+/* pricing.py's formula, over a token split. List-price equivalents. */
+function priceSplit(inp, cr, cw, out, opusShare) {
+  const weighted = inp + PRICING.cacheRead * cr + PRICING.cacheWrite5m * cw + PRICING.output * out;
+  const rate = opusShare * PRICING.baseRatePerMTok["claude-opus-5"] +
+    (1 - opusShare) * PRICING.baseRatePerMTok["claude-haiku-4-5"];
+  return { dollars: rate * weighted / 1e6, crUsd: rate * PRICING.cacheRead * cr / 1e6 };
+}
 
 function genTeamDays(p) {
   const rnd = mulberry32(p.seed);
@@ -322,8 +358,15 @@ function genTeamDays(p) {
       Math.max(0, Math.round(3 * jitter())),
       Math.max(0, Math.round(1 * jitter())),
     ];
+    const crTok = Math.round(tokens * p.cr);
+    const cwTok = Math.round(tokens * p.cw);
+    const outTok = Math.round(tokens * p.out);
+    const inpTok = Math.max(0, tokens - crTok - cwTok - outTok);
+    const priced = priceSplit(inpTok, crTok, cwTok, outTok, p.opus);
     days.push({ day: dayISO(i), tokens, calls, commits, merges: 0, code, docs, other,
-      mainCtx: Math.round(150000 * jitter()), subCtx: Math.round(50000 * jitter()), bands });
+      mainCtx: Math.round(150000 * jitter()), subCtx: Math.round(50000 * jitter()), bands,
+      dollars: priced.dollars, crUsd: priced.crUsd, crTok,
+      unpricedTok: 0, unpricedModels: [] });
   }
   return days;
 }
@@ -362,17 +405,59 @@ const TREE = {
    there is no attribute, column, or series a reader can select for a half.
    ===================================================================== */
 function sumDays(days) {
-  const s = { tokens: 0, calls: 0, commits: 0, code: 0, docs: 0, other: 0, n: days.length };
-  for (const d of days) { s.tokens += d.tokens; s.calls += d.calls; s.commits += d.commits;
-    s.code += d.code; s.docs += d.docs; s.other += d.other; }
+  const s = { tokens: 0, calls: 0, commits: 0, code: 0, docs: 0, other: 0,
+    crTok: 0, unpricedTok: 0, n: days.length };
+  let usdTotal = null, crUsdTotal = null;
+  const unpriced = new Set();
+  for (const d of days) {
+    s.tokens += d.tokens; s.calls += d.calls; s.commits += d.commits;
+    s.code += d.code; s.docs += d.docs; s.other += d.other;
+    s.crTok += d.crTok || 0; s.unpricedTok += d.unpricedTok || 0;
+    for (const m of d.unpricedModels || []) unpriced.add(m);
+    // null, never 0: a window in which nothing could be priced has no dollar
+    // figure at all, and 0 would read as "it was free".
+    if (d.dollars != null) {
+      usdTotal = (usdTotal || 0) + d.dollars;
+      crUsdTotal = (crUsdTotal || 0) + (d.crUsd || 0);
+    }
+  }
+  s.dollars = usdTotal; s.crUsd = crUsdTotal;
+  s.unpricedModels = Array.from(unpriced).sort();
   s.ins = s.code + s.docs + s.other;
   return s;
 }
+
+/* HEADLINE: list-price dollars per 1,000 inserted lines, any kind. The
+   denominator is unchanged and still the least gameable one on record; the
+   numerator is no longer raw `usage.total`, which is ~97% cache reads at 0.10x
+   and so ranks teams by cache-hit rate rather than by work. */
+function usdPerKIns(s) { return (s.ins && s.dollars != null) ? 1000 * s.dollars / s.ins : null; }
+function usdPerCommit(s) { return (s.commits && s.dollars != null) ? s.dollars / s.commits : null; }
+function tripleParts(s) { // PerInsertion.render: all three or none, halves unnamed
+  const r = (den) => (den ? 1000 * s.dollars / den : null);
+  return [r(s.ins), r(s.code), r(s.docs)];
+}
+function tripleUSD(s) { return s.dollars == null ? UNSC : tripleParts(s).map(usd).join("/"); }
+function tripleUSDText(s) { return s.dollars == null ? "UNSCORABLE" : tripleParts(s).map(usdText).join("/"); }
+
+/* SECONDARY, and rendered only beneath a heading that says so. */
 function tokPerIns(s) { return s.ins ? s.tokens / s.ins : null; }
 function tokPerCommit(s) { return s.commits ? s.tokens / s.commits : null; }
-function triple(s) { // PerInsertion.render: all three or none, halves unnamed
+function triple(s) {
   const r = (den) => (den ? s.tokens / den : null);
   return [r(s.ins), r(s.code), r(s.docs)].map(fmt0).join("/");
+}
+
+/* Two cache-read shares, and the gap between them is the point: cache reads
+   are nearly all of the tokens and about half to two thirds of the money.
+   Every scope strip prints both, so a reader can see which unit is in play. */
+function crShareTok(s) { return s.tokens ? s.crTok / s.tokens : null; }
+function crShareUsd(s) { return s.dollars ? s.crUsd / s.dollars : null; }
+function unpricedNote(s) {
+  if (!s.unpricedModels.length) return "";
+  return " \u2014 " + fmt0(s.unpricedTok) + " tokens on " + s.unpricedModels.length +
+    " model" + (s.unpricedModels.length > 1 ? "s" : "") + " pricing.py has no reconciled rate for (" +
+    esc(s.unpricedModels.join(", ")) + ") sit outside it, so the figure is a lower bound";
 }
 function inWindow(days, fromIdx) {
   const lo = dayISO(fromIdx[0]), hi = dayISO(fromIdx[1]);
@@ -385,6 +470,16 @@ const PRIOR_LABEL = dayISO(0) + " \u2192 " + dayISO(27);
 /* ---------------------------------------------------------------- format */
 function fmt0(v) { return v == null ? "-" : Math.round(v).toLocaleString("en-US"); }
 function pct(v) { return v == null ? "-" : (v >= 0 ? "+" : "") + (v * 100).toFixed(0) + "%"; }
+function pct1(v) { return v == null ? "-" : (v * 100).toFixed(1) + "%"; }
+const UNSC = '<span class="chip chip-unsc">UNSCORABLE</span>';
+/* Returns HTML, and UNSCORABLE -- never a dash, never a token figure -- when
+   the unit cannot be produced. Its output is digits, so it needs no escaping. */
+function usdText(v) {
+  return v == null ? "UNSCORABLE" : "$" + v.toLocaleString("en-US",
+    { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function usd(v) { return v == null ? UNSC : usdText(v); }
+function usdAxis(v) { return "$" + (v === 0 ? "0" : v.toFixed(v < 10 ? 1 : 0)); }
 function esc(s) { return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;"); }
 
 /* =====================================================================
@@ -446,8 +541,29 @@ function crumbsHTML() {
   }
   return '<nav class="crumbs" aria-label="org path">' + parts.join('<span aria-hidden="true">/</span>') + "</nav>";
 }
+/* The scope strip carries the UNIT as well as the window. B1 was a correct
+   ratio whose numerator nobody had stated, so both cache-read shares print
+   here: nearly all of the tokens, well under all of the money. */
+function unitLine(label, s) {
+  return "<b>numerator:</b> list-price equivalents from pricing.py (costBasis " +
+    esc(PRICING.basis) + ")" + (label ? " \u00b7 <b>" + esc(label) + ":</b> " : " \u00b7 ") +
+    usd(s.dollars) + ", of which cache reads are <b>" + pct1(crShareUsd(s)) +
+    " of the dollars</b> against " + pct1(crShareTok(s)) + " of the raw tokens" + unpricedNote(s);
+}
+function unitLines(node) {
+  if (node.children) {
+    return [unitLine("", sumDays(node.children.filter((c) => c.synthetic)
+      .flatMap((c) => inWindow(c.days, CUR))))];
+  }
+  // A real leaf prints every day it has: #72's acceptance, and the two days
+  // here disagree by 15 points on the dollar share while agreeing to within 3
+  // on the token share -- which is the finding, on the page, in one strip.
+  if (!node.synthetic) return node.days.map((d) => unitLine(d.day, sumDays([d])));
+  return [unitLine("", sumDays(node.days.slice(-28)))];
+}
 function scopeHTML(node) {
-  return '<div class="scope">' + node.scope.map((line) => "<div>" + line + "</div>").join("") + "</div>";
+  const lines = node.scope.concat(unitLines(node));
+  return '<div class="scope">' + lines.map((line) => "<div>" + line + "</div>").join("") + "</div>";
 }
 function chip(node) {
   return node.synthetic ? '<span class="chip chip-synth">SYNTHETIC</span>'
@@ -466,7 +582,7 @@ function bandLegend() {
 function teamStats(team) {
   const cur = sumDays(inWindow(team.days, CUR));
   const prior = sumDays(inWindow(team.days, PRIOR));
-  const yCur = tokPerIns(cur), yPrior = tokPerIns(prior);
+  const yCur = usdPerKIns(cur), yPrior = usdPerKIns(prior);
   return {
     team, cur, prior, yCur, yPrior,
     delta: (yCur != null && yPrior != null && yPrior !== 0) ? (yCur - yPrior) / yPrior : null,
@@ -478,7 +594,7 @@ function renderRollup(node) {
   const synth = stats.filter((s) => s.team.synthetic);
   const aggCur = sumDays(synth.flatMap((s) => inWindow(s.team.days, CUR)));
   const aggPrior = sumDays(synth.flatMap((s) => inWindow(s.team.days, PRIOR)));
-  const aggY = tokPerIns(aggCur), aggYP = tokPerIns(aggPrior);
+  const aggY = usdPerKIns(aggCur), aggYP = usdPerKIns(aggPrior);
   const aggDelta = aggYP ? (aggY - aggYP) / aggYP : null;
 
   // outlier: largest |delta| among synthetic teams
@@ -498,10 +614,11 @@ function renderRollup(node) {
 
   // KPI row: the aggregate is synthetic-only and says so.
   html += '<div class="tiles">' +
-    tile("tokens per inserted line, last 28 days " + '<span class="chip chip-synth">SYNTHETIC AGGREGATE</span>',
-      fmt0(aggY), true, deltaHTML(aggDelta, "vs prior 28 days")) +
-    tile("tokens, last 28 days " + '<span class="chip chip-synth">SYNTHETIC AGGREGATE</span>', fmt0(aggCur.tokens), false,
-      esc(fmt0(aggCur.calls)) + " calls") +
+    tile("$ per 1,000 inserted lines, last 28 days " + '<span class="chip chip-synth">SYNTHETIC AGGREGATE</span>',
+      usd(aggY), true, deltaHTML(aggDelta, "vs prior 28 days"), true) +
+    tile("list-price equivalent, last 28 days " + '<span class="chip chip-synth">SYNTHETIC AGGREGATE</span>',
+      usd(aggCur.dollars), false,
+      esc(fmt0(aggCur.calls)) + " calls \u00b7 " + esc(fmt0(aggCur.tokens)) + " raw tokens", true) +
     tile("inserted lines, last 28 days " + '<span class="chip chip-synth">SYNTHETIC AGGREGATE</span>', fmt0(aggCur.ins), false,
       esc(fmt0(aggCur.commits)) + " commits") +
     tile("teams", String(node.children.length), false,
@@ -516,11 +633,11 @@ function renderRollup(node) {
 
   // team table
   html += '<div class="section-h">Every team, both windows</div>' +
-    '<p class="section-sub">tok/ins is the whole ratio; any/code/docs is its one decomposition, ' +
+    '<p class="section-sub">$/1k ins is the whole ratio; any/code/docs is its one decomposition, ' +
     "rendered together or not at all. Click a row to drill in.</p>";
   html += '<div class="tblwrap"><table><thead><tr>' +
-    "<th>team</th><th>data</th><th>tokens (28d)</th><th>commits</th><th>inserted lines</th>" +
-    "<th>tok/ins</th><th>any/code/docs</th><th>vs prior 28d</th>" +
+    "<th>team</th><th>data</th><th>$ (28d)</th><th>commits</th><th>inserted lines</th>" +
+    "<th>$/1k ins</th><th>any/code/docs</th><th>vs prior 28d</th>" +
     "</tr></thead><tbody>";
   for (const s of stats) {
     const d = s.delta;
@@ -532,22 +649,46 @@ function renderRollup(node) {
     html += '<tr class="row-link" tabindex="0" role="link" data-team="' + esc(s.team.id) + '">' +
       "<td>" + esc(s.team.name) + note + "</td>" +
       "<td>" + chip(s.team) + "</td>" +
-      "<td>" + fmt0(s.cur.tokens) + "</td>" +
+      "<td>" + usd(s.cur.dollars) + "</td>" +
       "<td>" + fmt0(s.cur.commits) + "</td>" +
       "<td>" + fmt0(s.cur.ins) + "</td>" +
-      "<td><b>" + fmt0(s.yCur) + "</b></td>" +
-      "<td>" + triple(s.cur) + "</td>" +
+      "<td><b>" + usd(s.yCur) + "</b></td>" +
+      "<td>" + tripleUSD(s.cur) + "</td>" +
       "<td>" + deltaCell + "</td></tr>";
   }
   html += "</tbody></table></div>";
-  html += '<p class="bandnote">tokens per inserted line: a team\u2019s recorded tokens over the inserted lines its own commits shipped, same window. ' +
-    "Lower is better; UNSCORABLE means the window has no corpus, not that nothing happened.</p>";
+  html += '<p class="bandnote">$ per 1,000 inserted lines: the list-price equivalent of a team\u2019s recorded calls, ' +
+    "over the inserted lines that team\u2019s own commits shipped, same window. Lower is better. UNSCORABLE means the window " +
+    "has no corpus, or that nothing in it could be priced \u2014 not that nothing happened. On a subscription the RANKING of two " +
+    "ways of working survives and the absolute figure does not; " + esc(PRICING.source) + ".</p>";
+  html += secondaryTokens(stats.map((s) => [s.team.name, s.cur]));
   return html;
 }
 
-function tile(k, v, hero, d) {
-  return '<div class="tile"><div class="k">' + k + '</div><div class="v' + (hero ? " hero" : "") + '">' + esc(v) +
-    '</div><div class="d">' + (d || "") + "</div></div>";
+/* SECONDARY. Raw `usage.total` ratios live here and nowhere else on this page:
+   no tile, no axis, no headline, no ranked bar. They are kept because a reader
+   who wants to watch the two units disagree needs both of them -- and put
+   under a heading that says which one is not scoreable. */
+function secondaryTokens(rows) {
+  let h = '<div class="section-h">Secondary: the same ratios in raw tokens</div>' +
+    '<p class="section-sub">Not the headline, and not rankable. <b>Roughly 97% of a raw token total is cache reads, ' +
+    "at 0.10x a base input token</b>, so tok/ins ranks cache-hit rate about as much as it ranks work \u2014 which is " +
+    "why it sits in this table and not on a tile. thresholds.py L76 says the same thing in the source the page reads.</p>";
+  h += '<div class="tblwrap"><table><thead><tr><th>unit</th><th>raw tokens</th><th>tok/ins</th>' +
+    "<th>any/code/docs</th><th>cache reads, share of tokens</th></tr></thead><tbody>";
+  for (const row of rows) {
+    const s = row[1];
+    h += "<tr><td>" + esc(row[0]) + "</td><td>" + fmt0(s.tokens) + "</td><td>" + fmt0(tokPerIns(s)) +
+      "</td><td>" + triple(s) + "</td><td>" + pct1(crShareTok(s)) + "</td></tr>";
+  }
+  return h + "</tbody></table></div>";
+}
+
+function tile(k, v, hero, d, raw) {
+  // `raw` is for values that are already HTML -- usd() returns an UNSCORABLE
+  // chip, and escaping it would print the markup.
+  return '<div class="tile"><div class="k">' + k + '</div><div class="v' + (hero ? " hero" : "") + '">' +
+    (raw ? v : esc(v)) + '</div><div class="d">' + (d || "") + "</div></div>";
 }
 
 /* Figure: ranked bars, one hue (the metric across teams), delta labels. */
@@ -565,14 +706,14 @@ function figRankedBars(stats, outlier) {
     const deltaTxt = r.delta == null ? "UNSCORABLE" : pct(r.delta) + " vs prior";
     const deltaFill = r.delta == null ? "var(--unsc-ink)" : (r.delta > 0 ? "var(--bad)" : "var(--good)");
     marks += '<g class="bar-link" tabindex="0" role="link" data-team="' + esc(r.team.id) + '" ' +
-      'data-tip="' + esc(r.team.name + "\u2007" + fmt0(r.yCur) + " tok/ins \u00b7 any/code/docs " + triple(r.cur) +
+      'data-tip="' + esc(r.team.name + "\u2007" + usdText(r.yCur) + " per 1,000 inserted lines \u00b7 any/code/docs " + tripleUSDText(r.cur) +
         (r.team.synthetic ? " \u00b7 SYNTHETIC" : " \u00b7 REAL, " + r.cur.n + " days")) + '">' +
       '<rect x="0" y="' + (y - 4) + '" width="' + W + '" height="' + (barH + 8) + '" fill="transparent"></rect>' +
       '<text x="' + (labelW - 8) + '" y="' + (y + barH / 2 + 4) + '" text-anchor="end" ' +
         'font-size="12" fill="var(--ink)" font-weight="' + (isOut ? 600 : 400) + '">' + esc(r.team.name) + "</text>" +
       '<path d="' + roundRight(labelW, y, w, barH, 4) + '" fill="var(--accent)"' + (r.team.synthetic ? ' opacity="0.55"' : "") + "></path>" +
       '<text x="' + (labelW + w + 7) + '" y="' + (y + barH / 2 + 4) + '" font-size="12" ' +
-        'fill="var(--ink)" font-weight="600">' + fmt0(r.yCur) + "</text>" +
+        'fill="var(--ink)" font-weight="600">' + esc(usdText(r.yCur)) + "</text>" +
       '<text x="' + (W - 2) + '" y="' + (y + barH / 2 + 4) + '" text-anchor="end" font-size="10.5" ' +
         'font-family="IBM Plex Mono, monospace" fill="' + deltaFill + '">' + esc(deltaTxt) + "</text></g>";
   });
@@ -580,7 +721,7 @@ function figRankedBars(stats, outlier) {
     "x the median of its siblings and " + pct(outlier.delta) + " on itself";
   return '<div class="figure"><h2>' + esc(outlier.team.name) + " is the outlier</h2>" +
     '<p class="note"><b>' + esc(outLabel) + ".</b> Bars are the last 28 days; solid is the real team, translucent is synthetic. Click a bar to drill in.</p>" +
-    '<svg viewBox="0 0 ' + W + " " + H + '" aria-label="tokens per inserted line by team">' + marks + "</svg>" +
+    '<svg viewBox="0 0 ' + W + " " + H + '" aria-label="list-price dollars per 1,000 inserted lines by team">' + marks + "</svg>" +
     '<p class="foot">Agent Yield\u2019s bar covers its 2 days of corpus \u2014 the only real data in this window \u2014 and its delta is UNSCORABLE because the prior window holds no corpus at all.</p></div>';
 }
 function medianOf(vals) {
@@ -594,7 +735,7 @@ function figWeeklyTrend(stats, outlier) {
   for (let w = 0; w < 8; w++) weeks.push([w * 7, w * 7 + 6]);
   const series = stats.filter((s) => s.team.synthetic).map((s) => ({
     team: s.team,
-    pts: weeks.map(([a, b]) => tokPerIns(sumDays(inWindow(s.team.days, [a, b])))),
+    pts: weeks.map(([a, b]) => usdPerKIns(sumDays(inWindow(s.team.days, [a, b])))),
   }));
   const W = 640, H = 240, padL = 58, padR = 118, padT = 12, padB = 26;
   const plotW = W - padL - padR, plotH = H - padT - padB;
@@ -605,7 +746,7 @@ function figWeeklyTrend(stats, outlier) {
   for (let g = 0; g <= 4; g++) {
     const v = maxV * g / 4, yy = y(v);
     grid += '<line x1="' + padL + '" y1="' + yy + '" x2="' + (W - padR) + '" y2="' + yy + '" stroke="var(--grid)" stroke-width="1"></line>' +
-      '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + fmt0(v) + "</text>";
+      '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + usdAxis(v) + "</text>";
   }
   let ticks = "";
   weeks.forEach(([a], i) => {
@@ -629,8 +770,8 @@ function figWeeklyTrend(stats, outlier) {
   const ratio = (outS.pts[7] / outS.pts[0]).toFixed(1);
   window.__trend = { series, weeks, x, padL, plotW, outlierTeam: outlier.team };
   return '<div class="figure"><h2>The divergence is eight weeks old, not a blip</h2>' +
-    '<p class="note"><b>' + esc(outlier.team.name) + " ends the window at " + ratio + "x its own starting ratio; its five siblings hold flat.</b> Weekly tokens per inserted line; dashes mark every series here as synthetic.</p>" +
-    '<svg id="trendSvg" viewBox="0 0 ' + W + " " + H + '" aria-label="weekly tokens per inserted line per team">' + grid + ticks + lines + hover + "</svg>" +
+    '<p class="note"><b>' + esc(outlier.team.name) + " ends the window at " + ratio + "x its own starting ratio; its five siblings hold flat.</b> Weekly $ per 1,000 inserted lines; dashes mark every series here as synthetic.</p>" +
+    '<svg id="trendSvg" viewBox="0 0 ' + W + " " + H + '" aria-label="weekly list-price dollars per 1,000 inserted lines per team">' + grid + ticks + lines + hover + "</svg>" +
     '<div class="legend">' +
       '<span class="key"><span class="linekey" style="background:var(--accent)"></span>' + esc(outlier.team.name) + " (synthetic)</span>" +
       '<span class="key"><span class="linekey" style="background:var(--context-line)"></span>5 siblings (synthetic)</span>' +
@@ -694,11 +835,12 @@ function renderTeam(node) {
   const dayDelta = firstY && lastY ? lastY / firstY : null;
 
   html += '<div class="tiles">' +
-    tile("tokens per inserted line, " + shown.length + " days " + chip(node), fmt0(tokPerIns(total)), true,
-      "any/code/docs " + esc(triple(total))) +
-    tile("tokens " + chip(node), fmt0(total.tokens), false, esc(fmt0(total.calls)) + " calls") +
+    tile("$ per 1,000 inserted lines, " + shown.length + " days " + chip(node), usd(usdPerKIns(total)), true,
+      "any/code/docs " + tripleUSD(total), true) +
+    tile("list-price equivalent " + chip(node), usd(total.dollars), false,
+      esc(fmt0(total.calls)) + " calls \u00b7 " + esc(fmt0(total.tokens)) + " raw tokens", true) +
     tile("commits " + chip(node), fmt0(total.commits), false,
-      esc(fmt0(tokPerCommit(total))) + " tokens per commit") +
+      usd(usdPerCommit(total)) + " per commit") +
     tile("inserted lines " + chip(node), fmt0(total.ins), false,
       "code " + esc(fmt0(total.code)) + " \u00b7 docs " + esc(fmt0(total.docs)) + " \u00b7 other " + esc(fmt0(total.other))) +
     "</div>";
@@ -710,17 +852,19 @@ function renderTeam(node) {
 
   // per-day ledger
   html += '<div class="section-h">The ledger, day by day</div>' +
-    '<p class="section-sub">Every figure above is recomputable from this table. tok/ins any/code/docs is one rendered triple; the halves have no column of their own.</p>';
+    '<p class="section-sub">Every figure above is recomputable from this table. $/1k ins any/code/docs is one rendered triple; the halves have no column of their own. ' +
+    "Raw tokens are carried so the dollar column can be checked against them, and their ratio is in the secondary table below.</p>";
   html += '<div class="tblwrap"><table><thead><tr>' +
-    "<th>day</th><th>tokens</th><th>calls</th><th>commits</th><th>code</th><th>docs</th><th>other</th>" +
-    "<th>tok/ins any/code/docs</th><th>main ctx/call</th><th>sub ctx/call</th><th>cost bands</th>" +
+    "<th>day</th><th>$</th><th>tokens</th><th>calls</th><th>commits</th><th>code</th><th>docs</th><th>other</th>" +
+    "<th>$/1k ins any/code/docs</th><th>main ctx/call</th><th>sub ctx/call</th><th>cost bands</th>" +
     "</tr></thead><tbody>";
   for (const d of shown.slice().reverse()) {
     const s = sumDays([d]);
     html += "<tr><td>" + esc(d.day) + "</td>" +
+      "<td>" + usd(d.dollars) + "</td>" +
       "<td>" + fmt0(d.tokens) + "</td><td>" + fmt0(d.calls) + "</td><td>" + fmt0(d.commits) + "</td>" +
       "<td>" + fmt0(d.code) + "</td><td>" + fmt0(d.docs) + "</td><td>" + fmt0(d.other) + "</td>" +
-      "<td><b>" + triple(s) + "</b></td>" +
+      "<td><b>" + tripleUSD(s) + "</b></td>" +
       "<td>" + fmt0(d.mainCtx) + "</td><td>" + fmt0(d.subCtx) + "</td>" +
       "<td>" + d.bands.map((b) => b + "%").join("/") + "</td></tr>";
   }
@@ -732,11 +876,11 @@ function renderTeam(node) {
     html += '<p class="section-sub"><span class="chip chip-synth">SYNTHETIC</span> This team is generated and carries no machine ledger. ' +
       "The grain below days exists only where a corpus exists; inventing machines here would dress a scaffold as a measurement.</p>";
   } else {
-    html += '<div class="tblwrap"><table><thead><tr><th>machine</th><th>data</th><th>tokens</th><th>commits</th><th>tok/ins</th></tr></thead><tbody>';
+    html += '<div class="tblwrap"><table><thead><tr><th>machine</th><th>data</th><th>$</th><th>commits</th><th>$/1k ins</th></tr></thead><tbody>';
     for (const m of REAL_MACHINES) {
       if (m.real) {
         html += '<tr><td>' + esc(m.name) + '</td><td><span class="chip chip-real">REAL</span></td>' +
-          "<td>" + fmt0(total.tokens) + "</td><td>" + fmt0(total.commits) + "</td><td><b>" + fmt0(tokPerIns(total)) + "</b></td></tr>";
+          "<td>" + usd(total.dollars) + "</td><td>" + fmt0(total.commits) + "</td><td><b>" + usd(usdPerKIns(total)) + "</b></td></tr>";
       } else {
         html += '<tr><td>' + esc(m.name) + '</td><td><span class="chip chip-unsc">UNSCORABLE</span></td>' +
           '<td colspan="3" style="text-align:left;color:var(--ink-2);white-space:normal">' + esc(m.unscorable) + "</td></tr>";
@@ -749,15 +893,17 @@ function renderTeam(node) {
   // what changed (real team only)
   if (!node.synthetic && dayDelta != null) {
     html += '<div class="section-h">What changed between the two days</div>' +
-      '<p class="section-sub"><b>' + esc(fmt0(firstY)) + " \u2192 " + esc(fmt0(lastY)) + " tokens per inserted line, " +
+      '<p class="section-sub"><b>' + usdText(firstY) + " \u2192 " + usdText(lastY) + " per 1,000 inserted lines, " +
       dayDelta.toFixed(2) + "x worse in one day \u2014 and one day is not a verdict.</b> " +
       "The first day ran " + esc(fmt0(first.calls)) + " calls; the second ran " + esc(fmt0(last.calls)) +
       " and was still running when this was captured. A day that runs six experiments and an audit is not the same task as the day before it. " +
       "The number is real; the comparison needs more days before it means anything.</p>";
   }
+  html += secondaryTokens(shown.slice().reverse().map((d) => [d.day, sumDays([d])])
+    .concat([[node.name + ", all " + shown.length + " days", total]]));
   return html;
 }
-function dayY(d) { const s = sumDays([d]); return tokPerIns(s); }
+function dayY(d) { return usdPerKIns(sumDays([d])); }
 
 function figDayColumns(node, days, dayDelta) {
   const W = 640, H = 220, padL = 58, padR = 12, padT = 14, padB = 30;
@@ -771,7 +917,7 @@ function figDayColumns(node, days, dayDelta) {
   for (let g = 0; g <= 4; g++) {
     const v = maxV * g / 4, yy = padT + (1 - g / 4) * plotH;
     grid += '<line x1="' + padL + '" y1="' + yy + '" x2="' + (W - padR) + '" y2="' + yy + '" stroke="var(--grid)" stroke-width="1"></line>' +
-      '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + fmt0(v) + "</text>";
+      '<text x="' + (padL - 8) + '" y="' + (yy + 4) + '" text-anchor="end" font-size="10.5" font-family="IBM Plex Mono, monospace" fill="var(--muted)">' + usdAxis(v) + "</text>";
   }
   let marks = "";
   days.forEach((d, i) => {
@@ -781,12 +927,12 @@ function figDayColumns(node, days, dayDelta) {
     const x = padL + i * slot + (slot - colW) / 2;
     const y = padT + plotH - h;
     const s = sumDays([d]);
-    marks += '<g data-tip="' + esc(d.day + "\u2007" + fmt0(v) + " tok/ins \u00b7 any/code/docs " + triple(s) +
-        " \u00b7 " + fmt0(d.tokens) + " tokens \u00b7 " + fmt0(d.commits) + " commits" + (node.synthetic ? " \u00b7 SYNTHETIC" : "")) + '">' +
+    marks += '<g data-tip="' + esc(d.day + "\u2007" + usdText(v) + " per 1,000 inserted lines \u00b7 any/code/docs " + tripleUSDText(s) +
+        " \u00b7 " + usdText(d.dollars) + " \u00b7 " + fmt0(d.tokens) + " raw tokens \u00b7 " + fmt0(d.commits) + " commits" + (node.synthetic ? " \u00b7 SYNTHETIC" : "")) + '">' +
       '<rect x="' + (padL + i * slot) + '" y="' + padT + '" width="' + slot + '" height="' + plotH + '" fill="transparent"></rect>' +
       '<path d="' + roundTop(x, y, colW, h, 4) + '" fill="var(--accent)"' + (node.synthetic ? ' opacity="0.55"' : "") + "></path>";
     if (n <= 4 || i === n - 1 || v === Math.max(...vals)) {
-      marks += '<text x="' + (x + colW / 2) + '" y="' + (y - 6) + '" text-anchor="middle" font-size="11" fill="var(--ink)" font-weight="600">' + fmt0(v) + "</text>";
+      marks += '<text x="' + (x + colW / 2) + '" y="' + (y - 6) + '" text-anchor="middle" font-size="11" fill="var(--ink)" font-weight="600">' + esc(usdText(v)) + "</text>";
     }
     marks += "</g>";
     if (n <= 8 || i % 7 === 0 || i === n - 1) {
@@ -794,14 +940,14 @@ function figDayColumns(node, days, dayDelta) {
     }
   });
   const head = node.synthetic
-    ? "Tokens per inserted line, day by day"
+    ? "Dollars per 1,000 inserted lines, day by day"
     : "Two days of corpus, and the second cost " + dayDelta.toFixed(2) + "x the first per line";
   const note = node.synthetic
     ? "<b>Every column is generated.</b> The shape is the point: this is what the leaf grain looks like when a corpus exists."
-    : "<b>" + fmt0(vals[0]) + " \u2192 " + fmt0(vals[vals.length - 1]) + " tokens per inserted line.</b> Whole-day ratio; the decomposition rides the tooltip and the ledger as one triple.";
+    : "<b>" + usdText(vals[0]) + " \u2192 " + usdText(vals[vals.length - 1]) + " per 1,000 inserted lines.</b> Whole-day ratio, in list-price equivalents; the decomposition rides the tooltip and the ledger as one triple.";
   return '<div class="figure"><h2>' + esc(head) + "</h2>" +
     '<p class="note">' + note + "</p>" +
-    '<svg viewBox="0 0 ' + W + " " + H + '" aria-label="tokens per inserted line per day">' + grid + marks + "</svg></div>";
+    '<svg viewBox="0 0 ' + W + " " + H + '" aria-label="list-price dollars per 1,000 inserted lines per day">' + grid + marks + "</svg></div>";
 }
 
 function figDayMix(node, days) {
@@ -901,9 +1047,9 @@ function render() {
         const color = s.team === outlierTeam
           ? getComputedStyle(document.documentElement).getPropertyValue("--accent")
           : getComputedStyle(document.documentElement).getPropertyValue("--context-line");
-        rows += tipRow(color, fmt0(s.pts[idx]), s.team.name);
+        rows += tipRow(color, usdText(s.pts[idx]), s.team.name);
       }
-      showTip(e, rows, "week of " + dayISO(weeks[idx][0]) + " \u00b7 tok/ins \u00b7 SYNTHETIC");
+      showTip(e, rows, "week of " + dayISO(weeks[idx][0]) + " \u00b7 $/1k ins \u00b7 SYNTHETIC");
     });
     hover.addEventListener("pointerleave", () => { xline.style.display = "none"; hideTip(); });
   }
