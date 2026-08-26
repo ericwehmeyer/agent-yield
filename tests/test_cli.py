@@ -124,65 +124,73 @@ def test_tag_list_without_an_ingest_says_so(tmp_path, capsys):
     assert "no calls" in capsys.readouterr().out.lower()
 
 
-class _FakeIntervention:
-    date = "2026-08-20"
-    name = "narrower briefs"
-    expect = "fewer tokens per commit"
+def _ingested_with_cwd(tmp_path):
+    """Two calls, one inside the repo under test and one in another project."""
+    lines = []
+    for index, cwd in enumerate((str(tmp_path), str(tmp_path.parent / "elsewhere"))):
+        lines.append(json.dumps({
+            "type": "assistant", "timestamp": "2026-08-24T12:00:00.000Z",
+            "requestId": f"c{index}", "sessionId": ID_A, "cwd": cwd,
+            "message": {"id": f"c{index}",
+                        "usage": {"cache_read_input_tokens": 100}},
+        }))
+    src = tmp_path / "cwd-transcript.jsonl"
+    src.write_text("\n".join(lines), encoding="utf-8")
+    dest = tmp_path / "cwd-calls.jsonl"
+    assert main(["ingest", "--root", str(src), "--dest", str(dest)]) == 0
+    return dest
 
 
-class _FakeResult:
-    def __init__(self, metric):
-        self.intervention = _FakeIntervention()
-        self.metric = metric
-        self.before = None
-        self.after = None
-        self.change = None
+INTERVENTIONS_TOML = '''
+[[intervention]]
+date   = "2026-08-24"
+name   = "brief-pack"
+expect = "subagent context-per-call falls under 30,000"
+metric = "subagent_context_per_call"
+
+[[intervention]]
+date   = "2026-08-24"
+name   = "self-contained plan"
+expect = "dispatched agents make under 20 tool calls each"
+'''
 
 
-def _report_with_one_intervention(tmp_path, monkeypatch, seen):
+def test_report_scores_each_prediction_on_the_metric_it_names(
+    tmp_path, monkeypatch, capsys
+):
+    """#44: no --metric flag, because the flag was the defect.
+
+    A prediction naming subagent context/call was scored on a blend of main
+    and subagent, and the report printed the blend under the prediction with
+    nothing to say it had substituted one quantity for another. The prediction
+    now carries its own metric, and a prediction that names none is UNSCORABLE
+    rather than a plausible number.
+    """
     monkeypatch.setattr(cli, "daily_outcomes", lambda *a, **k: [])
-    monkeypatch.setattr(cli, "load_interventions", lambda _p: [_FakeIntervention()])
+    calls = _ingested(tmp_path)
+    (tmp_path / "interventions.toml").write_text(
+        INTERVENTIONS_TOML, encoding="utf-8"
+    )
 
-    def fake_compare(rows, interventions, metric="tokens_per_merge", **kwargs):
-        seen["metric"] = metric
-        return [_FakeResult(metric)]
+    assert main(["report", "--calls", str(calls), "--repo", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
 
-    monkeypatch.setattr(cli, "compare_interventions", fake_compare)
-    return _ingested(tmp_path)
+    assert "UNSCORABLE" in out
+    unscored = out.split("self-contained plan", 1)[1]
+    assert "UNSCORABLE" in unscored
+    assert "names no metric" in unscored
+    assert "$" not in out
 
 
-def test_report_metric_flag_reaches_compare_interventions(
-    tmp_path, monkeypatch, capsys
+def test_the_metric_flag_is_gone_because_a_flag_cannot_know_the_prediction(
+    tmp_path, capsys
 ):
-    seen = {}
-    calls = _report_with_one_intervention(tmp_path, monkeypatch, seen)
+    """Removed rather than deprecated. While it exists someone will pass it,
+    and every value of it is the wrong answer to at least one prediction.
+    """
+    calls = _ingested(tmp_path)
     assert main(["report", "--calls", str(calls), "--repo", str(tmp_path),
-                 "--metric", "tokens_per_commit"]) == 0
-    assert seen["metric"] == "tokens_per_commit"
-    out = capsys.readouterr().out
-    assert "tokens_per_commit" in out
-    assert "$" not in out
-
-
-def test_report_defaults_to_tokens_per_merge(tmp_path, monkeypatch, capsys):
-    seen = {}
-    calls = _report_with_one_intervention(tmp_path, monkeypatch, seen)
-    assert main(["report", "--calls", str(calls), "--repo", str(tmp_path)]) == 0
-    assert seen["metric"] == "tokens_per_merge"
-    capsys.readouterr()
-
-
-def test_an_all_empty_metric_names_the_flag_rather_than_printing_dashes(
-    tmp_path, monkeypatch, capsys
-):
-    seen = {}
-    calls = _report_with_one_intervention(tmp_path, monkeypatch, seen)
-    assert main(["report", "--calls", str(calls), "--repo", str(tmp_path)]) == 0
-    out = capsys.readouterr().out
-    assert "--metric" in out
-    assert "'tokens_per_merge'" in out
-    assert "tokens_per_commit" in out
-    assert "$" not in out
+                 "--metric", "tokens_per_commit"]) == 2
 
 
 def _transcript_root(tmp_path, calls: int = 20):
@@ -407,3 +415,29 @@ def test_help_exits_zero():
         [sys.executable, "-m", "agent_yield.cli", "--help"], capture_output=True
     )
     assert result.returncode == 0, result.stderr[-400:]
+
+
+def test_the_report_states_the_scope_it_measured(tmp_path, monkeypatch, capsys):
+    """#44: a cross-project number is fine if it is labelled. It was not."""
+    monkeypatch.setattr(cli, "daily_outcomes", lambda *a, **k: [])
+    calls = _ingested_with_cwd(tmp_path)
+    assert main(["report", "--calls", str(calls), "--repo", str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert "scope:" in out
+    assert "1 of 2 calls" in out
+    assert str(tmp_path) in out
+
+
+def test_all_projects_says_the_denominator_does_not_match_the_numerator(
+    tmp_path, monkeypatch, capsys
+):
+    """The machine-wide view is kept, because the burn ledger wants it. What
+    is not kept is printing it beside one repo's commit count in silence.
+    """
+    monkeypatch.setattr(cli, "daily_outcomes", lambda *a, **k: [])
+    calls = _ingested_with_cwd(tmp_path)
+    assert main(["report", "--calls", str(calls), "--repo", str(tmp_path),
+                 "--all-projects"]) == 0
+    out = capsys.readouterr().out
+    assert "all 2 calls" in out
+    assert "denominator" in out

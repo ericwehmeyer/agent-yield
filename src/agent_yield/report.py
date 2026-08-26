@@ -14,11 +14,13 @@ an arm COMPARISON belongs in dollars, and that is #55's ruling, not this file's.
 from __future__ import annotations
 
 import datetime as dt
+import os
 import statistics
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Iterable
 
-from .interventions import Intervention
+from .interventions import SCORABLE_METRICS, Intervention
 from .modes import mode_for
 from .outcomes import DailyOutcome
 from .records import CallRecord
@@ -71,6 +73,37 @@ class YieldRow:
         return self.subagent_usage.cache_read_tokens / self.subagent_calls
 
 
+def scope_to_repo(records: Iterable[CallRecord], repo: Path) -> list[CallRecord]:
+    r"""Only the calls made inside `repo`, by their recorded `cwd`.
+
+    The report divides spend by what shipped. Before this, the numerator summed
+    every project on the machine while the denominator counted commits in one
+    repo: on 2026-08-25 that read **44,794,803 tokens per commit** against a
+    true 1,778,703, a 25x error and a flattering one -- any intervention that
+    happened to land on a quiet day for other work looked better for it (#44).
+    `cwd` is on every one of the 20,757 records in the corpus, subagents
+    included, so the scoping was available and simply not applied.
+
+    `normcase` on both sides, and never `.lower()`: it folds on Windows, where
+    `cd c:\w\repo` and `C:\w\repo` are one directory, and is the identity on
+    POSIX, where `/w/Repo` and `/w/repo` are two projects and folding would
+    hand one of them the other's spend. That is #51, one file over.
+
+    A record with no `cwd` is dropped rather than assumed to belong here.
+    Attributing it would be a guess about a denominator, which is the error
+    this tool documents.
+    """
+    wanted = os.path.normcase(os.path.abspath(str(repo)))
+    kept = []
+    for record in records:
+        if not record.cwd:
+            continue
+        cwd = os.path.normcase(os.path.abspath(record.cwd))
+        if cwd == wanted or cwd.startswith(wanted + os.sep):
+            kept.append(record)
+    return kept
+
+
 def build_rows(
     records: Iterable[CallRecord],
     outcomes: Iterable[DailyOutcome],
@@ -118,9 +151,18 @@ def build_rows(
 @dataclass(frozen=True)
 class BeforeAfter:
     intervention: Intervention
-    metric: str
+    metric: str | None
     before: float | None
     after: float | None
+    unscorable: str | None = None
+    """Why this prediction was not scored, or None if it was.
+
+    A distinct outcome, and distinct from VOID. VOID says the run did not
+    happen properly; UNSCORABLE says the run happened and this tool cannot
+    settle the question that was asked of it. Printing `- -> -` for either was
+    #44: a dash reads as "not yet" when it means "never will be", and a
+    plausible number reads as an answer when it answers a different question.
+    """
 
     @property
     def change(self) -> float | None:
@@ -133,16 +175,23 @@ def compare_interventions(
     rows: Iterable[YieldRow],
     interventions: Iterable[Intervention],
     window_days: int = 7,
-    metric: str = "tokens_per_merge",
 ) -> list[BeforeAfter]:
-    """Median of `metric` in the window before and after each intervention.
+    """Median of each prediction's OWN metric in the windows around it.
 
-    An empty window yields None, not zero. Zero would read as "it got free".
+    There is no `metric` parameter and there is deliberately no default. The
+    scorer used to take one from a CLI flag, so a prediction naming subagent
+    context/call was scored on a blend of main and subagent -- a quantity
+    `design.md` §3.1 already records as dissolving under decomposition, 311,399
+    against 89,721. It printed 133,996 under a prediction about 48,480 and
+    said nothing about the substitution (#44).
+
+    An empty window yields UNSCORABLE, not None and not zero. Zero would read
+    as "it got free"; None printed as a dash reads as "not yet".
     """
     rows = list(rows)
     results: list[BeforeAfter] = []
 
-    def sample(lo: dt.date, hi: dt.date) -> float | None:
+    def sample(metric: str, lo: dt.date, hi: dt.date) -> float | None:
         values = []
         for row in rows:
             if lo <= row.day <= hi:
@@ -152,15 +201,77 @@ def compare_interventions(
         return statistics.median(values) if values else None
 
     for intervention in interventions:
+        metric = intervention.metric
+        if metric is None:
+            results.append(BeforeAfter(
+                intervention=intervention, metric=None,
+                before=None, after=None,
+                unscorable=NO_METRIC,
+            ))
+            continue
+
         start = intervention.date - dt.timedelta(days=window_days)
         end = intervention.date + dt.timedelta(days=window_days)
+        before = sample(metric, start, intervention.date - dt.timedelta(days=1))
+        after = sample(metric, intervention.date, end)
+
+        empty = [
+            name for name, value in (("before", before), ("after", after))
+            if value is None
+        ]
+        unscorable = None
+        if empty:
+            # Half a window is half an answer, and `20,000 -> -` invites
+            # reading the dash as zero or as "no effect".
+            unscorable = (
+                f"{metric} has no value in the {' and '.join(empty)} window"
+                f" ({window_days} days)"
+            )
+            before = after = None
+
         results.append(BeforeAfter(
-            intervention=intervention,
-            metric=metric,
-            before=sample(start, intervention.date - dt.timedelta(days=1)),
-            after=sample(intervention.date, end),
+            intervention=intervention, metric=metric,
+            before=before, after=after, unscorable=unscorable,
         ))
     return results
+
+
+NO_METRIC = "this prediction names no metric this tool computes"
+
+
+def render_interventions(results: Iterable[BeforeAfter]) -> str:
+    """The interventions block, with UNSCORABLE as loud as a number.
+
+    Rendering lives here rather than in the CLI because the distinction this
+    block exists to draw -- scored against unscorable -- is the finding of
+    #44, and a finding that only exists in a print statement cannot be tested.
+    """
+    results = list(results)
+    out = ["interventions"]
+    for result in results:
+        out.append(f"  {result.intervention.date}  {result.intervention.name}")
+        out.append(f"    expected: {result.intervention.expect}")
+        if result.unscorable is not None:
+            out.append(f"    UNSCORABLE: {result.unscorable}")
+            continue
+        out.append(
+            f"    {result.metric}: {_fmt(result.before)} -> {_fmt(result.after)}"
+        )
+    # The remedy once, at the bottom, rather than on every row. Repeating
+    # the list of metrics fourteen times buries the one line that carries a
+    # measurement, which is the opposite of what this block is for.
+    if any(r.unscorable == NO_METRIC for r in results):
+        out.append("")
+        out.append(
+            "  UNSCORABLE means this tool cannot settle the prediction, "
+            "not that nothing happened."
+        )
+        out.append(
+            "  To score one, add metric = <"
+            + " | ".join(SCORABLE_METRICS)
+            + "> to interventions.toml."
+        )
+    return "\n".join(out)
 
 
 def _fmt(value: float | None) -> str:

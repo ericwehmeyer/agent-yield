@@ -1,14 +1,18 @@
 import datetime as dt
+from pathlib import Path
 
 from agent_yield.interventions import Intervention
 from agent_yield.outcomes import DailyOutcome
 from agent_yield.records import CallRecord
+from agent_yield.interventions import SCORABLE_METRICS
 from agent_yield.report import (
     build_model_rows,
     build_rows,
     compare_interventions,
+    render_interventions,
     render_model_table,
     render_table,
+    scope_to_repo,
 )
 from agent_yield.usage import Usage
 
@@ -21,6 +25,18 @@ def _call(day: str, session: str, cache_read: int) -> CallRecord:
         session_id=session,
         request_id=f"r{tag}",
         message_id=f"m{tag}",
+    )
+
+
+def _sub_call(day: str, session: str, cache_read: int) -> CallRecord:
+    tag = f"sub{day}{session}{cache_read}"
+    return CallRecord(
+        timestamp=dt.datetime.fromisoformat(f"{day}T12:00:00+00:00"),
+        usage=Usage(cache_read_tokens=cache_read),
+        session_id=session,
+        request_id=f"r{tag}",
+        message_id=f"m{tag}",
+        is_subagent=True,
     )
 
 
@@ -59,7 +75,7 @@ def test_before_after_compares_the_windows_around_an_intervention():
     rows = build_rows(records, outcomes, {"s1": "build"})
     intervention = Intervention(
         date=dt.date(2026, 8, 25), name="brief-pack",
-        expect="cost per merge falls",
+        expect="cost per merge falls", metric="tokens_per_merge",
     )
     result = compare_interventions(rows, [intervention])[0]
     assert result.before == 1000
@@ -68,13 +84,17 @@ def test_before_after_compares_the_windows_around_an_intervention():
 
 
 def test_before_after_reports_none_rather_than_zero_when_a_window_is_empty():
+    """Zero would read as "it got free". Since #44 the window also has to say
+    so out loud rather than leave a dash to be read as "not yet"."""
     records = [_call("2026-08-26", "s1", 100)]
     outcomes = [DailyOutcome(dt.date(2026, 8, 26), merges=1, commits=1, lines=1)]
     rows = build_rows(records, outcomes, {"s1": "build"})
-    intervention = Intervention(date=dt.date(2026, 8, 25), name="x", expect="y")
+    intervention = Intervention(date=dt.date(2026, 8, 25), name="x", expect="y",
+                                metric="tokens_per_merge")
     result = compare_interventions(rows, [intervention])[0]
     assert result.before is None
     assert result.change is None
+    assert result.unscorable is not None
 
 
 def test_table_never_prints_a_currency_symbol():
@@ -246,3 +266,184 @@ def test_the_model_table_names_every_model_it_was_given():
     ]))
     for name in ("claude-opus-5", "none", "<synthetic>"):
         assert name in text
+
+
+# --- #44: the scorer must answer the prediction, or say it cannot ----------
+
+
+def _rows_for_metric_tests():
+    """Two days either side of an intervention, main and subagent apart.
+
+    The aggregate and the subagent figure move in OPPOSITE directions here, on
+    purpose: that is the shape #44 found in the corpus, where the blended
+    number drifted 139,580 -> 133,996 while the subagent population the
+    prediction named sat at 48,480 against a 30,000 bar.
+    """
+    outcomes = [DailyOutcome(dt.date(2026, 8, d), merges=0, commits=2, lines=1)
+                for d in (24, 25, 26, 27)]
+    records = []
+    for day, main_read, sub_read in (
+        ("2026-08-24", 300_000, 20_000),
+        ("2026-08-25", 300_000, 20_000),
+        ("2026-08-26", 100_000, 90_000),
+        ("2026-08-27", 100_000, 90_000),
+    ):
+        records.append(_call(day, "s1", main_read))
+        records.append(_sub_call(day, "s1", sub_read))
+    return build_rows(records, outcomes, {"s1": "build"})
+
+
+def test_a_prediction_is_scored_on_the_metric_it_names(tmp_path):
+    rows = _rows_for_metric_tests()
+    intervention = Intervention(
+        date=dt.date(2026, 8, 26), name="brief-pack",
+        expect="subagent context/call falls under 30,000",
+        metric="subagent_context_per_call",
+    )
+    result = compare_interventions(rows, [intervention], window_days=7)[0]
+    assert result.unscorable is None
+    assert result.metric == "subagent_context_per_call"
+    assert (result.before, result.after) == (20_000, 90_000)
+
+
+def test_a_prediction_that_names_no_metric_is_unscorable_not_a_number():
+    """The defect #44 is actually about: a plausible number under a prediction
+    it cannot evaluate. A dash reads as "not yet"; a number reads as an answer.
+    Neither is what "this tool cannot settle your prediction" looks like.
+    """
+    rows = _rows_for_metric_tests()
+    intervention = Intervention(
+        date=dt.date(2026, 8, 26), name="self-contained plan",
+        expect="dispatched agents make under 20 tool calls each",
+    )
+    result = compare_interventions(rows, [intervention], window_days=7)[0]
+    assert result.unscorable is not None
+    assert result.before is None and result.after is None
+    assert "names no metric" in result.unscorable
+
+
+def test_a_metric_with_an_empty_window_is_unscorable_and_says_which():
+    """`- -> -` was reported for every intervention since the scorer was
+    written, because this repo commits to main and never merges. It reads as
+    "not yet" and it meant "never will be".
+    """
+    rows = _rows_for_metric_tests()
+    intervention = Intervention(
+        date=dt.date(2026, 8, 26), name="central commits",
+        expect="tokens per merge falls",
+        metric="tokens_per_merge",
+    )
+    result = compare_interventions(rows, [intervention], window_days=7)[0]
+    assert result.unscorable is not None
+    assert "tokens_per_merge" in result.unscorable
+    assert "before" in result.unscorable and "after" in result.unscorable
+
+
+def test_half_a_window_is_unscorable_rather_than_half_an_answer():
+    """A before with no after cannot produce a change, and printing
+    `20,000 -> -` invites reading the dash as zero or as "no effect".
+    """
+    outcomes = [DailyOutcome(dt.date(2026, 8, 24), merges=0, commits=1, lines=1)]
+    rows = build_rows([_sub_call("2026-08-24", "s1", 20_000)], outcomes,
+                      {"s1": "build"})
+    intervention = Intervention(
+        date=dt.date(2026, 8, 26), name="x", expect="y",
+        metric="subagent_context_per_call",
+    )
+    result = compare_interventions(rows, [intervention], window_days=7)[0]
+    assert result.unscorable is not None
+    assert "after" in result.unscorable
+
+
+def test_the_rendered_block_marks_unscorable_visibly_and_names_the_reason():
+    rows = _rows_for_metric_tests()
+    scored = Intervention(
+        date=dt.date(2026, 8, 26), name="brief-pack",
+        expect="subagent context/call falls under 30,000",
+        metric="subagent_context_per_call",
+    )
+    unscored = Intervention(
+        date=dt.date(2026, 8, 26), name="self-contained plan",
+        expect="dispatched agents make under 20 tool calls each",
+    )
+    out = render_interventions(
+        compare_interventions(rows, [scored, unscored], window_days=7)
+    )
+    assert "UNSCORABLE" in out
+    assert "self-contained plan" in out
+    # The scored one keeps its numbers and is not labelled unscorable.
+    scored_block = out.split("self-contained plan")[0]
+    assert "UNSCORABLE" not in scored_block
+    assert "20,000 -> 90,000" in scored_block
+
+
+def test_every_metric_a_prediction_may_name_exists_on_a_row():
+    """The loader validates names it cannot compute; this is the other half.
+
+    `SCORABLE_METRICS` lives in `interventions.py` so the loader can reject a
+    typo without importing the report. That split is only safe while the two
+    agree, and nothing but this test makes them.
+    """
+    row = _rows_for_metric_tests()[0]
+    for metric in SCORABLE_METRICS:
+        assert hasattr(row, metric), metric
+
+
+# --- #44 defect 1: the numerator was machine-wide, the denominator was not --
+
+
+def _call_in(day: str, cwd: str, cache_read: int) -> CallRecord:
+    tag = f"{day}{cwd}{cache_read}"
+    return CallRecord(
+        timestamp=dt.datetime.fromisoformat(f"{day}T12:00:00+00:00"),
+        usage=Usage(cache_read_tokens=cache_read),
+        session_id="s1",
+        request_id=f"r{tag}",
+        message_id=f"m{tag}",
+        cwd=cwd,
+    )
+
+
+def test_only_calls_made_inside_the_repo_are_counted():
+    """The numerator summed every project on the machine; the denominator was
+    commits in one repo. On 2026-08-25 that read 44,794,803 tokens/commit
+    against a true 1,778,703 -- a 25x error, and flattering to any
+    intervention that landed on a quiet day for other work.
+    """
+    repo = Path("/w/agent-yield")
+    records = [
+        _call_in("2026-08-24", "/w/agent-yield", 100),
+        _call_in("2026-08-24", "/w/agent-yield/docs", 10),
+        _call_in("2026-08-24", "/w/other-repo", 9_000),
+        _call_in("2026-08-24", "/w/agent-yield-sibling", 5_000),
+    ]
+    kept = scope_to_repo(records, repo)
+    assert [r.usage.cache_read_tokens for r in kept] == [100, 10]
+
+
+def test_scoping_folds_case_the_way_the_platform_does():
+    r"""#51 one file over: `cd c:\w\repo` and `C:\w\repo` are one directory
+    on Windows and two on POSIX, so the comparison must be normcase and never
+    `.lower()` -- folding unconditionally would hand `/w/Repo` the spend of
+    `/w/repo`.
+    """
+    import os
+
+    repo = Path("/w/Repo")
+    record = _call_in("2026-08-24", "/w/repo", 100)
+    kept = scope_to_repo([record], repo)
+    assert bool(kept) is (os.path.normcase("/w/repo") == os.path.normcase("/w/Repo"))
+
+
+def test_a_call_with_no_recorded_cwd_is_not_guessed_into_the_repo():
+    """Every record in the 20,757-call corpus carries a cwd, subagents
+    included. One that does not cannot be attributed, and attributing it here
+    would be the guess about a denominator this tool exists to refuse.
+    """
+    repo = Path("/w/agent-yield")
+    record = CallRecord(
+        timestamp=dt.datetime.fromisoformat("2026-08-24T12:00:00+00:00"),
+        usage=Usage(cache_read_tokens=100),
+        session_id="s1", request_id="r", message_id="m",
+    )
+    assert scope_to_repo([record], repo) == []

@@ -12,6 +12,12 @@
 date   = "2026-08-25"
 name   = "brief-pack: dispatch by line range, agents forbidden to explore the repo"
 expect = "subagent context-per-call falls from the measured 89,721 median to under 30,000"
+# The one prediction on this page that names a quantity a day's calls can
+# settle. Everything else here predicts tool calls per agent, the cost of an
+# experiment arm, or whether a transcript is still readable a week later, and
+# none of those is a property of a day's spend -- so they carry no metric and
+# the report says UNSCORABLE rather than printing a nearby number (#44).
+metric = "subagent_context_per_call"
 
 [[intervention]]
 date   = "2026-08-25"

@@ -33,8 +33,10 @@ from .report import (
     build_model_rows,
     build_rows,
     compare_interventions,
+    render_interventions,
     render_model_table,
     render_table,
+    scope_to_repo,
 )
 from .thresholds import (
     COST_LADDER,
@@ -50,7 +52,6 @@ from .thresholds import (
 
 DEFAULT_CALLS_PATH = Path(".agent-yield") / "calls.jsonl"
 MODES_FILENAME = "session-modes.toml"
-METRICS = ("tokens_per_merge", "tokens_per_commit", "context_per_call")
 
 
 def _cmd_ingest(args) -> int:
@@ -115,6 +116,25 @@ def _cmd_report(args) -> int:
         return 0
 
     repo = Path(args.repo)
+    # `.` is the usual value and it is not a label anyone can act on.
+    shown = repo.resolve()
+    # #44: the numerator was every project on the machine and the denominator
+    # was commits in this repo. Scope by default, and say which of the two
+    # numbers you are looking at either way -- a cross-project figure is fine
+    # if it is labelled, and it was not.
+    if args.all_projects:
+        print(
+            f"scope: all {len(windowed):,} calls on this machine, and the "
+            f"commit denominator below counts only {shown} -- these two "
+            f"numbers are not over the same work"
+        )
+    else:
+        scoped = scope_to_repo(windowed, repo)
+        print(
+            f"scope: {len(scoped):,} of {len(windowed):,} calls, "
+            f"made in {shown}"
+        )
+        windowed = scoped
     rows = build_rows(
         windowed,
         daily_outcomes(repo, since, until, machine=_machine(args)),
@@ -124,42 +144,9 @@ def _cmd_report(args) -> int:
 
     interventions = load_interventions(repo / "interventions.toml")
     if interventions:
-        print("\ninterventions")
-        results = compare_interventions(rows, interventions, metric=args.metric)
-        for result in results:
-            before = "-" if result.before is None else f"{result.before:,.0f}"
-            after = "-" if result.after is None else f"{result.after:,.0f}"
-            print(f"  {result.intervention.date}  {result.intervention.name}")
-            print(f"    expected: {result.intervention.expect}")
-            print(f"    {result.metric}: {before} -> {after}")
-        if _metric_is_empty(rows, results, args.metric):
-            # A column of dashes reads as "no change". It usually means the
-            # denominator does not exist in this repo at all.
-            print(_empty_metric_note(args.metric))
+        print()
+        print(render_interventions(compare_interventions(rows, interventions)))
     return 0
-
-
-def _metric_is_empty(rows, results, metric: str) -> bool:
-    every_result_blank = all(
-        result.before is None and result.after is None for result in results
-    )
-    no_row_has_it = not any(getattr(row, metric, None) is not None for row in rows)
-    return every_result_blank or no_row_has_it
-
-
-def _empty_metric_note(metric: str) -> str:
-    alternative = (
-        "tokens_per_commit" if metric != "tokens_per_commit" else "context_per_call"
-    )
-    because = (
-        " (this repo may have no merge commits)"
-        if metric == "tokens_per_merge"
-        else ""
-    )
-    return (
-        f"  all rows are empty for {metric!r}{because}"
-        f" -- try --metric {alternative}"
-    )
 
 
 def _cmd_status(args) -> int:
@@ -444,10 +431,11 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--calls", default=str(DEFAULT_CALLS_PATH))
     p.add_argument("--since")
     p.add_argument("--until")
-    p.add_argument("--metric", choices=METRICS, default=METRICS[0],
-                   help="which yield the intervention comparison reads")
     p.add_argument("--machine", action="store_true",
                    help="scope the git denominator to commits THIS clone wrote")
+    p.add_argument("--all-projects", action="store_true",
+                   help="do not scope the numerator to --repo (labelled as "
+                        "not matching the commit denominator)")
     p.add_argument("--by-model", action="store_true",
                    help="cost per call per model, instead of the day/mode join")
     p.set_defaults(func=_cmd_report)
