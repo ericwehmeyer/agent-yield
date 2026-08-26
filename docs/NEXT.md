@@ -1999,3 +1999,65 @@ the push of `#64` produced no run at all. That is an Actions problem, not a
 repo one -- `73b00ec` and `db28427` were green on all six jobs an hour
 earlier, and nothing since has touched the workflow. **Do not read the current
 matrix as a signal until a run completes.** Re-check before trusting it.
+
+## [macOS 2026-08-26] #45 is closed, and the heuristic it proposed was 61% accurate
+
+`agent-yield handoff` before you restart. Then read this.
+
+**#45 asked for commit attribution by timestamp correlation. Measured, that rule
+is 61% accurate and over-attributes this machine's work by 1.67x** — on this
+repo's 118 commits it claims 106 for this machine when 63 are its.
+
+| window | says LOCAL | accuracy | over-attributes |
+|---|---|---|---|
+| 1 min | 98 | 67.6% | 1.56x |
+| **6 min** (#45's own) | **106** | **61.1%** | **1.67x** |
+| 30 min | 116 | 58.3% | 1.71x |
+
+**It is not a tuning problem.** Both machines work the same hours — that is what
+§7's queue is *for* — so "this machine was busy near the commit" is true of a
+foreign commit too. The nearest local call to a **foreign** commit is routinely
+**under ten seconds**. The dashboard plan's contamination flag ("a commit whose
+UTC hour contains zero corpus calls from this machine is presumed foreign") is
+the same signal at coarser granularity and fails harder.
+
+**Git does record the machine, and it is `.git/logs/HEAD`.** The reflog is per
+clone and is never pushed: a line for every sha this clone *wrote*, a different
+line for every sha that merely *arrived*. So attribution is a lookup, not a
+guess. Shipped as `attribution.py`, with `--machine` on `outcomes` and `report`:
+
+```
+agent-yield outcomes --since 2026-08-25 --machine
+2026-08-25  merges=0  commits=0   lines=0       unattributable=10
+2026-08-26  merges=0  commits=63  lines=13,316  unattributable=0
+```
+
+**`unattributable` is the third outcome and is never folded into the other two.**
+A commit older than this clone's reflog is not this machine's and is not the
+other's — the clone did not exist yet. Calling it foreign would be #44's failure
+a fourth time. `--machine` is **off by default**: scoping changes what a count
+means, and a number whose meaning changes silently is what this tool is about.
+
+**The bug this found in itself, before shipping.** The first version read the
+reflog for `commit:` and `(pick)` and missed a bare **`rebase (continue)`** —
+how a pick that stopped on a conflict finishes. It labelled three commits this
+machine made as foreign: **#52, #56 and #57, the same three whose subject lines
+the rebase ate.** The test now asserts the verb table including that line, and
+that a commit *subject* containing "commit" or "(pick)" does not fool it — #32's
+lesson, one file over.
+
+**What this unblocks.** #46's dashboard can scope its git denominators per
+machine instead of flagging contamination it cannot size; #44's `UNSCORABLE`
+outcome now has a working precedent in `unattributable`. **And the daily
+report's "24% worse" needs re-running**: on 08-26 this machine's denominator
+falls from 108 commits to 63, so this machine's tokens-per-commit is ~1.7x
+worse than the number that was published. That re-run is #44's, not this
+ticket's, and it should not be quoted until it is done.
+
+**Limits.** The reflog expires (90 days reachable, 30 unreachable) — old work
+returns `unknown`, which is correct rather than broken. It is per clone, so it
+scopes a numerator and denominator to the same machine and says nothing about
+the other machine's total. And a rebase re-commits: when the other machine
+rebases work authored here, the sha it publishes was written there. `local`
+means *this clone wrote this sha*, which is the right question for a
+denominator and not the same as who typed it. 554 tests.

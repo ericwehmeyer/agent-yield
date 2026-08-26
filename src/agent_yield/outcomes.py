@@ -14,6 +14,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+from .attribution import LOCAL, UNKNOWN, Machine
+
 
 @dataclass(frozen=True)
 class DailyOutcome:
@@ -22,6 +24,11 @@ class DailyOutcome:
     commits: int = 0
     lines: int = 0
     tests: int | None = None
+    unattributable: int = 0
+    """Commits this machine can neither claim nor disown -- older than its own
+    reflog. Counted and reported, never folded into `commits`, because a commit
+    that is not attributable is not thereby somebody else's (`attribution.py`).
+    Always 0 when the caller did not ask for machine scoping."""
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -48,6 +55,19 @@ def _day_of(iso: str) -> dt.date | None:
         return None
 
 
+def _when(iso: str) -> dt.datetime | None:
+    try:
+        return dt.datetime.fromisoformat(iso).astimezone(dt.timezone.utc)
+    except ValueError:
+        return None
+
+
+def _split(line: str) -> tuple[str, str]:
+    """`<sha> <iso>` -> (sha, iso). Both walks below print the pair."""
+    sha, _, iso = line.strip().partition(" ")
+    return sha, iso
+
+
 def _utc_midnight(day: dt.date) -> str:
     # A bare "YYYY-MM-DD" is parsed by git's approxidate in the local
     # timezone, and on at least some platform/git-version combinations that
@@ -61,24 +81,47 @@ def daily_outcomes(
     since: dt.date,
     until: dt.date,
     test_command: list[str] | None = None,
+    machine: "Machine | None" = None,
 ) -> list[DailyOutcome]:
+    """One row per day in range.
+
+    `machine` scopes the denominator to the clone that made the commits. Without
+    it these counts are every machine's work, which is right for "what shipped"
+    and wrong for anything divided by one machine's tokens -- #44 measured that
+    mismatch at 25x. With it, a commit this clone did not write is not counted,
+    and one it cannot judge is counted separately in `unattributable` rather
+    than dropped silently. See `attribution.py`.
+    """
     repo = Path(repo)
     branch = default_branch(repo)
     window = ["--since", _utc_midnight(since),
               "--until", _utc_midnight(until + dt.timedelta(days=1))]
 
+    unattributable: dict[dt.date, int] = {}
+
+    def mine(sha: str, iso: str, day: dt.date) -> bool:
+        """Does this commit belong in this machine's denominator?"""
+        if machine is None:
+            return True
+        verdict = machine.label(sha, _when(iso))
+        if verdict == UNKNOWN:
+            unattributable[day] = unattributable.get(day, 0) + 1
+        return verdict == LOCAL
+
     merges: dict[dt.date, int] = {}
     for line in _git(repo, "log", branch, "--merges", "--first-parent",
-                     "--pretty=%cI", *window).splitlines():
-        day = _day_of(line.strip())
-        if day:
+                     "--pretty=%H %cI", *window).splitlines():
+        sha, iso = _split(line)
+        day = _day_of(iso)
+        if day and mine(sha, iso, day):
             merges[day] = merges.get(day, 0) + 1
 
     commits: dict[dt.date, int] = {}
-    for line in _git(repo, "log", "--all", "--no-merges", "--pretty=%cI",
+    for line in _git(repo, "log", "--all", "--no-merges", "--pretty=%H %cI",
                      *window).splitlines():
-        day = _day_of(line.strip())
-        if day:
+        sha, iso = _split(line)
+        day = _day_of(iso)
+        if day and mine(sha, iso, day):
             commits[day] = commits.get(day, 0) + 1
     # Merge commits are commits too. `--no-merges` above kept the two walks
     # independent, so fold the merges back in rather than walking twice.
@@ -87,12 +130,19 @@ def daily_outcomes(
 
     lines: dict[dt.date, int] = {}
     current: dt.date | None = None
-    for raw in _git(repo, "log", branch, "--first-parent", "--pretty=@%cI",
+    counting = True
+    for raw in _git(repo, "log", branch, "--first-parent", "--pretty=@%H %cI",
                     "--numstat", *window).splitlines():
         if raw.startswith("@"):
-            current = _day_of(raw[1:].strip())
+            sha, iso = _split(raw[1:])
+            current = _day_of(iso)
+            # `mine` is not called again here: this walk revisits the same
+            # commits as the merge walk above, and a second call would count
+            # the same unattributable commit twice.
+            counting = current is not None and (
+                machine is None or machine.label(sha, _when(iso)) == LOCAL)
             continue
-        if not raw.strip() or current is None:
+        if not raw.strip() or current is None or not counting:
             continue
         added = raw.split("\t", 1)[0]
         if added.isdigit():
@@ -115,6 +165,7 @@ def daily_outcomes(
             commits=commits.get(day, 0),
             lines=lines.get(day, 0),
             tests=tests.get(day),
+            unattributable=unattributable.get(day, 0),
         ))
         day += dt.timedelta(days=1)
     return out

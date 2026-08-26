@@ -269,6 +269,67 @@ the recipient except that it eventually reads. For two machines that restart
 constantly *by design* — which is this project's whole thesis — the durable
 channel beats the live one.
 
+### 7.2 Which machine made a commit (issue #45)
+
+Two machines through one queue means every git-denominated metric divides **one**
+machine's tokens by **both** machines' commits. #44 measured that at 25x on one
+day, and the daily report's "we got 24% worse" rests on it. #45 proposed
+correlating a commit's timestamp against this machine's calls, ±6 minutes.
+
+**Measured, that rule is 61% accurate and over-attributes 1.67x.** On this
+repository's 118 commits it claims 106 for this machine when **63** are its:
+
+| window | says LOCAL | accuracy | over-attributes |
+|---|---|---|---|
+| 1 min | 98 | 67.6% | 1.56x |
+| **6 min** | **106** | **61.1%** | **1.67x** |
+| 30 min | 116 | 58.3% | 1.71x |
+
+It is not a tuning problem — tightening the window to one minute barely moves
+it. **Both machines work the same hours; that is what the queue is for.** The
+nearest local call to a *foreign* commit is routinely under ten seconds, so "was
+this machine busy" cannot separate them. And 32% of these commits carry a
+committer stamp a rebase rewrote (median +50s, up to +31 min), which is the
+second reason the stamp #45 named is the wrong one: **committer time is when
+history was last touched, by whoever touched it.**
+
+**Git does record the machine. It is `.git/logs/HEAD`.** The reflog is per clone
+and is never pushed: it holds a line for every sha this clone *wrote* and a
+different line for every sha that merely *arrived*. Attribution is a lookup:
+
+```
+agent-yield outcomes --since 2026-08-25 --machine
+2026-08-25  merges=0  commits=0   lines=0       unattributable=10
+2026-08-26  merges=0  commits=63  lines=13,316  unattributable=0
+```
+
+`unattributable` is the third outcome and it is never folded into either other
+one. A commit older than this clone's reflog is not this machine's and is not
+the other's either — this clone did not exist yet. Reporting that as *foreign*
+is #44's failure a fourth time: the silence that reads as a measurement.
+
+**Read the verb, not the message.** The reflog line is `<verb>: <subject>`, and
+the subject is the commit's own text. `commit`, `commit (amend)`, anything
+ending `(pick)`, and a bare `rebase (continue)` all write a sha; `(start)`,
+`(finish)`, `reset`, `pull`, `clone` and `(abort)` only move the tip. **The
+first version of this missed `rebase (continue)`** and labelled three commits
+this machine made as foreign — #52, #56 and #57, the same three whose subjects
+the rebase ate above.
+
+**Limits, and they decide where this can be used.** The reflog **expires**
+(90 days reachable, 30 unreachable), so this answers "who shipped it" for recent
+work and returns `unknown` for old work, which is the correct answer rather than
+a failure. It is **per clone**, so it scopes a numerator and a denominator to
+the same machine and says nothing about the other machine's total. And **a
+rebase re-commits**: when the other machine rebases work authored here, the sha
+it publishes was written there. `local` means *this clone wrote this sha*, which
+is the right question for a denominator and is not the same question as who
+typed it.
+
+`--machine` is **off by default**, on `outcomes` and on `report`, because
+scoping changes what a count means and a number whose meaning changed silently
+is the failure this whole tool documents.
+
 ## 8. Snapshot perishable data before you need it
 
 Subagent transcripts live in a temp directory, and which one differs by

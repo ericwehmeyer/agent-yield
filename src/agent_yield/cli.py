@@ -26,6 +26,7 @@ from .modes import (
     untagged_sessions,
 )
 from .handoff import DEFAULT_HANDOFF_PATH
+from .attribution import Machine
 from .outcomes import daily_outcomes
 from .predict import project
 from .report import (
@@ -64,13 +65,35 @@ def _cmd_predict(args) -> int:
     return 0
 
 
+def _machine(args) -> Machine | None:
+    """The clone doing the asking, or None for every machine's work.
+
+    Off by default: scoping changes what the counts MEAN, and a number whose
+    meaning changed silently is the failure this tool documents.
+    """
+    if not getattr(args, "machine", False):
+        return None
+    found = Machine(Path(args.repo))
+    if not found.available:
+        print("no reflog: nothing is attributable, so --machine would report zeros")
+        return None
+    return found
+
+
 def _cmd_outcomes(args) -> int:
     since = dt.date.fromisoformat(args.since)
     until = (dt.date.fromisoformat(args.until) if args.until
              else dt.datetime.now(dt.timezone.utc).date())
-    for outcome in daily_outcomes(Path(args.repo), since, until):
-        print(f"{outcome.day}  merges={outcome.merges}  "
-              f"commits={outcome.commits}  lines={outcome.lines}")
+    machine = _machine(args)
+    for outcome in daily_outcomes(Path(args.repo), since, until, machine=machine):
+        line = (f"{outcome.day}  merges={outcome.merges}  "
+                f"commits={outcome.commits}  lines={outcome.lines}")
+        if machine is not None:
+            line += f"  unattributable={outcome.unattributable}"
+        print(line)
+    if machine is not None:
+        print(f"scoped to this clone -- reflog from {machine.begins:%Y-%m-%d %H:%M} UTC; "
+              "commits older than that are unattributable, not foreign")
     return 0
 
 
@@ -94,7 +117,7 @@ def _cmd_report(args) -> int:
     repo = Path(args.repo)
     rows = build_rows(
         windowed,
-        daily_outcomes(repo, since, until),
+        daily_outcomes(repo, since, until, machine=_machine(args)),
         load_modes(repo / MODES_FILENAME),
     )
     print(render_table(rows))
@@ -412,6 +435,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", default=".")
     p.add_argument("--since", required=True)
     p.add_argument("--until")
+    p.add_argument("--machine", action="store_true",
+                   help="count only commits THIS clone wrote (attribution.py)")
     p.set_defaults(func=_cmd_outcomes)
 
     p = subs.add_parser("report", help="the join")
@@ -421,6 +446,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--until")
     p.add_argument("--metric", choices=METRICS, default=METRICS[0],
                    help="which yield the intervention comparison reads")
+    p.add_argument("--machine", action="store_true",
+                   help="scope the git denominator to commits THIS clone wrote")
     p.add_argument("--by-model", action="store_true",
                    help="cost per call per model, instead of the day/mode join")
     p.set_defaults(func=_cmd_report)
