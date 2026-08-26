@@ -287,3 +287,29 @@ def test_a_repo_whose_parent_is_named_home_is_redacted_rather_than_named():
     from agent_yield.report_html import HOME_LABEL, _repo
 
     assert _repo("/srv/home/dotfiles") == HOME_LABEL
+
+
+def test_the_html_yield_table_carries_the_area_split_and_the_band_shares():
+    """#46 S1 renders into report_html as well as render_table.
+
+    The review's scope finding was that v1 is two stories rendered into the
+    two views that already exist, not a third view. The columns are appended
+    rather than interleaved so the existing dash test keeps its cell indices.
+    """
+    out = _render()
+    yield_table = out.split("Yield per day and mode", 1)[1]
+    for column in ("Code", "Docs", "Other", "Tokens/insertion"):
+        assert f">{column}</th>" in yield_table, column
+    assert "300,000" in yield_table
+
+
+def test_the_html_table_offers_no_per_area_ratio():
+    """The same guard as the terminal, in the view that would be screenshotted.
+
+    A `Tokens/code-insertion` column is a 2.38x apparent win rendered as a
+    fact (#46 review, finding 2). The mix columns are counts; the only ratio
+    on the row is the whole-day one.
+    """
+    yield_table = _render().split("Yield per day and mode", 1)[1]
+    assert "Tokens/code-insertion" not in yield_table
+    assert "Tokens/docs-insertion" not in yield_table

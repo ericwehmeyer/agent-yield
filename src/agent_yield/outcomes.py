@@ -24,11 +24,60 @@ class DailyOutcome:
     commits: int = 0
     lines: int = 0
     tests: int | None = None
+    code_lines: int = 0
+    docs_lines: int = 0
+    other_lines: int = 0
+    """`lines`, decomposed by what each changed file IS. The three always sum
+    to `lines`: a split that does not add up is a second measurement of the
+    same quantity, and `classify_path` has no fourth answer."""
     unattributable: int = 0
     """Commits this machine can neither claim nor disown -- older than its own
     reflog. Counted and reported, never folded into `commits`, because a commit
     that is not attributable is not thereby somebody else's (`attribution.py`).
     Always 0 when the caller did not ask for machine scoping."""
+
+
+CODE_SUFFIXES = frozenset({
+    ".py", ".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx", ".go", ".rs", ".rb",
+    ".c", ".h", ".cc", ".cpp", ".hpp", ".java", ".kt", ".swift", ".cs",
+    ".sh", ".bash", ".zsh", ".ps1", ".sql", ".lua", ".pl", ".r",
+})
+DOCS_SUFFIXES = frozenset({".md", ".rst", ".txt", ".adoc"})
+
+
+def classify_path(path: str) -> str:
+    """Which of `code` / `docs` / `other` a changed file belongs to.
+
+    Keyed on what the file IS, not on where this repo happens to put it.
+    #46's plan pre-registered a hand count of 1,127 code / 2,931 docs for
+    2026-08-25, and a `src/`+`tests/` versus `docs/` prefix rule reproduces it
+    to the line. This rule differs by 94 -- README.md, which it calls
+    documentation. It is documentation by any reading, and a prefix rule is a
+    fact about one repo's layout rather than about its work. The code figure,
+    the one both the plan and its review headline, reproduces either way.
+
+    `other` is an honest bucket rather than a leftover one: config, lockfiles,
+    fixtures and generated pages are neither of the two things this split
+    exists to tell apart, and folding them into `code` would inflate the
+    denominator the scorecard divides spend by.
+
+    Paths arrive from `git --numstat`, which reports forward slashes on every
+    platform, so there is no separator to normalise here.
+    """
+    parts = path.split("/")
+    name = parts[-1]
+    # `name[1:]`: a leading dot is not a suffix -- `.gitignore` is `other`,
+    # not a file of type `.gitignore`.
+    suffix = name[name.rindex("."):].lower() if "." in name[1:] else ""
+    if suffix in CODE_SUFFIXES:
+        return "code"
+    if suffix in DOCS_SUFFIXES:
+        return "docs"
+    # Extensionless under a docs directory is prose; extensionless anywhere
+    # else is not. LICENSE is not documentation of the work.
+    if not suffix and "docs" in parts[:-1]:
+        return "docs"
+    return "other"
 
 
 def _git(repo: Path, *args: str) -> str:
@@ -150,6 +199,7 @@ def daily_outcomes(
                 merges[day] = merges.get(day, 0) + 1
 
     lines: dict[dt.date, int] = {}
+    areas: dict[tuple[dt.date, str], int] = {}
     current: dt.date | None = None
     counting = True
     for raw in _git(repo, "log", branch, "--first-parent", "--pretty=@%H %cI",
@@ -165,9 +215,14 @@ def daily_outcomes(
             continue
         if not raw.strip() or current is None or not counting:
             continue
-        added = raw.split("\t", 1)[0]
+        added, _, rest = raw.partition("\t")
         if added.isdigit():
             lines[current] = lines.get(current, 0) + int(added)
+            # The same field of the same line of the same walk that produced
+            # the total, so the split is a decomposition of that number and
+            # not a rival measurement of it (#46 review, finding 3).
+            key = (current, classify_path(rest.partition("\t")[2]))
+            areas[key] = areas.get(key, 0) + int(added)
 
     tests: dict[dt.date, int | None] = {}
     if test_command:
@@ -185,6 +240,9 @@ def daily_outcomes(
             merges=merges.get(day, 0),
             commits=commits.get(day, 0),
             lines=lines.get(day, 0),
+            code_lines=areas.get((day, "code"), 0),
+            docs_lines=areas.get((day, "docs"), 0),
+            other_lines=areas.get((day, "other"), 0),
             tests=tests.get(day),
             unattributable=unattributable.get(day, 0),
         ))

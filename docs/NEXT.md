@@ -2115,3 +2115,67 @@ rejected at load rather than read as "no metric named". The two look identical
 in the output and are not the same thing -- one is a prediction nobody claimed
 was scorable, the other is a claim that failed on a keystroke -- and reading
 the second as the first leaves a scorable prediction unscored for a week.
+
+### [Windows 12:45] #46 S1: the day's yield, and it is 59% worse than the day before
+
+**S1 is done and #46 v1 is complete.** No new modules, as the review's scope
+finding required: the columns went into `render_table` and `report_html`, which
+already existed. S2 was #44, closed this morning. S4, S5, S6 and S7 stay
+deferred.
+
+```
+day        mode            tokens  calls commits    code    docs   other  tok/ins main ctx/call sub ctx/call  cost bands
+2026-08-25 untagged    17,787,031    146      10   1,127   3,025      51    4,232       178,226       42,095     20/0/0%
+2026-08-26 untagged    52,802,196    398      48   2,690   4,128   1,012    6,744       149,175       45,044      4/0/0%
+cost bands: share of main calls at or above 300,000 / 500,000 / 700,000 context tokens
+```
+
+**The headline moved the wrong way and that is the finding.** Machine-scoped,
+tokens per insertion went **4,232 -> 6,744, 59% worse**. The retracted "flat"
+is not reproduced, which was the acceptance criterion. The 08-25 figure
+reproduces the pre-registered 4,232 to the token; **the pre-registered 5,267
+cannot be reproduced and should not be quoted again** -- it summarised a day
+that was six hours old when #46 was written, and the denominator is now scoped
+to this clone, which is what #45 was built for. Two things changed under it, so
+it is not a comparison.
+
+**The one deliberate departure from a pre-registered number.** #46's plan hand
+counted 1,127 code / 2,931 docs for 08-25. `classify_path` reproduces **1,127
+exactly** and gives **3,025 docs** -- 94 lines apart, and the 94 are README.md.
+The hand count used a `src/`+`tests/` versus `docs/` prefix rule, which calls a
+README `other`; this one keys on what a file *is*, because a prefix rule is a
+fact about one repo's layout rather than about its work. The figure both the
+plan and its review headline is the code one, and it reproduces either way.
+
+**The review's finding 2 is closed structurally, not by convention.**
+`tokens_per_code_insertion` and `tokens_per_docs_insertion` **do not exist** --
+not as row properties, not in `SCORABLE_METRICS`, not as a column in either
+view. The halves are reachable only through `report.PerInsertion`, whose
+`render` formats all three or none. The plan called the pair "a single display
+unit" and then exposed three independent attributes; on these two days the code
+half moves 2.38x "better" on a mix shift alone, which is a larger apparent win
+than the 2.22x the whole design exists to reject. A convention that lives in a
+design document is not a guard. An attribute that does not exist is.
+
+**Two deletions, and the width bound moved.** `merges` and `tok/merge` are off
+the terminal table -- neither is in v1's column list, on a linear history the
+first is always 0 and the second always a dash, and ten quantities do not fit
+in a hundred columns. `tokens_per_merge` stays on the row and stays scorable,
+and `agent-yield outcomes` still prints merges. The header guard is 120 now,
+with the reason in the test.
+
+**The cost-band constants are printed, not named.** A column headed `cost bands`
+is unreadable without its numbers and numbers baked into a header go stale the
+day `thresholds.py` is retuned, so the legend reads them from the module. That
+is S3's pinning rule on the page rather than only on the object.
+
+**And one thing that was two definitions and is now one.** `CallRecord.context`
+-- input plus cache-read plus cache-creation. `session.py` computed it to pick
+a call's cost band and `report.py` needed the same quantity to say what share
+of a day's main calls sat in each band. Two copies of that definition is how a
+share stops counting the band it names. 585 tests.
+
+**Write the falsifier date down, because #46 asks for it: 2026-09-09.** If by
+then nobody has changed a decision because of a number in this table, it is
+instrumentation for its own sake and the table should be deleted rather than
+extended.

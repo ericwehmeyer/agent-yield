@@ -34,13 +34,13 @@ __all__ = [
 
 
 def _context(record) -> int:
-    """Context carried on one call: everything the model had to read."""
-    usage = record.usage
-    return (
-        usage.input_tokens
-        + usage.cache_read_tokens
-        + usage.cache_creation_tokens
-    )
+    """Context carried on one call: everything the model had to read.
+
+    The definition moved to `CallRecord.context` when `report.py` needed the
+    same quantity to compute a day's band shares. Kept as a name here because
+    this module reads better with it.
+    """
+    return record.context
 
 
 @dataclass(frozen=True)

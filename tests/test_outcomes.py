@@ -184,3 +184,75 @@ def test_git_output_is_decoded_as_utf8_not_the_locale_codepage(tmp_path):
         assert "§" in got, f"{name}: section mark did not survive"
         assert "—" in got, f"{name}: em dash did not survive"
         assert "Â" not in got, f"{name}: mojibake -- decoded as cp1252"
+
+
+@pytest.fixture
+def areas(tmp_path: Path) -> Path:
+    """One commit touching each of the three areas, with distinct line counts.
+
+    Distinct counts so a classifier that puts a file in the wrong bucket
+    cannot pass by arithmetic accident.
+    """
+    work = tmp_path / "areas"
+    work.mkdir()
+    _git(work, "init", "-b", "main")
+    (work / "src").mkdir()
+    (work / "docs").mkdir()
+    (work / "src" / "m.py").write_text("a\n" * 5, encoding="utf-8")
+    (work / "docs" / "d.md").write_text("b\n" * 7, encoding="utf-8")
+    (work / "README.md").write_text("c\n" * 3, encoding="utf-8")
+    (work / "pyproject.toml").write_text("d\n" * 11, encoding="utf-8")
+    _git(work, "add", ".")
+    _git(work, "commit", "-m", "areas",
+         GIT_AUTHOR_DATE=WHEN, GIT_COMMITTER_DATE=WHEN)
+    return work
+
+
+def test_insertions_split_by_area_sum_to_the_total(areas):
+    """#46 S1: the split is a decomposition, so it must add up.
+
+    `lines` is the published number. A split that does not sum to it is a
+    second measurement of the same quantity, and two numbers for one quantity
+    is what this tool exists to stop.
+    """
+    day = dt.date(2026, 8, 24)
+    outcome = {o.day: o for o in daily_outcomes(areas, day, day)}[day]
+    assert outcome.code_lines == 5
+    assert outcome.docs_lines == 10   # docs/d.md + README.md
+    assert outcome.other_lines == 11  # pyproject.toml
+    assert outcome.code_lines + outcome.docs_lines + outcome.other_lines \
+        == outcome.lines
+
+
+def test_a_markdown_file_outside_a_docs_directory_is_still_docs(areas):
+    """The classifier keys on what a file IS, not on where this repo puts it.
+
+    A rule spelled `docs/` reproduces the hand count that #46's plan
+    pre-registered (1,127 code / 2,931 docs on 08-25) only because that count
+    called README.md's 94 lines `other`. It is documentation by any reading,
+    and a directory-prefix rule does not travel to a repo laid out
+    differently. This is the one deliberate departure from the plan's
+    acceptance figure, and it is 94 lines of 4,203.
+    """
+    day = dt.date(2026, 8, 24)
+    outcome = {o.day: o for o in daily_outcomes(areas, day, day)}[day]
+    assert outcome.docs_lines == 10
+
+
+def test_the_area_split_walks_the_same_commits_as_the_total(areas):
+    """A side-branch commit is not landed work, in the split as in the total.
+
+    The #46 review's finding 3 was two walks over different populations
+    divided into each other. A split computed on its own walk would
+    reintroduce it one column over.
+    """
+    (areas / "src" / "n.py").write_text("z\n" * 99, encoding="utf-8")
+    _git(areas, "checkout", "-b", "side")
+    _git(areas, "add", ".")
+    _git(areas, "commit", "-m", "unmerged",
+         GIT_AUTHOR_DATE=WHEN, GIT_COMMITTER_DATE=WHEN)
+    _git(areas, "checkout", "main")
+
+    day = dt.date(2026, 8, 24)
+    outcome = {o.day: o for o in daily_outcomes(areas, day, day)}[day]
+    assert outcome.code_lines == 5

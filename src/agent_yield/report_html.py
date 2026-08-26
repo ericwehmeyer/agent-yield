@@ -34,6 +34,7 @@ from typing import Iterable
 
 from .records import CallRecord
 from .report import BeforeAfter, YieldRow
+from .thresholds import COST_DISPATCH, COST_RESTART, COST_STOP
 from .usage import Usage
 
 DASH = "-"
@@ -864,25 +865,46 @@ def _yield_table(rows: list[YieldRow]) -> str:
         )
     body = []
     for row in rows:
+        # The columns #46 S1 adds are APPENDED, never interleaved: the dash
+        # test downstream reads cells by index, and a column inserted in the
+        # middle would move every assertion in it silently.
+        shares = ", ".join(
+            DASH if s.share is None else f"{s.share * 100:.0f}%"
+            for s in row.cost_band_shares
+        )
         body.append(
             f'<tr><td class="mono">{_esc(row.day.isoformat())}</td>'
             f"<td>{_esc(row.mode)}</td>"
             f"{_cell(row.usage.total)}{_cell(row.calls)}{_cell(row.merges)}"
             f"{_cell(row.commits)}{_cell(row.lines)}{_cell(row.tests)}"
             f"{_cell(row.tokens_per_merge)}{_cell(row.tokens_per_commit)}"
-            f"{_cell(row.context_per_call)}</tr>"
+            f"{_cell(row.context_per_call)}"
+            f"{_cell(row.code_lines)}{_cell(row.docs_lines)}"
+            f"{_cell(row.other_lines)}{_cell(row.tokens_per_insertion)}"
+            f'<td class="num mono">{_esc(shares)}</td></tr>'
         )
     return (
         "<h2>Yield per day and mode</h2>"
         '<p class="lede">Outcomes are per day and cannot be attributed to a '
         "mode, so each row carries its day's outcomes whole. A denominator of "
         f"zero yields {DASH}.</p>"
+        '<p class="lede">Code, docs and other sum to Lines and are the MIX; '
+        "Tokens/insertion is the whole-day ratio. There is deliberately no "
+        "per-area ratio here: across 2026-08-25 and 08-26 the code half moved "
+        "2.38x &quot;better&quot; on a mix shift alone, which is a larger "
+        "apparent win than the one this page exists to reject. Cost bands are "
+        "the share of that row&#39;s main-thread calls at or above "
+        f"{COST_DISPATCH:,}, {COST_RESTART:,} and {COST_STOP:,} context "
+        "tokens.</p>"
         '<div class="scroll"><table><thead><tr><th>Day</th><th>Mode</th>'
         '<th class="num">Tokens</th><th class="num">Calls</th>'
         '<th class="num">Merges</th><th class="num">Commits</th>'
         '<th class="num">Lines</th><th class="num">Tests</th>'
         '<th class="num">Tokens/merge</th><th class="num">Tokens/commit</th>'
-        '<th class="num">Context/call</th></tr></thead>'
+        '<th class="num">Context/call</th>'
+        '<th class="num">Code</th><th class="num">Docs</th>'
+        '<th class="num">Other</th><th class="num">Tokens/insertion</th>'
+        '<th class="num">Cost bands</th></tr></thead>'
         f'<tbody>{"".join(body)}</tbody></table></div>'
     )
 

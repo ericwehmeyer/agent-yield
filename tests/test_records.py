@@ -1,7 +1,7 @@
 import datetime as dt
 import json
 
-from agent_yield.records import parse_line
+from agent_yield.records import CallRecord, parse_line
 from agent_yield.usage import Usage
 
 # Field-for-field the shape of a real main-session transcript line, 2026-08-25.
@@ -87,3 +87,19 @@ def test_non_usage_lines_are_skipped():
     assert parse_line('{"type":"mode","mode":"normal"}') is None
     assert parse_line("") is None
     assert parse_line("not json at all") is None
+
+
+def test_context_is_everything_the_model_had_to_read():
+    """One definition of "context", because two would drift.
+
+    `session.py` computed input + cache-read + cache-creation to decide a
+    call's cost band; `report.py` needs the same quantity to say what share of
+    a day's main calls sat in each band. Two copies of a definition is how a
+    share stops matching the band it claims to count.
+    """
+    record = CallRecord(
+        timestamp=dt.datetime(2026, 8, 24, tzinfo=dt.timezone.utc),
+        usage=Usage(input_tokens=3, cache_read_tokens=100,
+                    cache_creation_tokens=7, output_tokens=999),
+    )
+    assert record.context == 110

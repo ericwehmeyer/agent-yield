@@ -34,6 +34,23 @@ class CallRecord:
         return self.timestamp.date()
 
     @property
+    def context(self) -> int:
+        """Everything the model had to read on this call.
+
+        The quantity `thresholds.cost_band` takes, and the reason it lives
+        here rather than in either caller: `session.py` needs it to say which
+        band the current call is in, `report.py` needs it to say what share of
+        a day's main calls sat in each band, and two copies of the definition
+        is how a share stops counting the band it names. Output is not in it
+        -- the bill under discussion is what was fed in.
+        """
+        return (
+            self.usage.input_tokens
+            + self.usage.cache_read_tokens
+            + self.usage.cache_creation_tokens
+        )
+
+    @property
     def is_terminal(self) -> bool:
         """This record carries the call's final `output_tokens`.
 

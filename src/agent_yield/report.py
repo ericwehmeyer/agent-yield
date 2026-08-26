@@ -24,7 +24,55 @@ from .interventions import SCORABLE_METRICS, Intervention
 from .modes import mode_for
 from .outcomes import DailyOutcome
 from .records import CallRecord
+from .thresholds import COST_DISPATCH, COST_LADDER, COST_RESTART, COST_STOP
 from .usage import Usage
+
+
+@dataclass(frozen=True)
+class PerInsertion:
+    """Tokens per inserted line, whole and decomposed, as ONE object.
+
+    The #46 review's blocking finding 2. The plan put `tokens_per_insertion`,
+    `tokens_per_code_insertion` and `tokens_per_docs_insertion` on the row as
+    three independent attributes and called the pair "a single display
+    convention". On the two measured days the code half moves 15,785 ->
+    6,633, a 2.38x apparent improvement -- larger than the 2.22x this whole
+    design exists to reject -- on a day nobody claims got more efficient. The
+    mix moved, not the efficiency. A prediction reading "tokens per
+    code-insertion falls below 10,000" would have printed PASS.
+
+    So the halves have no names of their own. `SCORABLE_METRICS` carries
+    `tokens_per_insertion` and neither half, `render` formats all three or
+    none, and there is no attribute a scorer could resolve alone. A convention
+    that lives in a design document is not a guard; an attribute that does not
+    exist is.
+
+    None, never zero, on an empty denominator: a day that shipped nothing did
+    not ship infinitely cheaply.
+    """
+    all: float | None
+    code: float | None
+    docs: float | None
+    other: float | None
+
+    def render(self) -> str:
+        return "/".join(_fmt(v) for v in (self.all, self.code, self.docs))
+
+
+@dataclass(frozen=True)
+class CostBandShare:
+    """The share of one day's main calls at or above one cost threshold.
+
+    `threshold` is on the result rather than looked up at read time (S3's
+    pinning rule): two days' shares are comparable only if they were cut at
+    the same number, and carrying the constant is what lets a reader notice a
+    retune instead of reading straight through one.
+    """
+    band: str
+    threshold: int
+    share: float | None
+    """None when the day made no main-thread calls -- not 0.0, which would
+    read as "none of them were expensive"."""
 
 
 @dataclass(frozen=True)
@@ -41,6 +89,12 @@ class YieldRow:
     subagent_calls: int = 0
     main_usage: Usage = field(default_factory=Usage.zero)
     subagent_usage: Usage = field(default_factory=Usage.zero)
+    code_lines: int = 0
+    docs_lines: int = 0
+    other_lines: int = 0
+    main_contexts: tuple[int, ...] = ()
+    """Every main call's context, kept rather than summed, because a share
+    above a threshold cannot be recovered from a mean."""
 
     @property
     def tokens_per_merge(self) -> float | None:
@@ -49,6 +103,55 @@ class YieldRow:
     @property
     def tokens_per_commit(self) -> float | None:
         return self.usage.total / self.commits if self.commits else None
+
+    @property
+    def per_insertion(self) -> PerInsertion:
+        """The paired ratio. Read `PerInsertion`'s docstring before using it."""
+        def ratio(denominator: int) -> float | None:
+            return self.usage.total / denominator if denominator else None
+        return PerInsertion(
+            all=ratio(self.lines),
+            code=ratio(self.code_lines),
+            docs=ratio(self.docs_lines),
+            other=ratio(self.other_lines),
+        )
+
+    @property
+    def tokens_per_insertion(self) -> float | None:
+        """The whole-day ratio, which IS safe to read alone.
+
+        Its decomposition is `per_insertion`, and the halves deliberately have
+        no properties of their own. This name exists because a prediction may
+        legitimately be registered against the undecomposed figure.
+        """
+        return self.per_insertion.all
+
+    @property
+    def cost_band_shares(self) -> tuple[CostBandShare, ...]:
+        """Share of this row's MAIN calls at or above each cost threshold.
+
+        Main-thread only, which is `cost_band`'s own rule one level up: a
+        subagent above 300,000 is a brief that failed, not a session to
+        restart. Same token count, different diagnosis, different remedy, so
+        pooling the two populations would put the remedy on the wrong thread.
+
+        At-or-above rather than in-band: the bands nest, and "what share of
+        the day was expensive enough to dispatch" is the question an operator
+        asks. Each share therefore includes the ones above it.
+        """
+        thresholds = (COST_DISPATCH, COST_RESTART, COST_STOP)
+        return tuple(
+            CostBandShare(
+                band=band,
+                threshold=threshold,
+                share=(
+                    sum(1 for c in self.main_contexts if c >= threshold)
+                    / len(self.main_contexts)
+                    if self.main_contexts else None
+                ),
+            )
+            for band, threshold in zip(COST_LADDER, thresholds)
+        )
 
     @property
     def context_per_call(self) -> float | None:
@@ -127,7 +230,7 @@ def build_rows(
         usage = Usage.zero()
         main_usage = Usage.zero()
         subagent_usage = Usage.zero()
-        main_calls = 0
+        main_contexts: list[int] = []
         subagent_calls = 0
         for call in calls:
             usage = usage + call.usage
@@ -136,14 +239,17 @@ def build_rows(
                 subagent_calls += 1
             else:
                 main_usage = main_usage + call.usage
-                main_calls += 1
+                main_contexts.append(call.context)
         outcome = outcome_by_day.get(day, DailyOutcome(day))
         rows.append(YieldRow(
             day=day, mode=mode, usage=usage, calls=len(calls),
             merges=outcome.merges, commits=outcome.commits,
             lines=outcome.lines, tests=outcome.tests,
-            main_calls=main_calls, subagent_calls=subagent_calls,
+            main_calls=len(main_contexts), subagent_calls=subagent_calls,
             main_usage=main_usage, subagent_usage=subagent_usage,
+            code_lines=outcome.code_lines, docs_lines=outcome.docs_lines,
+            other_lines=outcome.other_lines,
+            main_contexts=tuple(main_contexts),
         ))
     return rows
 
@@ -279,29 +385,54 @@ def _fmt(value: float | None) -> str:
 
 
 def render_table(rows: Iterable[YieldRow]) -> str:
-    """One line per (day, mode), context split main vs subagent.
+    """#46 S1's one table: spend, what shipped, and where the spend sat.
 
     `commits` stays. It is a denominator, and this tool exists to divide spend
     by what shipped -- dropping the count while offering a `tokens_per_commit`
-    metric would hide the very number that metric is built on. The split costs
-    width instead: 100 columns, which needs a 120-wide terminal. The blended
+    metric would hide the very number that metric is built on.
+
+    `merges` and `tok/merge` are GONE from the table, and only from the table.
+    Neither is in v1's column list, on a linear history the first is always
+    zero and the second always a dash, and ten quantities do not fit in a
+    hundred columns. `tokens_per_merge` stays on the row and stays scorable;
+    `agent-yield outcomes` still prints the merge count.
+
+    `tok/ins` is the WHOLE-day ratio and the code/docs/other columns beside it
+    are the mix. The per-area ratios are not here and are not properties --
+    see `PerInsertion`, and the 2.38x it exists to stop.
+
+    The band shares are named in the header and quantified in the legend
+    underneath, from the constants themselves. Numbers baked into a header go
+    stale the day `thresholds.py` is retuned; a legend read from the module
+    moves when it does, which is S3's pinning rule on the page.
+
+    120 columns, which needs a 140-wide terminal. The blended
     `context_per_call` is off the table but stays on the row.
     """
     header = (
-        f"{'day':<12}{'mode':<9}{'tokens':>15}{'calls':>7}"
-        f"{'merges':>8}{'commits':>9}{'tok/merge':>13}"
-        f"{'main ctx/call':>14}{'sub ctx/call':>13}"
+        f"{'day':<11}{'mode':<9}{'tokens':>13}{'calls':>7}{'commits':>8}"
+        f"{'code':>8}{'docs':>8}{'other':>8}{'tok/ins':>9}"
+        f"{'main ctx/call':>14}{'sub ctx/call':>13}{'cost bands':>12}"
     )
     lines = [header, "-" * len(header)]
     for row in rows:
+        shares = "/".join(
+            "-" if s.share is None else f"{s.share * 100:.0f}"
+            for s in row.cost_band_shares
+        )
         lines.append(
-            f"{row.day.isoformat():<12}{row.mode:<9}"
-            f"{row.usage.total:>15,}{row.calls:>7,}"
-            f"{row.merges:>8,}{row.commits:>9,}"
-            f"{_fmt(row.tokens_per_merge):>13}"
+            f"{row.day.isoformat():<11}{row.mode:<9}"
+            f"{row.usage.total:>13,}{row.calls:>7,}{row.commits:>8,}"
+            f"{row.code_lines:>8,}{row.docs_lines:>8,}{row.other_lines:>8,}"
+            f"{_fmt(row.tokens_per_insertion):>9}"
             f"{_fmt(row.main_context_per_call):>14}"
             f"{_fmt(row.subagent_context_per_call):>13}"
+            f"{shares + '%':>12}"
         )
+    lines.append(
+        f"cost bands: share of main calls at or above {COST_DISPATCH:,}"
+        f" / {COST_RESTART:,} / {COST_STOP:,} context tokens"
+    )
     return "\n".join(lines)
 
 

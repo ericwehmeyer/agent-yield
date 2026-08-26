@@ -20,6 +20,12 @@ from pathlib import Path
 SCORABLE_METRICS = (
     "tokens_per_merge",
     "tokens_per_commit",
+    # The WHOLE-day ratio only. `tokens_per_code_insertion` and its docs twin
+    # are deliberately absent and are not properties either: the code half
+    # moved 2.38x "better" across the two measured days on a mix shift alone,
+    # so a threshold prediction against it reads PASS on a day nothing
+    # improved (#46 review, finding 2). See `report.PerInsertion`.
+    "tokens_per_insertion",
     "context_per_call",
     "main_context_per_call",
     "subagent_context_per_call",
