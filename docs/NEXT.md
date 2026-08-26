@@ -1041,8 +1041,8 @@ hook it installs. **The real Windows key list still needs a restart, and that is
 | | |
 |---|---|
 | **#39** | the harness ships a `Workflow` orchestrator and superpowers ships three relevant skills. **Evaluate before #36 writes a parent loop by hand.** `agent(prompt, {schema})` validates the return at the tool layer and retries the model on mismatch — the two-line contract stops being a request. It does not dodge re-entry, and if #33's arms use different dispatch mechanisms the result is confounded. |
-| **#40** | `handoff` appends where it should supersede: ~2,800 of 3,716 injected characters are the same paragraph four times. |
-| **#41** | Windows mojibake — the injection carries `Â§12` and `§7` in the same payload, so one write path omits `encoding="utf-8"` and another does not. |
+| ~~**#40**~~ | **Closed 2026-08-26 (macOS).** `build()` supersedes: a later note that restates an earlier one replaces it *in the earlier one's position*, and the CLI says how many were dropped. Threshold **0.5** is measured, not chosen — containment of the shorter note in the longer; six real distinct notes peak at **0.35**, the three real restatements bottom out at **0.62**, and a test fails if the constant leaves that gap. Both fixtures captured, not written for the code. |
+| **#41** | **Windows, still open, and the diagnosis is wrong.** There is *no* write path missing `encoding="utf-8"` — every `write_text`/`read_text`/`open()` in the package was audited and all name it. A `§`-and-en-dash round trip through `render → write → read →` the real injected payload now ships as a test and passes on macOS. **If it passes on Windows too, the corruption enters before the file** — `argv`, the console code page, or the harness. The only unencoded streams left are `sys.stdin`/`sys.stdout` in `resume.main`, locale-encoded on Windows and UTF-8 everywhere else: a one-machine difference of exactly the §3.1 shape. Needs the machine that can see it. |
 
 **#35 now has a protocol and a recorded prediction** (`7ffc414`). Slice set cut
 once and held fixed; only the packing varies — 12 agents / 3 agents / 1 agent
