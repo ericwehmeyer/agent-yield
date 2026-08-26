@@ -1,6 +1,9 @@
 """Walk transcripts, dedup calls, persist a normalized copy.
 
-The dedup rule is the load-bearing part. Claude Code writes one transcript
+The dedup rule is the load-bearing part, and it lives in `records.dedup` --
+not here -- because this module was not its only caller and the other copy
+rotted (#61). What follows is why the rule is what it is.
+ Claude Code writes one transcript
 record per CONTENT BLOCK -- thinking, text, each tool_use -- all sharing
 `(message.id, requestId)` and byte-identical cache and input figures, with
 `output_tokens` correct only on the terminal record. Keeping the FIRST of a
@@ -30,29 +33,12 @@ import datetime as dt
 import json
 import statistics
 from collections import defaultdict
-from dataclasses import replace
 from pathlib import Path
 from typing import Iterable
 
 from .discovery import find_transcripts
-from .records import CallRecord, parse_line
+from .records import CallRecord, dedup, parse_line
 from .usage import Usage
-
-
-def _supersedes(new: CallRecord, held: CallRecord) -> bool:
-    """Should `new` replace the record already held for this call?
-
-    A terminal record beats a non-terminal one, whatever the counts say. Among
-    two terminal records the first is kept -- the second is a continuation or a
-    retry, not more of the same call, and taking the larger would be picking a
-    number rather than a call. Among two non-terminal records the larger output
-    wins, which is the best available lower bound.
-    """
-    if held.is_terminal:
-        return False
-    if new.is_terminal:
-        return True
-    return new.usage.output_tokens > held.usage.output_tokens
 
 
 def load_records(paths: Iterable[Path]) -> list[CallRecord]:
@@ -65,36 +51,18 @@ def load_records(paths: Iterable[Path]) -> list[CallRecord]:
     their `output_tokens` is a lower bound, and a caller that reports a total
     should say how many there were rather than present the sum as exact.
     """
-    records: list[CallRecord] = []
-    at: dict[tuple[str, str], int] = {}
-    for path in paths:
-        try:
-            text = Path(path).read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            continue
-        for line in text.splitlines():
-            record = parse_line(line)
-            if record is None:
+    def _lines() -> Iterable[CallRecord]:
+        for path in paths:
+            try:
+                text = Path(path).read_text(encoding="utf-8", errors="replace")
+            except OSError:
                 continue
-            key = record.dedup_key
-            if key is None:
-                # Unkeyed records cannot be grouped, so they are kept as they
-                # come -- undercounting is the error this tool exists to
-                # prevent -- and they are never marked incomplete, because
-                # nothing here can tell whether they finished.
-                records.append(record)
-                continue
-            index = at.get(key)
-            if index is None:
-                at[key] = len(records)
-                records.append(record)
-            elif _supersedes(record, records[index]):
-                records[index] = record
-    for key, index in at.items():
-        held = records[index]
-        if not held.is_terminal:
-            records[index] = replace(held, incomplete=True)
-    return records
+            for line in text.splitlines():
+                record = parse_line(line)
+                if record is not None:
+                    yield record
+
+    return dedup(_lines())
 
 
 def incomplete_calls(records: Iterable[CallRecord]) -> int:

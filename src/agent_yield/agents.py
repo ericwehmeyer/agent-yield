@@ -59,7 +59,7 @@ from pathlib import Path
 
 from .discovery import find_transcripts, main_transcript_dir, subagent_transcript_dirs
 from .gate import BRIEF_EXEMPT_TYPES, DispatchRequest, missing_markers
-from .records import parse_line
+from .records import dedup, parse_line
 from .usage import Usage
 
 __all__ = [
@@ -151,6 +151,13 @@ class AgentRun:
     calls: int
     total: Usage
     context: int
+    incomplete: int = 0
+    """Calls whose terminal record was never written.
+
+    `total.output_tokens` is a lower bound by exactly these calls' worth, so
+    anything pricing a run must say so rather than present the figure as
+    exact. See `pricing.price_records`.
+    """
 
     @property
     def context_per_call(self) -> float | None:
@@ -239,7 +246,16 @@ def read_dispatches(paths: list[Path]) -> list[Dispatch]:
 
 
 def read_agent_runs(paths: list[Path]) -> list[AgentRun]:
-    """One run per subagent transcript, deduped the way `ingest` dedups.
+    """One run per subagent transcript, deduped by `records.dedup`.
+
+    IT USED TO SAY "deduped the way `ingest` dedups" and hold its own copy of
+    the loop. #53 fixed the rule in `ingest`; this copy kept the FIRST record
+    of each group for another day, undercounting subagent output tokens 8.7x
+    across 163 transcripts here -- 388,893 against 3,395,515 -- with the call
+    count identical, because only `output_tokens` differs between the copies.
+    That is #53's signature exactly, one file over, and #61 is why there is
+    now one implementation instead of a sentence claiming there is.
+
 
     A `tasks/*.output` file is not necessarily a transcript: on this corpus
     only 12 of 15 parsed as JSONL, the rest being plain-text write-ups an
@@ -252,10 +268,7 @@ def read_agent_runs(paths: list[Path]) -> list[AgentRun]:
         session_id: str | None = None
         subagent_type: str | None = None
         started: dt.datetime | None = None
-        seen: set[tuple[str, str]] = set()
-        calls = 0
-        total = Usage.zero()
-        context = 0
+        parsed: list = []
         for payload in _iter_json(path):
             if agent_id is None:
                 agent_id = payload.get("agentId")
@@ -267,20 +280,21 @@ def read_agent_runs(paths: list[Path]) -> list[AgentRun]:
             if stamp is not None and (started is None or stamp < started):
                 started = stamp
             record = parse_line(json.dumps(payload))
-            if record is None:
-                continue
-            key = record.dedup_key
-            if key is not None:
-                if key in seen:
-                    continue
-                seen.add(key)
-            calls += 1
+            if record is not None:
+                parsed.append(record)
+
+        records = dedup(parsed)
+        calls = len(records)
+        total = Usage.zero()
+        context = 0
+        for record in records:
             total = total + record.usage
             context += (
                 record.usage.input_tokens
                 + record.usage.cache_read_tokens
                 + record.usage.cache_creation_tokens
             )
+
         if calls == 0:
             continue
         runs.append(AgentRun(
@@ -291,6 +305,7 @@ def read_agent_runs(paths: list[Path]) -> list[AgentRun]:
             calls=calls,
             total=total,
             context=context,
+            incomplete=sum(1 for r in records if r.incomplete),
         ))
     runs.sort(key=lambda r: (r.session_id or "", r.started or dt.datetime.min.replace(tzinfo=dt.timezone.utc)))
     return runs

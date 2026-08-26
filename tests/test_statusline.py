@@ -257,3 +257,36 @@ def test_a_client_reporting_no_limits_renders_no_allowance(tmp_path, capsys, mon
     assert main([], stdin=io.StringIO(payload)) == 0
     out = capsys.readouterr().out
     assert "7d" not in out and out.strip() == "ay 20K 2% 1.0x"
+
+
+def test_the_opening_baseline_counts_calls_and_not_content_blocks(tmp_path):
+    """#61's second site: `_opening` took the first N records as N calls.
+
+    Each call here writes three content-block records sharing message and
+    request id, so an undeduped baseline sees the first ~3 calls instead of
+    the first 10 -- and because context grows, it reads LOW, which makes the
+    growth ratio the restart advice keys off read HIGH.
+    """
+    reads = list(range(10_000, 10_000 + 1_000 * 20, 1_000))  # 20 rising calls
+    lines = []
+    for index, read in enumerate(reads):
+        for block in range(3):
+            lines.append(json.dumps({
+                "timestamp": f"2026-08-26T02:{index // 60:02d}:{index % 60:02d}.000Z",
+                "sessionId": "blocks", "requestId": f"req-{index}",
+                "message": {"id": f"msg-{index}",
+                            "stop_reason": "end_turn" if block == 2 else None,
+                            "usage": {"cache_read_input_tokens": read}},
+            }))
+    path = tmp_path / "blocks.jsonl"
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    # A head slice that holds well over 30 records -- i.e. over 10 calls --
+    # while leaving the file long enough to take the sliced path at all.
+    head = 3 * len(lines[0]) * 15
+    assert head < path.stat().st_size
+    line_for(path, tail_bytes=2_000, head_bytes=head,
+             cache_path=tmp_path / "cache.json")
+    held = json.loads((tmp_path / "cache.json").read_text(encoding="utf-8"))
+    # Mean of calls 1-10, not of the three blocks each of calls 1-4.
+    assert held == {"blocks:10": sum(reads[:10]) / 10}

@@ -19,6 +19,7 @@ from agent_yield.agents import (
     read_dispatches,
     render,
 )
+from agent_yield.ingest import load_records
 
 BASE = dt.datetime(2026, 8, 26, 2, 0, tzinfo=dt.timezone.utc)
 
@@ -312,3 +313,93 @@ def test_a_dispatch_with_no_cwd_is_not_silently_grouped(tmp_path):
     })
     paths = [_write(tmp_path / "m.jsonl", [line])]
     assert read_dispatches(paths)[0].project == "?"
+
+
+# --- #61: the second copy of the dedup ------------------------------------
+#
+# `read_agent_runs` held its own keep-FIRST loop under a docstring saying it
+# deduped "the way `ingest` dedups". These test the property the docstring
+# only asserted, and they are written so that a keep-FIRST or a keep-MAX
+# implementation fails a named one of them.
+
+
+def _block(session, agent_id, offset, request, output, stop_reason=None):
+    """One CONTENT-BLOCK record: the siblings of a call share message+request."""
+    payload = {
+        "sessionId": session,
+        "agentId": agent_id,
+        "attributionAgent": "general-purpose",
+        "isSidechain": True,
+        "timestamp": _stamp(offset),
+        "requestId": request,
+        "type": "assistant",
+        "message": {
+            "id": f"msg_{request}",
+            "role": "assistant",
+            "usage": {
+                "input_tokens": 10,
+                "output_tokens": output,
+                "cache_read_input_tokens": 1_000,
+                "cache_creation_input_tokens": 0,
+            },
+        },
+    }
+    if stop_reason is not None:
+        payload["message"]["stop_reason"] = stop_reason
+    return json.dumps(payload)
+
+
+def test_a_run_takes_the_terminal_record_of_each_call(tmp_path):
+    """Keep-FIRST held 12 where the call billed 25,688. This is that shape."""
+    path = _write(tmp_path / "a.output", [
+        _block("s1", "agent-1", 1.5, "r1", 12),
+        _block("s1", "agent-1", 1.6, "r1", 900),
+        _block("s1", "agent-1", 1.7, "r1", 25_688, stop_reason="end_turn"),
+    ])
+    (run,) = read_agent_runs([path])
+    assert run.calls == 1, "three content blocks are one API call"
+    assert run.total.output_tokens == 25_688
+    assert run.incomplete == 0
+
+
+def test_a_run_agrees_with_load_records_exactly(tmp_path):
+    """The falsifier from #61, and it is EQUALITY on purpose.
+
+    A test asserting only that the number went up would pass keep-max, and
+    #53 records why keep-max is wrong: it is indistinguishable from
+    keep-terminal on every archived group, and wrong on a `max_tokens`
+    continuation or a retry sharing a message id.
+    """
+    path = _write(tmp_path / "a.output", [
+        # a finished call, terminal record last
+        _block("s1", "agent-1", 1.5, "r1", 12),
+        _block("s1", "agent-1", 1.6, "r1", 4_000, stop_reason="end_turn"),
+        # a finished call whose terminal record is NOT the largest
+        _block("s1", "agent-1", 2.5, "r2", 9_999),
+        _block("s1", "agent-1", 2.6, "r2", 700, stop_reason="max_tokens"),
+        # a call whose terminal record was never written
+        _block("s1", "agent-1", 3.5, "r3", 40),
+        _block("s1", "agent-1", 3.6, "r3", 310),
+    ])
+    (run,) = read_agent_runs([path])
+    records = load_records([path])
+
+    assert run.calls == len(records) == 3
+    assert run.total == sum(
+        (r.usage for r in records), start=type(run.total).zero()
+    )
+    assert run.total.output_tokens == 4_000 + 700 + 310, (
+        "terminal beats largest on r2; largest is the lower bound on r3"
+    )
+
+
+def test_a_run_counts_the_calls_that_never_finished(tmp_path):
+    """A priced run must be able to say which part of it is a lower bound."""
+    path = _write(tmp_path / "a.output", [
+        _block("s1", "agent-1", 1.5, "r1", 4_000, stop_reason="end_turn"),
+        _block("s1", "agent-1", 2.5, "r2", 40),
+        _block("s1", "agent-1", 2.6, "r2", 310),
+    ])
+    (run,) = read_agent_runs([path])
+    assert run.incomplete == 1
+    assert run.calls == 2

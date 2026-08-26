@@ -309,3 +309,4 @@ def test_the_incomplete_flag_survives_the_persisted_round_trip(tmp_path):
     held = {r.message_id: r for r in load_ingested(dest)}
     assert held["m1"].incomplete and held["m1"].stop_reason is None
     assert not held["m2"].incomplete and held["m2"].stop_reason == "end_turn"
+

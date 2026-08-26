@@ -74,7 +74,7 @@ from typing import TextIO
 from .allowance import SNAPSHOT_PATH, append as append_allowance, load as load_allowance, read_allowance
 from .hookio import read_payload
 from .pricing import window_for
-from .records import parse_line
+from .records import dedup, parse_line
 from .session import SessionStats, resolve_transcript, session_stats
 from .thresholds import (
     DEFAULT_WINDOW,
@@ -131,12 +131,28 @@ def _slice(path: Path, size: int, from_end: bool) -> str:
 
 
 def _records(text: str):
+    """Main-thread calls in a slice of transcript, one record per call.
+
+    Main-thread only: a sidechain line is the subagent's context, and reading
+    it as the parent's is the one error session.py names.
+
+    DEDUPED, though nothing here reads `output_tokens` (#61). Context is
+    byte-identical across a call's content-block records, so the sizes were
+    never wrong -- but `_opening` takes the first N *records* as the first N
+    *calls*, and on the two long transcripts here that was 10 of 106 and 10
+    of 61 records against 37 and 32 distinct calls. The opening baseline came
+    out 5.2% and 7.4% low, which made the growth ratio on the status line --
+    the number the restart advice keys off -- read 5-7% high.
+
+    `records.dedup` needs a whole group to decide, so it is applied to the
+    slice rather than streamed. The slice is bounded by design.
+    """
+    parsed = []
     for line in text.splitlines():
         record = parse_line(line)
-        # Main-thread only: a sidechain line is the subagent's context, and
-        # reading it as the parent's is the one error session.py names.
         if record is not None and not record.is_subagent:
-            yield record
+            parsed.append(record)
+    yield from dedup(parsed)
 
 
 def _context(record) -> int:
