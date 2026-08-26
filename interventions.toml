@@ -47,3 +47,8 @@ expect = "the two leave bands fire on under 15% of main-thread calls, and neithe
 date   = "2026-08-26"
 name   = "dispatch rubric: every briefed dispatch carries line ranges plus a prohibition on exploring, one unit of work, a named output path, and a return contract"
 expect = "over the next 20 non-exploratory dispatches, those whose prompts carry all three detectable markers hold a median of 27 or fewer tool calls and 67,123 or less context/call -- the briefed range on record; a median above 40 calls or 85,000 context/call means the markers are cargo cult and the pre-dispatch half of this should be retracted, keeping only the post-hoc audit"
+
+[[intervention]]
+date   = "2026-08-26"
+name   = "SessionStart loads the handoff: the whole file injected once on startup or clear, consumed by archiving it, never if older than 24h"
+expect = "the next session started after a handoff shows the archive consumed, opens under 60,000 context/call, and its first ten calls cost under 1,420,000 tokens against the 142,097/call the previous session's last ten averaged -- if it opens above 60,000 because of the ~950-token injection, fall back to a pointer; if it opens above 60,000 at this injection size, the restart lever itself is wrong"

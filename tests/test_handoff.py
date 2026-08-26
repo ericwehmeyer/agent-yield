@@ -4,13 +4,16 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 import subprocess
 from pathlib import Path
 
 from agent_yield import handoff as handoff_module
 from agent_yield.handoff import (
+    ARCHIVE_SUFFIX,
     NOTES_HEADING,
     build,
+    consume,
     dirty_paths,
     existing_notes,
     landed_since,
@@ -165,6 +168,39 @@ def test_read_returns_none_when_there_is_no_handoff(tmp_path):
 def test_write_creates_the_directory_it_is_pointed_at(tmp_path):
     path = handoff_module.write(tmp_path / "a" / "b" / "handoff.md", "# x\n")
     assert path.read_text(encoding="utf-8") == "# x\n"
+
+
+def _written_at(path: Path, text: str, when: dt.datetime) -> None:
+    write(path, text)
+    stamp = when.timestamp()
+    os.utime(path, (stamp, stamp))
+
+
+def test_consume_returns_the_text_and_archives_the_file(tmp_path):
+    path = tmp_path / "handoff.md"
+    _written_at(path, "# handoff\n", NOW)
+    assert consume(path, now=NOW) == "# handoff\n"
+    assert not path.exists()
+    assert (tmp_path / f"handoff.md{ARCHIVE_SUFFIX}").read_text(
+        encoding="utf-8"
+    ) == "# handoff\n"
+
+
+def test_consume_a_second_time_returns_none(tmp_path):
+    path = tmp_path / "handoff.md"
+    _written_at(path, "# handoff\n", NOW)
+    assert consume(path, now=NOW) == "# handoff\n"
+    assert consume(path, now=NOW) is None
+
+
+def test_consume_refuses_a_handoff_older_than_the_age_limit(tmp_path):
+    path = tmp_path / "handoff.md"
+    _written_at(path, "# handoff\n", NOW)
+    stale = NOW + dt.timedelta(hours=handoff_module.MAX_HANDOFF_AGE_HOURS + 1)
+    assert consume(path, now=stale) is None
+    # Left in place -- the operator can still read it by hand.
+    assert path.exists()
+    assert read(path) == "# handoff\n"
 
 
 def test_sidechain_calls_are_not_counted_as_the_parents_context(tmp_path):

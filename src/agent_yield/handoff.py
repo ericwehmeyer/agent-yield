@@ -38,10 +38,15 @@ __all__ = [
     "render",
     "write",
     "read",
+    "consume",
+    "ARCHIVE_SUFFIX",
+    "MAX_HANDOFF_AGE_HOURS",
 ]
 
 DEFAULT_HANDOFF_PATH = Path(".agent-yield") / "handoff.md"
 NOTES_HEADING = "## Claimed and unfinished"
+ARCHIVE_SUFFIX = ".loaded"
+MAX_HANDOFF_AGE_HOURS = 24
 
 
 def _git(repo: Path, *args: str) -> str | None:
@@ -258,3 +263,38 @@ def read(path: Path) -> str | None:
         return Path(path).read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
+
+
+def consume(
+    path: Path,
+    now: dt.datetime | None = None,
+    max_age_hours: float = MAX_HANDOFF_AGE_HOURS,
+) -> str | None:
+    """Read the handoff and archive it, so it can never be loaded twice.
+
+    The rename to ``path`` + :data:`ARCHIVE_SUFFIX` is what makes injection
+    exactly-once -- there is no separate state file to fall out of sync with
+    the handoff it describes. A second call, in this session or the next,
+    finds nothing left at ``path`` and returns ``None``, same as if there
+    had never been a handoff.
+
+    A handoff older than ``max_age_hours`` (by mtime) also returns ``None``,
+    but is deliberately left where it is: a session that would inject stale
+    context is worse than one that injects nothing, but the operator can
+    still `agent-yield resume --read` it by hand.
+    """
+    path = Path(path)
+    try:
+        mtime = dt.datetime.fromtimestamp(path.stat().st_mtime, tz=dt.timezone.utc)
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    moment = now if now is not None else dt.datetime.now(dt.timezone.utc)
+    age_hours = (moment - mtime).total_seconds() / 3600
+    if age_hours > max_age_hours:
+        return None
+    try:
+        path.rename(path.with_name(path.name + ARCHIVE_SUFFIX))
+    except OSError:
+        return None
+    return text

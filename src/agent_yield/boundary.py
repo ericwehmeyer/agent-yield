@@ -155,6 +155,7 @@ def boundary_message(
         f"Nothing is written down for this session: run `agent-yield handoff "
         f"--note \"...\"` and then start a fresh session, or continue in this "
         f"one -- the handoff clears this boundary either way. "
+        f"A handoff written now is loaded automatically into the next session. "
         f"Set {OVERRIDE_ENV}=1 to silence it."
     )
 

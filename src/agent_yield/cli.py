@@ -8,6 +8,7 @@ from pathlib import Path
 from . import boundary as boundary_module
 from . import gate as gate_module
 from . import handoff as handoff_module
+from . import resume as resume_module
 from . import session as session_module
 from . import statusline as statusline_module
 from .discovery import default_roots
@@ -221,6 +222,19 @@ def _cmd_boundary(args) -> int:
     )
 
 
+def _cmd_resume(args) -> int:
+    """Load a handoff into a fresh session, once -- or read it back by hand."""
+    out = Path(args.out)
+    if args.hook:
+        return resume_module.main(["--out", str(out)])
+    text = handoff_module.read(out)
+    if text is None:
+        print(f"no handoff at {out}")
+        return 0
+    print(text, end="" if text.endswith("\n") else "\n")
+    return 0
+
+
 def _num(value: float | None) -> str:
     """A number, or `-`. Never `0` for something unmeasured."""
     return "-" if value is None else f"{round(value):,}"
@@ -385,6 +399,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--read", dest="read_", action="store_true",
                    help="print the handoff instead of writing one")
     p.set_defaults(func=_cmd_handoff)
+
+    p = subs.add_parser(
+        "resume", help="load a handoff into a fresh session, once -- or read it back"
+    )
+    p.add_argument("--out", default=str(DEFAULT_HANDOFF_PATH))
+    p.add_argument("--hook", action="store_true",
+                   help="act as the SessionStart hook: read the payload "
+                        "from stdin, emit the injection JSON")
+    p.add_argument("--read", action="store_true",
+                   help="print the handoff without consuming it (default)")
+    p.set_defaults(func=_cmd_resume)
 
     p = subs.add_parser(
         "statusline",

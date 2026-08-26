@@ -79,6 +79,12 @@ def test_a_leave_band_stops_a_session_that_never_doubled(tmp_path):
     assert "window" not in message
 
 
+def test_the_message_says_the_next_session_loads_the_handoff(tmp_path):
+    message = boundary_message(_grown(tmp_path), tmp_path / "none.md")
+    assert "loaded automatically" in message
+    assert "next session" in message
+
+
 def test_a_handoff_written_this_session_clears_the_boundary(tmp_path):
     stats = _grown(tmp_path)
     handoff = _touch_handoff(tmp_path, STARTED + dt.timedelta(minutes=5))
