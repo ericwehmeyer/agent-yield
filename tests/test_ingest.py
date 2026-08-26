@@ -372,3 +372,39 @@ def test_calls_jsonl_is_written_with_unix_line_endings_on_every_platform(tmp_pat
     raw = dest.read_bytes()
     assert b"\r\n" not in raw
     assert raw.endswith(b"\n")
+
+
+def test_ingest_says_when_a_subtree_could_not_be_walked(tmp_path, monkeypatch, capsys):
+    """#64: a silent zero and a real zero must not look the same.
+
+    `ingest` prints a count, and that count is the tool's own headline number.
+    When part of the tree could not be walked the count is a floor, and saying
+    so is the whole fix -- no attempt is made to solve long paths here.
+    """
+    import os as _os
+    from pathlib import Path as _Path
+
+    from agent_yield import discovery
+
+    src = tmp_path / "-slug"
+    src.mkdir()
+    (src / "s.jsonl").write_text(
+        _line(req="r1", msg="m1", cr=10) + "\n", encoding="utf-8"
+    )
+    blocked = tmp_path / "-deep"
+    blocked.mkdir()
+
+    real = _os.scandir
+
+    def fake(path="."):
+        if _Path(path) == blocked:
+            raise PermissionError(13, "cannot enter", str(blocked))
+        return real(path)
+
+    monkeypatch.setattr(_os, "scandir", fake)
+    assert ingest(tmp_path / "calls.jsonl", [tmp_path]) == 1
+
+    err = capsys.readouterr().err
+    assert "1 directory could not be read" in err
+    assert "floor" in err
+    assert str(blocked) in err

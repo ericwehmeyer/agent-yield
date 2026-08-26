@@ -32,11 +32,12 @@ from __future__ import annotations
 import datetime as dt
 import json
 import statistics
+import sys
 from collections import defaultdict
 from pathlib import Path
 from typing import Iterable
 
-from .discovery import find_transcripts
+from .discovery import scan_transcripts
 from .records import CallRecord, dedup, json_lines, parse_line
 from .usage import Usage
 
@@ -175,7 +176,23 @@ def ingest(dest: Path, roots: Iterable[Path]) -> int:
     seen: set[tuple[str, str]] = {
         r.dedup_key for r in existing if r.dedup_key is not None
     }
-    for record in load_records(find_transcripts(list(roots))):
+    scan = scan_transcripts(list(roots))
+    if scan.unreadable:
+        # #64: the count this function returns is the tool's headline
+        # number, and a walk that could not enter part of the tree makes it
+        # a floor rather than a total. glob swallows the OSError, so
+        # without this a partial walk and a complete one are the same clean
+        # exit 0. No attempt is made to solve long paths -- only to stop
+        # the two cases looking alike.
+        count = len(scan.unreadable)
+        print(
+            f"[agent-yield] {count} "
+            f"director{'y' if count == 1 else 'ies'} could not be read "
+            "while walking transcripts, so the call count is a floor, not "
+            "a total: " + ", ".join(str(p) for p in scan.unreadable),
+            file=sys.stderr,
+        )
+    for record in load_records(scan.paths):
         key = record.dedup_key
         if key is not None:
             if key in seen:
