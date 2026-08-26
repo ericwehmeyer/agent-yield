@@ -1,7 +1,15 @@
 """The join: spend over outcomes, per mode, with interventions marked.
 
-Reports tokens. Never money -- rates change and vary by plan, and a tool that
-hardcodes them lies quietly later.
+Reports tokens. Money lives in `pricing.py` and is not printed here.
+
+The old rule was "never money -- rates change and vary by plan, and a tool that
+hardcodes them lies quietly later." The danger was real and the remedy was
+wrong: a rate reconciled against the CLI's own `costUSD` on every test run is a
+measurement, and what the rule actually objected to was an UNRECONCILED
+constant. Plan variation is answered by labelling -- everything `pricing.py`
+returns is a list-price equivalent, a comparator and not a bill. This report
+stays in tokens because its subject is spend over outcomes per mode, not cost;
+an arm COMPARISON belongs in dollars, and that is #55's ruling, not this file's.
 """
 from __future__ import annotations
 

@@ -32,9 +32,11 @@ MEASURED 2026-08-26 01:38 UTC, macOS, Claude Code with Opus 5 (1M):
     says "the tool cannot read the model's context window, so a caller must
     say"; here it can, so the payload wins over the provisional default and
     the cost bands are computed against the window this session actually has.
-  - `cost.total_cost_usd` is also handed over, and is deliberately ignored.
-    Tokens, never money -- and on a subscription that number is an API-rate
-    equivalent rather than a bill, so rendering it would be doubly wrong.
+  - `cost.total_cost_usd` is also handed over, and is still not rendered. Not
+    because money cannot be trusted -- `pricing.py` reproduces it to the cent
+    -- but because on a subscription a dollar figure is a list-price
+    equivalent rather than a bill, and the line has room for one number about
+    budget. The percentage below is the one an operator can act on.
   - `rate_limits.seven_day.used_percentage` is the operator's real currency
     on a subscription. Not rendered here -- out of scope for issue #18 Part
     B, which asks for context, growth and a marker -- but it is measured and

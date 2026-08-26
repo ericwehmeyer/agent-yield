@@ -11,8 +11,12 @@ intervention do what it said?") is about days that already happened.
 
 Two rules run through everything below:
 
-* **Tokens, never money.** Rates change and vary by plan; a page that prints a
-  currency lies quietly a month later.
+* **Tokens here, money in `pricing.py`.** The old rule was "never money --
+  rates change and vary by plan". Rates are now reconciled against the CLI's
+  own `costUSD` on four archived arms every test run, which is what the rule
+  was really asking for, and plan variation is handled by calling the figure a
+  list-price equivalent rather than a bill. This page still prints tokens: it
+  is retrospective and per-mode, and nothing on it is an arm comparison.
 * **`None` is a dash, never a zero.** An empty window is "no evidence"; zero
   reads as "it was free", and that is the error this tool exists to prevent.
 
