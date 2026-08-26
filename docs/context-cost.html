@@ -326,7 +326,7 @@ footer {
   <div class="tile accent">
     <span class="k">Ratio</span>
     <span class="v">7.9&times;</span>
-    <span class="n">what the median call costs against dispatching it</span>
+    <span class="n">per call, against the briefed floor &mdash; <b>not</b> an end-to-end saving</span>
   </div>
   <div class="tile">
     <span class="k">Corpus</span>
@@ -387,6 +387,18 @@ footer {
   </figure>
 </section>
 
+<section class="col">
+  <span class="num">Finding three</span>
+  <h2>The missing knee has a cause, measured independently</h2>
+  <p>While this page was being drawn, the second machine fitted the cost of a unit of work against its length and found it <strong>superlinear</strong>: briefed agents at <span class="mono">calls<sup>1.54</sup></span>, the parent session at <span class="mono">calls<sup>1.41</sup></span>. Context grows with every call <em>inside</em> a unit, so each call re-reads a bigger pile than the last.</p>
+  <p>That explains Figure 3. <strong>There is no knee because nothing discrete happens</strong> — a session does not cross into an expensive state, it accumulates into one, continuously, from its first call. A smooth curve is the signature of a smooth process, and the two machines measured the two halves of the same fact without coordinating.</p>
+  <p>It also relocates the lever. If cost is superlinear in unit length, the saving is in <em>shorter units</em>, not fewer: the same 27 calls run as three 9-call agents cost <span class="mono">840,036</span> against a measured <span class="mono">1,879,466</span> for one 27-call agent — <strong>2.2&times;</strong>, for identical work.</p>
+
+  <div class="callout">
+    <p><strong>And a caution on the 7.9&times; above.</strong> That ratio is real per call. End to end it mostly disappears: the same machine measured the whole method at <strong>1.07&times; per issue</strong> against per-call economics predicting 6.2&times;, because the parent ate the gain reading every diff itself. Per-call economics is a true statement about calls and a poor prediction of a session.</p>
+  </div>
+</section>
+
 <section>
   <div class="col">
     <span class="num">The proposal</span>
@@ -416,6 +428,11 @@ footer {
       <tr><td><span class="chip s">brief failed</span> <span class="mono">150,000</span></td><td class="n">4.7&times;</td><td>The agent rebuilt the context you dispatched to escape</td><td class="n">41.1%</td></tr>
     </tbody>
   </table>
+
+  <div class="callout" style="border-left-color: var(--sub); background: var(--sub-soft);">
+    <p><strong>Open disagreement with the code as shipped.</strong> #17 was closed on the other machine while this page was being drawn, with the cost family implemented as <em>fractions</em> of the window &mdash; <span class="mono">COST_KNEE = 0.20</span>, <span class="mono">COST_STEEP = 0.40</span> &mdash; reasoning that fractions survive a model change.</p>
+    <p>They survive it syntactically and break it semantically. Cost is <span class="mono">context &times; rate</span>; the window <span class="mono">W</span> does not appear. Writing the threshold as <span class="mono">0.20 &times; W</span> makes it <em>move</em> when the window changes, so the same 200,000-token call is cheap on a 2M window and steep on a 500K one, while costing exactly the same in both. The measured quantity was 200,000 tokens; the 0.20 is an artifact of dividing by a number that plays no part in the bill. The code's own comment concedes it &mdash; <em>"calibrated on a 1M window only; on smaller windows it is conservative"</em> &mdash; and a cost threshold should need no window caveat at all.</p>
+  </div>
 
   <div class="callout">
     <p><strong>The advice is different, not just the number.</strong> Every capacity rule ends in <em>compact</em>. Every cost rule must end in <em>dispatch</em> or <em>restart</em>. Compacting an expensive session pays for a summarisation pass and then keeps paying, because the context you rebuilt is re-read on every call that follows.</p>
