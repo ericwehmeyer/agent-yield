@@ -48,6 +48,15 @@ MEASURED 2026-08-26 01:38 UTC, macOS, Claude Code with Opus 5 (1M):
 `--probe` records the keys that arrive (shape only, never values) so the
 contract can be re-measured after any upgrade rather than trusted.
 
+`--no-write` (issue #69) is the guard for the fact that this READ command is
+silently also a WRITE: the allowance snapshot above, and the probe log, are
+both appended to by an ordinary render. Rendering the line by hand with a
+synthesized payload therefore writes invented percentages into the input of a
+number the tool later reports, and on 2026-08-26 it did. With the flag the line
+is byte-identical and neither log is touched. **Every hand render should carry
+it.** The default writes, because the harness cannot be asked to pass a flag
+and a render that quietly stopped collecting would be worse than the hazard.
+
 Speed, because this runs on every render: the transcript is append-only, so
 two bounded slices answer both questions and the whole file is never read.
 The last `TAIL_BYTES` carry the current call's context; the first
@@ -474,6 +483,26 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
     """
     args = list(argv or [])
     probing = "--probe" in args
+    # #69: this is a READ command that is silently also a WRITE, and rendering
+    # the line by hand with a synthesized payload put invented percentages into
+    # the calibration log. `--no-write` renders the same line and appends to
+    # neither log. It covers the probe as well as the allowance: the probe file
+    # is the evidence for what the harness sends, and a hand-made payload's key
+    # set is a claim about that contract the harness never made.
+    #
+    # NOT covered, deliberately: `.agent-yield/statusline-cache.json`. Every
+    # entry there is a pure function of a real transcript's head, keyed by that
+    # transcript's stem, so a hand render can only write the value the next
+    # genuine render would have computed anyway.
+    #
+    # A flag is a lever that must be remembered, which §12.1 of
+    # working-method.md names as the weak kind of fix -- but no signal
+    # separates a hand render from a harness render with the confidence this
+    # needs. A hand test run from inside a Claude Code session shares the
+    # harness's environment and its piped stdin, and usually points at a real
+    # transcript; and a guard that guesses wrong on a genuine render stops the
+    # calibration silently, which is worse than the bug it would prevent.
+    writing = "--no-write" not in args
     asked_window: int | None = None
     if "--window" in args:
         try:
@@ -516,7 +545,7 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
             # anything -- the opposite order to the one that lost #47's
             # baton1 arm.
             allowance = read_allowance(payload)
-            if allowance is not None:
+            if allowance is not None and writing:
                 held = load_allowance(SNAPSHOT_PATH)
                 append_allowance(SNAPSHOT_PATH, allowance,
                                  held[-1] if held else None)
@@ -530,7 +559,7 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
     except Exception:
         line = QUIET
 
-    if probing:
+    if probing and writing:
         _probe(payload, line)
 
     # Composed segments go FIRST so that this tool's own band marker --

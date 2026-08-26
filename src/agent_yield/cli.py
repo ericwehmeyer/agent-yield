@@ -540,8 +540,12 @@ def main(argv: list[str] | None = None) -> int:
                    help=f"per-command timeout for --with "
                         f"(default {statusline_module.COMPOSE_TIMEOUT}); a "
                         f"command that overruns contributes nothing")
+    p.add_argument("--no-write", dest="no_write", action="store_true",
+                   help="render read-only: same line, but append to neither the "
+                        "allowance log nor the probe log (use for every hand run)")
     p.set_defaults(func=lambda args: statusline_module.main(
         (["--probe"] if args.probe else [])
+        + (["--no-write"] if args.no_write else [])
         + ([] if args.window is None else ["--window", str(args.window)])
         + [x for c in (args.compose or []) for x in ("--with", c)]
         + ([] if args.with_timeout is None

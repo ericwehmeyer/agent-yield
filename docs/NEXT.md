@@ -2556,3 +2556,50 @@ and runs there, but the string that machine needs is its own
 `cmd.exe` there, not `sh`), and no one has run it. #66's acceptance stays open
 for that. 616 tests, up from 608.
 
+## [macOS 2026-08-26 22:30] #69: the read that was silently a write now has a flag, and the flag is the weak kind of fix on purpose
+
+**#66's unfixed hazard is fixed as far as it can honestly be fixed.**
+`agent-yield statusline --no-write` renders the identical line and appends to
+neither `.agent-yield/allowance.jsonl` nor `.agent-yield/statusline-probe.jsonl`.
+Filed as **#69**; the flag is one `writing = "--no-write" not in args` in
+`statusline.main()`, two `and writing` at the two write sites, and a
+pass-through in the subparser beside `--probe` and `--window`. **620 tests**,
+up from 616: the append is suppressed, the default still writes the row, and
+the two lines are compared **byte for byte** rather than for looking alike — a
+read-only render that renders differently is no use for the hand test it exists
+for.
+
+**The probe log is covered, and the cache is not.** The probe file is the
+evidence for what the harness sends, so a key set typed by hand is a claim
+about that contract the harness never made — the same fault as the allowance
+fiction, one notch down in stakes because nothing computes a number from it.
+`statusline-cache.json` is deliberately left writable: every entry is a pure
+function of a real transcript's head, keyed by that transcript's stem, so a
+hand render can only write the value the next genuine render would compute.
+
+**The design question, answered against this repo's own preference.** §12.1
+says the fix is not "remember to check" — it is that the tool cannot emit the
+wrong thing any more — and a flag is exactly a lever that must be remembered,
+by the operator, at the moment they are least likely to (mid-test). An
+always-on guard was looked for and **not built, because no candidate separates
+the two cases with the confidence this needs**:
+
+| candidate signal | why it fails |
+|---|---|
+| stdin is a TTY | both are pipes; a hand test is `echo '{...}' \| ...` |
+| environment set by the harness | a hand test run from inside a Claude Code session **inherits it** — that is precisely the case that bit |
+| parent process | same session, so the parent is the harness's own shell |
+| `transcript_path` resolves | a hand test usually points at a real transcript, and a momentary read failure on a genuine render would skip a real snapshot |
+| payload values look implausible | invented values can be plausible; that is why the fiction went unnoticed |
+
+The last column of every row is the same asymmetry: **a guard that guesses
+wrong on a genuine render stops collecting calibration data silently, which is
+worse than the bug it prevents.** Nothing here should be read as a claim that
+no such signal exists — only that this session did not find one it could
+defend, and building a heuristic that fails in the dangerous direction to avoid
+admitting that is the move this file exists to prevent.
+
+**What is not measured:** whether operators actually pass the flag. That is the
+open question the fix leaves behind, and the only evidence that would close it
+is a future `allowance.jsonl` row that has to be removed again.
+

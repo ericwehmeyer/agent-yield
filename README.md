@@ -270,6 +270,16 @@ current context, so the usual render reads no transcript at all. It fails
 print `ay -` and exit 0, because a status line that raises leaves a stack trace
 under every keystroke and the operator's remedy is to delete the setting.
 
+**Rendering it by hand writes to disk — pass `--no-write` when you do.** An
+ordinary render appends the payload's `rate_limits` to
+`.agent-yield/allowance.jsonl`, which is the calibration input for the plan's
+size, and `--probe` appends the payload's key set to the log that documents
+what the harness sends. So a synthesized test payload puts invented numbers
+into real data, silently; on 2026-08-26 one did (issue #69).
+`agent-yield statusline --no-write` prints the identical line and touches
+neither log. The default writes because the harness cannot be asked to pass a
+flag, and a render that quietly stopped collecting would be the worse failure.
+
 ## Status
 
 **Implemented, 2026-08-25.** All six components are built and tested —

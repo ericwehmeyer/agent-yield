@@ -362,3 +362,89 @@ def test_main_composes_from_argv_and_still_prints_exactly_one_line(tmp_path,
     assert out.count("\n") == 1
     assert out.startswith("alpha")
     assert out.rstrip().endswith("ay -")
+
+
+# -- #69: the read that was silently a write -----------------------------------
+
+def _allowance_payload(transcript, seven_day: int = 38) -> str:
+    return json.dumps({
+        "transcript_path": str(transcript),
+        "rate_limits": {
+            "seven_day": {"used_percentage": seven_day,
+                          "resets_at": "2026-08-30T00:00:00Z"},
+            "five_hour": {"used_percentage": 61,
+                          "resets_at": "2026-08-26T15:00:00Z"},
+        },
+        "cost": {"total_cost_usd": 4.31},
+    })
+
+
+def test_no_write_renders_the_same_line_and_appends_nothing(tmp_path, capsys, monkeypatch):
+    """The hazard: a hand render put invented percentages into the calibration
+    log, which is the input to `plan_window_dollars`. The guard has to leave
+    the line alone -- a read-only render that renders differently is not the
+    same measurement, and so is no use for the hand test it exists for.
+    """
+    log = tmp_path / "allowance.jsonl"
+    monkeypatch.setattr(statusline, "SNAPSHOT_PATH", log)
+    transcript = _transcript(tmp_path, [20_000] * 20)
+    payload = _allowance_payload(transcript)
+
+    assert main(["--no-write"], stdin=io.StringIO(payload)) == 0
+    guarded = capsys.readouterr().out
+    assert not log.exists()
+
+    assert main([], stdin=io.StringIO(payload)) == 0
+    written = capsys.readouterr().out
+    assert guarded == written          # byte-identical, not merely similar
+    assert "7d 38%" in guarded
+
+    # And the default is still the collecting one: exactly the row the guarded
+    # render refused to write.
+    from agent_yield.allowance import load
+    (held,) = load(log)
+    assert held.seven_day == 38 and held.five_hour == 61
+    assert held.session_dollars == 4.31
+
+
+def test_no_write_covers_the_probe_log_too(tmp_path, monkeypatch, capsys):
+    """The probe file is the evidence for what the harness sends. A key set
+    typed by hand is a claim about that contract the harness never made.
+    """
+    probe = tmp_path / "probe.jsonl"
+    monkeypatch.setattr(statusline, "PROBE_PATH", probe)
+    monkeypatch.setattr(statusline, "SNAPSHOT_PATH", tmp_path / "allowance.jsonl")
+    transcript = _transcript(tmp_path, [20_000] * 20)
+    payload = json.dumps({"transcript_path": str(transcript), "invented": 1})
+
+    assert main(["--probe", "--no-write"], stdin=io.StringIO(payload)) == 0
+    guarded = capsys.readouterr().out
+    assert not probe.exists()
+
+    assert main(["--probe"], stdin=io.StringIO(payload)) == 0
+    assert capsys.readouterr().out == guarded
+    assert "invented" in probe.read_text(encoding="utf-8")
+
+
+def test_no_write_leaves_the_failure_path_alone(tmp_path, capsys, monkeypatch):
+    """QUIET and exit 0, same as every other failure of this command."""
+    monkeypatch.setattr(statusline, "SNAPSHOT_PATH", tmp_path / "allowance.jsonl")
+    assert main(["--no-write"], stdin=io.StringIO("not json{")) == 0
+    assert capsys.readouterr().out.strip() == QUIET
+
+
+def test_the_cli_passes_no_write_through_to_the_module(monkeypatch):
+    """Same shape as --probe and --window: the subparser hands an argv list on."""
+    from agent_yield import cli
+
+    seen = {}
+
+    def spy(argv=None, stdin=None):
+        seen["argv"] = list(argv or [])
+        return 0
+
+    monkeypatch.setattr(cli.statusline_module, "main", spy)
+    assert cli.main(["statusline", "--no-write"]) == 0
+    assert "--no-write" in seen["argv"]
+    assert cli.main(["statusline"]) == 0
+    assert "--no-write" not in seen["argv"]
