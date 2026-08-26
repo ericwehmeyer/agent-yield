@@ -1292,3 +1292,65 @@ rests on it, and #33 is still the only thing that can settle it.
 would have written the practice into §12 two slices before #33 reports. That is
 lever 1's exact path into policy. **Prose is cheaper to write than code and no
 cheaper to retract.**
+
+### [Windows 09:20] The OS bleed, counted against its specimens (#49, #50)
+
+**Five platform defects in one day, all Windows-only, all silent, and four of
+the five found by accident while doing something else.** `project_slug`'s
+hand-rolled path munging, #42's `Path.rename`, #41's `subprocess text=True`,
+#43's cp1252 `sys.stdout`, and a `symlink_to` privilege that turned the build
+red. #49 has the table. The shape never varies: **a primitive whose platform
+behaviour nobody had a reason to think about at the moment they typed it.**
+
+**`.github/workflows` does not exist** (#50). The entire cross-platform
+guarantee is *"someone will run the suite on the other machine and notice"*, and
+today that took an unrelated test fixture, a stray `§` in help text, and a
+question about daily token usage. Two defects rode a **green suite** for a day
+or more.
+
+**The counting that changed the recommendation.** Scored against the five
+specimens — the only evidence available — neither obvious answer wins:
+
+| specimen | a portability seam | a CI matrix |
+|---|---|---|
+| `project_slug` munging | **no** — no stdlib call to wrap | yes, a fixture failed |
+| #42 `Path.rename` | yes | **no — no test existed** |
+| #41 `subprocess` decode | yes | **no — no test existed** |
+| #43 `sys.stdout` | yes | **no — no test existed** |
+| `symlink_to` privilege | no, test-side | yes, suite went red |
+
+**CI only catches what a test already asserts, and three of the five had no test
+on any platform.** A matrix would have turned them green on three operating
+systems instead of one. That is the part "just add CI" gets wrong — including
+the version of it written into #50 an hour earlier, before the specimens were
+counted. The seam has the mirror problem: it covers the three stdlib calls, only
+if someone remembers to reach for it, and is blind to the worst specimen, where
+hand-rolled string munging silently disabled session measurement entirely.
+
+**So the order is guard test, then CI, then probably never the seam.** A ~20-line
+test scanning `src/` for `text=True` without `encoding=`, `.rename(`, and
+text-mode opens without `encoding=` catches #41 and #42 **statically, at
+authoring time, on either machine, before push** — no test imagination required,
+which is the thing that was actually missing. It is the only mechanism that
+catches a bug nobody has thought of yet. CI second, for the two the guard cannot
+see and every future regression. The abstraction layer is the most work, covers a
+subset of the guard, and is the option most likely to produce the *feeling* of
+having fixed this.
+
+**Do not set `PYTHONUTF8` or `PYTHONIOENCODING` in the workflow**, and run with
+`-rs`. The first would paper over #43 — the exact class the matrix exists to
+catch — and the second is because an invisible skip is #29's silence again.
+
+**An audit is dispatched and had not returned when this was written.** Declared
+`EXPLORE:` rather than given a fake line-range brief, since §12 exempts audits
+and a line-range brief would presuppose the answer. It is hunting the sixth
+instance, auditing the *tests* for the same rot, and scoring every
+recommendation by which of the five specimens it would have caught. **If it
+argues for less than the above, that is the better answer** — its output path is
+in the handoff.
+
+**`status` measured this machine for the first time today**, the slug fix having
+been the thing in the way: 121 calls, opening 55,567 → current 219,255, **3.9x
+growth**, 16.1M tokens, 98% of them cache reads. The cost band still reads
+*cheap* and capacity still reads 22% — which is #17's whole argument in one
+line, on the session that wrote it down.
