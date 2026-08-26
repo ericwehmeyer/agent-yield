@@ -2385,3 +2385,72 @@ reflog, and this clone cannot reproduce them (its reflog covers its own shas
 only, which is precisely why `--machine` is per-clone). A macOS re-derivation
 of the same window would be a second measurement, not a check of this one.
 
+
+## [macOS 2026-08-26 21:40] #68: #46's fourth blocking finding was never closed, and the two shares under it disagree 3x
+
+**#46 listed four blocking findings and closed with three.** Finding 1 went to
+#45, finding 2 was closed structurally in 777184b, finding 3 was 0230e21. The
+closing comment names those three; **finding 4 is in neither the comment, nor
+this file's S1 entry, nor the code.** Filed as **#68** and closed the same
+hour, in 3305fc9.
+
+The finding, from the review's §4: the share of main calls at or above a cost
+threshold is decomposable by session and was headlined undecomposed — one row
+after the plan names the same session-length confound for context/call and
+omits it here. Adding cheap short sessions moves the share with nothing
+changed about how any session is run, and the two days it was calibrated on
+changed the population being averaged 2.7x (146 calls → 398).
+
+**Measured on this clone, and the two are not the same quantity.** 08-26,
+1,420 main calls in 19 sessions. At the shipped constants both figures are
+zero, which is its own result: **the peak main context on this machine was
+295,861 — 1.4% short of `COST_DISPATCH`** — so the whole cost family is silent
+here and the 20%→4% the plan called "the cleanest real signal" has no
+counterpart on this corpus at all. Cut the same corpus lower and they separate:
+
+| cut | share of main calls | share of main sessions |
+|---|---|---|
+| 50,000 | 90.7% (1,288/1,420) | 84.2% (16/19) |
+| 100,000 | 60.0% (852/1,420) | 84.2% (16/19) |
+| 150,000 | 28.4% (403/1,420) | 47.4% (9/19) |
+| 200,000 | 8.9% (126/1,420) | 26.3% (5/19) |
+| 250,000 | 1.5% (21/1,420) | 10.5% (2/19) |
+
+They disagree at every cut, by up to 3x, and they cross over below ~75,000.
+**At the top of the ladder the aggregate is the low one** — 9% of calls against
+26% of sessions — so read alone it understates how often somebody should have
+restarted, and understating is the direction that lets a bad number through.
+The lower cuts are a diagnostic and not a metric: `thresholds.py` is untouched
+and the series stays pinned at 300,000 / 500,000 / 700,000.
+
+**The remedy is finding 2's shape, not another display convention.** `CostBand`
+replaces `CostBandShare` and carries `calls_above`, `calls`, `sessions_above`,
+`sessions` — both counts and both denominators, because the review is right
+that 4% without the n it is 4% of is not a measurement. `YieldRow` gains
+`main_session_peaks`, the most expensive main call in each of the row's main
+sessions; a peak, because the question a threshold asks is whether the session
+ever reached the band whose remedy is to leave. `cost_band_cells` returns both
+halves and **nothing formats the call share alone**.
+
+**The bands left the terminal grid.** Eight numbers per row do not fit in a
+twelve-column cell, and two `100/100/100` triples are twenty-five characters on
+their own. **A cell that fits only after the decomposition is dropped is how
+the aggregate got printed alone in the first place**, so the grid gives the
+bands up rather than the reverse: they are a block under the table, one line
+per row. The table is 108 columns now, down from 120. In HTML they are two
+appended columns, never one.
+
+```
+2026-08-26 untagged  calls - of 1,420 -   sessions - of 19 -
+```
+
+(with the constants unreached on this machine, that line is the honest reading
+— and `calls - of 0` rather than `0/0/0 of 0` where a row made no main calls at
+all: a day that was never measured must not read as a day that came back
+clean.)
+
+**608 tests.** What is not measured: whether the session share would have
+changed the 20%→4% reading on the Windows corpus. That corpus is not on this
+machine, and this clone's reflog covers only its own shas. **#46's other three
+deferrals — S4, S5, S6, S7 — stay deferred**, and its falsifier date is still
+2026-09-09.
