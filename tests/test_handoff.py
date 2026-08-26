@@ -11,6 +11,8 @@ import pathlib
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from agent_yield import handoff as handoff_module
 from agent_yield.handoff import (
     ARCHIVE_SUFFIX,
@@ -345,3 +347,58 @@ def test_consume_replaces_an_archive_left_by_an_earlier_handoff(tmp_path):
     assert consume(path, now=NOW) == "# second\n"
     assert not path.exists()
     assert archive.read_text(encoding="utf-8") == "# second\n"
+
+
+# --- #60: an archive that cannot be moved must not cost the handoff -------
+
+
+@pytest.mark.skipif(
+    os.name != "nt",
+    reason="os.replace over a file another process holds open only fails on Windows",
+)
+def test_consume_returns_the_handoff_when_the_archive_is_held_open(tmp_path):
+    """The other half of #42, which switching to `os.replace` did not close.
+
+    `os.replace` still raises `PermissionError` -- an `OSError` -- on Windows
+    when either file is open elsewhere. An editor, a backup agent, Defender's
+    real-time scan, or a second `agent-yield` is enough. On POSIX `rename(2)`
+    over an open file always succeeds, which is why the class exists on one
+    platform and why this test would pass vacuously on the other two rather
+    than assert anything.
+    """
+    path = tmp_path / "handoff.md"
+    archive = tmp_path / f"handoff.md{ARCHIVE_SUFFIX}"
+    _written_at(path, "# first\n", NOW)
+    consume(path, now=NOW)
+    _written_at(path, "# second\n", NOW)
+
+    with archive.open("r", encoding="utf-8"):
+        assert consume(path, now=NOW) == "# second\n"
+
+
+def test_a_failed_archive_never_costs_the_text_it_already_read(
+    tmp_path, monkeypatch, capsys
+):
+    """The bug stacked on the Windows one, and it is not about platforms.
+
+    The text is read before the archive is attempted. Returning None
+    afterwards discards a handoff the function is *holding*, in order to
+    report a filing failure -- and the caller cannot tell that apart from
+    "there was no handoff", so a whole session's continuity is lost to a
+    transient lock. Injecting twice is the smaller harm: the archive is a
+    convenience, not a correctness invariant.
+
+    The trigger above is Windows-only; this asserts the behaviour on every
+    platform, so the branch cannot be quietly deleted on a machine where the
+    real lock never happens.
+    """
+    path = tmp_path / "handoff.md"
+    _written_at(path, "# handoff\n", NOW)
+
+    def refuse(src, dst):
+        raise PermissionError(13, "The process cannot access the file")
+
+    monkeypatch.setattr(os, "replace", refuse)
+    assert consume(path, now=NOW) == "# handoff\n"
+    assert path.exists()  # unarchived, and deliberately left where it is
+    assert "not archived" in capsys.readouterr().err

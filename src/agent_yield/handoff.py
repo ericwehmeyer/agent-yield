@@ -24,6 +24,7 @@ import datetime as dt
 import os
 import re
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -374,6 +375,24 @@ def consume(
         # this except, and reported itself as `no_handoff` (#42). os.replace
         # overwrites atomically on both platforms.
         os.replace(path, path.with_name(path.name + ARCHIVE_SUFFIX))
-    except OSError:
-        return None
+    except OSError as exc:
+        # And it can still fail: os.replace raises PermissionError on Windows
+        # while either file is open in another process -- an editor, a backup
+        # agent, Defender's scan, a second `agent-yield`. POSIX rename(2) over
+        # an open file always succeeds, so this branch only ever runs on one
+        # platform.
+        #
+        # Returning None here would throw away a handoff this function is
+        # already holding, read four lines above, in order to report a filing
+        # failure -- and `resume` cannot tell that apart from "there was no
+        # handoff", so a transient lock costs a whole session's continuity.
+        # The archive is how injection stays exactly-once; it is a
+        # convenience, not a correctness invariant, and injecting twice is
+        # the smaller harm. Say so on stderr, which is backslashreplace and
+        # therefore safe to write on a cp1252 console (#43). Audit N2, issue #60.
+        print(
+            f"[agent-yield] handoff read but not archived ({exc}); it may be "
+            f"injected again next session: {path}",
+            file=sys.stderr,
+        )
     return text
