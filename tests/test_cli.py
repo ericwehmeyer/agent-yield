@@ -246,3 +246,79 @@ def test_handoff_without_a_transcript_still_writes_and_says_cost_is_unmeasured(
                  "--transcripts", str(empty)]) == 0
     assert "no session transcript found" in capsys.readouterr().out
     assert "no cost measurement" in out.read_text(encoding="utf-8")
+
+
+def _steep_root(tmp_path, cache_read: int, calls: int = 20):
+    root = tmp_path / "steep"
+    root.mkdir()
+    lines = []
+    for index in range(calls):
+        lines.append(json.dumps({
+            "type": "assistant",
+            "timestamp": f"2026-08-26T02:{index // 60:02d}:{index % 60:02d}.000Z",
+            "requestId": f"req-{index}", "sessionId": "deep",
+            "message": {"id": f"msg-{index}",
+                        "usage": {"cache_read_input_tokens": cache_read}},
+        }))
+    (root / "deep.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return root
+
+
+def test_status_prints_the_four_fields_apart_and_the_cost_band(tmp_path, capsys):
+    assert main(["status", "--transcripts", str(_transcript_root(tmp_path))]) == 0
+    out = capsys.readouterr().out
+    for field in ("input", "output", "cache write", "cache read"):
+        assert field in out
+    assert "cost band" in out
+    assert "$" not in out
+
+
+def test_status_exits_1_in_the_steep_band(tmp_path, capsys):
+    root = _steep_root(tmp_path, cache_read=500_000)
+    assert main(["status", "--transcripts", str(root)]) == 1
+    out = capsys.readouterr().out
+    assert "steep" in out
+    assert "handoff" in out
+    # Steep advice argues against compaction rather than recommending it.
+    assert "Do not compact" in out
+    assert "start fresh" in out
+
+
+def test_status_is_quiet_and_exits_0_in_the_cheap_band(tmp_path, capsys):
+    root = _steep_root(tmp_path, cache_read=20_000)
+    assert main(["status", "--transcripts", str(root)]) == 0
+    assert "Exit 1" not in capsys.readouterr().out
+
+
+def test_status_exits_1_past_the_hard_growth_factor(tmp_path, capsys):
+    root = tmp_path / "grown"
+    root.mkdir()
+    lines = []
+    for index in range(20):
+        # Opens at 10K, ends at 100K: 10x growth, still cheap in level terms.
+        read = 10_000 if index < 10 else 100_000
+        lines.append(json.dumps({
+            "type": "assistant",
+            "timestamp": f"2026-08-26T02:{index:02d}:00.000Z",
+            "requestId": f"req-{index}", "sessionId": "grown",
+            "message": {"id": f"msg-{index}",
+                        "usage": {"cache_read_input_tokens": read}},
+        }))
+    (root / "grown.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    assert main(["status", "--transcripts", str(root)]) == 1
+    out = capsys.readouterr().out
+    assert "grown 10.0x" in out
+    assert "cost band       cheap" in out
+
+
+def test_status_with_no_transcript_says_so_and_exits_0(tmp_path, capsys):
+    empty = tmp_path / "empty"
+    empty.mkdir()
+    assert main(["status", "--transcripts", str(empty)]) == 0
+    assert "no session transcript found" in capsys.readouterr().out
+
+
+def test_status_reports_where_the_bands_were_crossed(tmp_path, capsys):
+    root = _steep_root(tmp_path, cache_read=250_000)
+    assert main(["status", "--transcripts", str(root)]) == 0
+    assert "crossed knee    at call 1" in capsys.readouterr().out

@@ -23,7 +23,15 @@ from .handoff import DEFAULT_HANDOFF_PATH
 from .outcomes import daily_outcomes
 from .predict import project
 from .report import build_rows, compare_interventions, render_table
-from .thresholds import DEFAULT_EXPECTED_CALLS, REFERENCE_CONTEXT
+from .thresholds import (
+    DEFAULT_EXPECTED_CALLS,
+    DEFAULT_WINDOW,
+    REFERENCE_CONTEXT,
+    RESTART_FACTOR,
+    RESTART_HARD_FACTOR,
+    cost_advice,
+    cost_band,
+)
 
 DEFAULT_CALLS_PATH = Path(".agent-yield") / "calls.jsonl"
 MODES_FILENAME = "session-modes.toml"
@@ -108,6 +116,69 @@ def _empty_metric_note(metric: str) -> str:
         f"  all rows are empty for {metric!r}{because}"
         f" -- try --metric {alternative}"
     )
+
+
+def _cmd_status(args) -> int:
+    """One measurement of the session you are in, and what it costs to stay.
+
+    Exit 1 means this session should end: either context/call has grown past
+    the hard factor, or the session is in the steep cost band. Both are
+    "leave"; everything else is exit 0, so a prompt, a Makefile or CI can
+    branch on it without parsing this text.
+    """
+    root = Path(args.transcripts) if args.transcripts else None
+    path = session_module.find_session(args.session_id, root)
+    if path is None:
+        print("no session transcript found -- nothing to measure")
+        return 0
+
+    stats = session_module.session_stats(path, args.baseline_calls)
+    if stats.calls == 0:
+        print(f"{path.stem}: no main-thread calls recorded yet")
+        return 0
+
+    usage = stats.total
+    window = args.window
+    band = cost_band(stats.current_context, window)
+    print(f"session {path.stem}")
+    print(f"  calls           {stats.calls:,}")
+    print(f"  context/call    opening {_num(stats.opening_context_per_call)}  "
+          f"mean {_num(stats.context_per_call)}  "
+          f"current {stats.current_context:,}  "
+          f"growth {'-' if stats.growth is None else f'{stats.growth:.1f}x'}")
+    # The four fields stay apart; the total is the parenthetical, for display.
+    print(f"  tokens          input {usage.input_tokens:,}  "
+          f"output {usage.output_tokens:,}  "
+          f"cache write {usage.cache_creation_tokens:,}  "
+          f"cache read {usage.cache_read_tokens:,}  "
+          f"(total {usage.total:,})")
+    of_window = (f" ({stats.current_context / window:.0%} of a {window:,} window)"
+                 if window > 0 else "")
+    print(f"  cost band       {band}{of_window}")
+
+    crossings = session_module.cost_crossings(stats, window)
+    for name in ("knee", "steep"):
+        if name in crossings:
+            print(f"  crossed {name:<7} at call {crossings[name]:,}")
+
+    advice = cost_advice(stats.current_context, window)
+    if advice:
+        print(f"\n{advice}")
+    growth_advice = session_module.restart_advice(stats, args.factor)
+    if growth_advice:
+        print(f"\n{growth_advice}")
+
+    past_hard = stats.growth is not None and stats.growth >= args.hard_factor
+    if past_hard or band == "steep":
+        print("\nExit 1: write findings down (`agent-yield handoff`) "
+              "and start a fresh session.")
+        return 1
+    return 0
+
+
+def _num(value: float | None) -> str:
+    """A number, or `-`. Never `0` for something unmeasured."""
+    return "-" if value is None else f"{round(value):,}"
 
 
 def _cmd_handoff(args) -> int:
@@ -238,6 +309,21 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", default=".")
     p.add_argument("--calls", default=str(DEFAULT_CALLS_PATH))
     p.set_defaults(func=_cmd_tag)
+
+    p = subs.add_parser("status", help="measure the session you are in")
+    p.add_argument("--session-id", dest="session_id",
+                   help="which session; default is the most recent transcript")
+    p.add_argument("--transcripts", help="transcript root (default: discovered)")
+    p.add_argument("--baseline-calls", dest="baseline_calls", type=int,
+                   default=10, help="calls averaged for the opening context")
+    p.add_argument("--window", type=int, default=DEFAULT_WINDOW,
+                   help="context window this session runs in (provisional)")
+    p.add_argument("--factor", type=float, default=RESTART_FACTOR,
+                   help="growth factor at which a restart is advised")
+    p.add_argument("--hard-factor", dest="hard_factor", type=float,
+                   default=RESTART_HARD_FACTOR,
+                   help="growth factor at which this command exits 1")
+    p.set_defaults(func=_cmd_status)
 
     p = subs.add_parser("handoff", help="write down what a restart destroys")
     p.add_argument("--out", default=str(DEFAULT_HANDOFF_PATH))

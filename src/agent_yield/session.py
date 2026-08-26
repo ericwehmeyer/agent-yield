@@ -19,6 +19,7 @@ from pathlib import Path
 
 from .discovery import find_transcripts, main_transcript_dir
 from .ingest import load_records, total_usage
+from .thresholds import DEFAULT_WINDOW, RESTART_FACTOR, cost_band
 from .usage import Usage
 
 __all__ = [
@@ -26,6 +27,7 @@ __all__ = [
     "find_session",
     "session_stats",
     "restart_advice",
+    "cost_crossings",
 ]
 
 
@@ -59,6 +61,7 @@ class SessionStats:
     growth: float | None
     total: Usage
     started: dt.datetime | None = None
+    contexts: tuple[int, ...] = ()
 
 
 def find_session(session_id: str | None = None, root: Path | None = None) -> Path | None:
@@ -123,6 +126,7 @@ def session_stats(path: Path, baseline_calls: int = 10) -> SessionStats:
             growth=None,
             total=Usage.zero(),
             started=None,
+            contexts=(),
         )
 
     contexts = [_context(r) for r in main]
@@ -147,10 +151,37 @@ def session_stats(path: Path, baseline_calls: int = 10) -> SessionStats:
         growth=growth,
         total=total_usage(main),
         started=main[0].timestamp,
+        contexts=tuple(contexts),
     )
 
 
-def restart_advice(stats: SessionStats, factor: float = 2.0) -> str | None:
+def cost_crossings(
+    stats: SessionStats, window: int = DEFAULT_WINDOW
+) -> dict[str, int]:
+    """Call number at which each cost band was first entered.
+
+    Section 5 says each band fires once per session, at the crossing. That
+    needs no hidden state: the transcript already records where the session
+    crossed, so the crossing is measured rather than remembered. Bands never
+    entered are absent from the mapping -- never present with a 0, which
+    would read as "crossed on the first call".
+    """
+    ladder = ("knee", "steep")
+    seen: dict[str, int] = {}
+    for index, context in enumerate(stats.contexts, start=1):
+        band = cost_band(context, window)
+        if band == "cheap":
+            continue
+        # A session that opens in the steep band crossed the knee too -- on
+        # its first call. Recording only the band it landed in would report
+        # "never past the knee" for exactly the sessions the 47% finding is
+        # about, which open expensive rather than growing into it.
+        for name in ladder[: ladder.index(band) + 1]:
+            seen.setdefault(name, index)
+    return seen
+
+
+def restart_advice(stats: SessionStats, factor: float = RESTART_FACTOR) -> str | None:
     """One line naming the real numbers, or ``None`` if no restart is due."""
     growth = stats.growth
     opening = stats.opening_context_per_call

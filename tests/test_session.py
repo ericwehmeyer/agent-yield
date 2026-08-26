@@ -6,7 +6,12 @@ import json
 import os
 from pathlib import Path
 
-from agent_yield.session import find_session, restart_advice, session_stats
+from agent_yield.session import (
+    cost_crossings,
+    find_session,
+    restart_advice,
+    session_stats,
+)
 
 
 def _line(
@@ -173,3 +178,33 @@ def test_find_session_by_id_and_unknown_id(tmp_path: Path) -> None:
 
     assert find_session("abc-123", root=tmp_path) == wanted
     assert find_session("no-such-session", root=tmp_path) is None
+
+
+def test_cost_crossings_report_the_call_each_band_was_entered_on(tmp_path):
+    path = _write(tmp_path / "s.jsonl", [
+        _line(session_id="s", index=i, cache_read=read)
+        for i, read in enumerate(
+            [10_000, 50_000, 250_000, 300_000, 450_000, 500_000]
+        )
+    ])
+    crossings = cost_crossings(session_stats(path), window=1_000_000)
+    assert crossings == {"knee": 3, "steep": 5}
+
+
+def test_a_band_never_entered_is_absent_rather_than_zero(tmp_path):
+    path = _write(tmp_path / "s.jsonl", [
+        _line(session_id="s", index=i, cache_read=10_000) for i in range(5)
+    ])
+    assert cost_crossings(session_stats(path), window=1_000_000) == {}
+
+
+def test_a_session_that_opens_steep_crossed_the_knee_on_call_one(tmp_path):
+    # Main sessions open expensive rather than growing into it: one machine
+    # averaged 311,399 context/call with no doubling anywhere. Reporting
+    # "never past the knee" for those would miss the whole finding.
+    path = _write(tmp_path / "s.jsonl", [
+        _line(session_id="s", index=i, cache_read=500_000) for i in range(3)
+    ])
+    assert cost_crossings(session_stats(path), window=1_000_000) == {
+        "knee": 1, "steep": 1,
+    }
