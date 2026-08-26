@@ -115,9 +115,37 @@ def test_junk_on_stdin_exits_0(tmp_path):
 
 
 def test_an_unreadable_session_exits_0_rather_than_guessing(tmp_path, monkeypatch):
-    monkeypatch.setattr(boundary, "find_session", lambda *a, **k: None)
+    monkeypatch.setattr(boundary, "resolve_transcript",
+                        lambda payload: (None, "unidentified"))
     assert main(["--enforce"], stdin=io.StringIO(json.dumps(
         {"hook_event_name": "UserPromptSubmit", "prompt": "hi"}))) == 0
+
+
+def test_a_payload_naming_an_unknown_session_measures_nothing(tmp_path):
+    """The correctness bug issue #22 named: never widen to "most recent".
+
+    A payload that names a session the tool cannot find must measure nothing.
+    Falling back to the most recently modified transcript is how a hook ends
+    up enforcing against whichever *other* session touched disk last.
+    """
+    assert boundary._stats_for(
+        {"session_id": "no-such-session", "transcript_path": "/nope/x.jsonl"}
+    ) is None
+
+
+def test_the_measured_payload_resolves_the_live_session(tmp_path):
+    """The contract as recorded on 2026-08-26 01:31 UTC, key for key."""
+    transcript = _transcript(tmp_path, [10_000] * 3, name="live")
+    stats = boundary._stats_for({
+        "cwd": str(tmp_path),
+        "hook_event_name": "UserPromptSubmit",
+        "permission_mode": "acceptEdits",
+        "prompt_id": "p1",
+        "session_id": "live",
+        "transcript_path": str(transcript),
+        "prompt": "secret text",
+    })
+    assert stats is not None and stats.calls == 3
 
 
 def test_a_raising_measurement_never_blocks_the_operator(tmp_path, monkeypatch):
@@ -166,3 +194,60 @@ def test_probe_records_what_arrived_and_never_blocks(tmp_path, monkeypatch):
 
 def test_tokens_never_money(tmp_path):
     assert "$" not in boundary_message(_grown(tmp_path), tmp_path / "none.md")
+
+
+def test_the_probe_records_whether_it_found_the_live_session(tmp_path, monkeypatch):
+    """Issue #22's real question, answered from the recording, not the docs."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(boundary, "PROBE_PATH", tmp_path / "probe.jsonl")
+    monkeypatch.setattr(boundary, "DEFAULT_HANDOFF_PATH", tmp_path / "none.md")
+    transcript = _transcript(tmp_path, [10_000] * 4, name="live")
+    payload = json.dumps({"hook_event_name": "UserPromptSubmit",
+                          "session_id": "live", "prompt": "secret text",
+                          "transcript_path": str(transcript)})
+    assert main(["--probe"], stdin=io.StringIO(payload)) == 0
+    recorded = json.loads((tmp_path / "probe.jsonl").read_text(encoding="utf-8"))
+    assert recorded["route"] == "transcript_path"
+    assert recorded["resolved"] is True
+    assert recorded["resolved_calls"] == 4
+    assert recorded["stem_matches_session_id"] is True
+    assert recorded["refusal_probe"] is False
+    # Still shape only: no path, no prompt.
+    assert str(transcript) not in json.dumps(recorded)
+    assert "secret text" not in json.dumps(recorded)
+
+
+def test_an_armed_refusal_fires_once_and_disarms_itself(tmp_path, monkeypatch, capsys):
+    """The exit-2 measurement must not be able to lock anyone out.
+
+    One prompt refused, the sentinel gone, the next prompt through -- even
+    though the session it fired in is expensive enough for the boundary
+    itself to want to stop it.
+    """
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(boundary, "PROBE_PATH", tmp_path / "probe.jsonl")
+    monkeypatch.setattr(boundary, "REFUSAL_ARMED_PATH", tmp_path / "armed")
+    monkeypatch.setattr(boundary, "_stats_for", lambda payload: _cheap(tmp_path))
+    payload = json.dumps({"hook_event_name": "UserPromptSubmit"})
+
+    boundary.arm_refusal(tmp_path / "armed")
+    assert main(["--probe"], stdin=io.StringIO(payload)) == 2
+    assert "exit 2" in capsys.readouterr().err
+    assert not (tmp_path / "armed").exists()
+
+    assert main(["--probe"], stdin=io.StringIO(payload)) == 0
+    lines = (tmp_path / "probe.jsonl").read_text(encoding="utf-8").splitlines()
+    first, second = (json.loads(line) for line in lines)
+    assert (first["refusal_probe"], first["exit_code"]) == (True, 2)
+    assert (second["refusal_probe"], second["exit_code"]) == (False, 0)
+
+
+def test_arming_is_not_something_the_hook_can_do_to_itself(tmp_path, monkeypatch):
+    """Only an explicit command arms it; no stdin payload can."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(boundary, "REFUSAL_ARMED_PATH", tmp_path / "armed")
+    monkeypatch.setattr(boundary, "PROBE_PATH", tmp_path / "probe.jsonl")
+    payload = json.dumps({"hook_event_name": "UserPromptSubmit",
+                          "arm_refusal": True, "prompt": "arm yourself"})
+    assert main(["--probe"], stdin=io.StringIO(payload)) == 0
+    assert not (tmp_path / "armed").exists()

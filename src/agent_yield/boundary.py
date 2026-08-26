@@ -4,10 +4,20 @@ MEASURED, and the measurement matters more than the code:
 
   - PreToolUse on `Agent` fires, carries `tool_input`, and exit 2 refuses the
     dispatch (gate.py, 2026-08-25).
-  - **UserPromptSubmit is NOT measured in this repository.** Whether exit 2
-    blocks a prompt, whether stderr reaches the operator, and which keys the
-    payload carries are all unverified here, and this repo does not build on
-    unverified claims.
+  - **UserPromptSubmit fires, and its payload is now measured** (probe,
+    2026-08-26 01:31 UTC, macOS, issue #22). One prompt in a fresh session
+    recorded the event as `UserPromptSubmit` carrying exactly:
+
+        cwd, hook_event_name, permission_mode, prompt_id, session_id,
+        transcript_path                                  (+ prompt)
+
+    So the live session is identified twice over -- by path and by id -- and
+    `session.resolve_transcript` now uses the observed contract instead of
+    guessing at it.
+  - **Whether exit 2 blocks a prompt is still NOT measured**, and neither is
+    whether stderr reaches the operator. `--enforce` therefore remains
+    unverified; see `--probe-refuse`, which measures it once, deliberately,
+    and disarms itself.
 
 And it cannot be verified from the session that installs it: hook config loads
 at session start, so a hook installed now first runs in the NEXT session. That
@@ -41,12 +51,19 @@ from pathlib import Path
 from typing import TextIO
 
 from .handoff import DEFAULT_HANDOFF_PATH
-from .session import SessionStats, cost_crossings, find_session, session_stats
+from .session import (
+    SessionStats,
+    cost_crossings,
+    resolve_transcript,
+    session_stats,
+)
 from .thresholds import DEFAULT_WINDOW, RESTART_HARD_FACTOR, cost_band
 
 __all__ = [
     "OVERRIDE_ENV",
     "PROBE_PATH",
+    "REFUSAL_ARMED_PATH",
+    "arm_refusal",
     "handoff_is_current",
     "boundary_message",
     "decide",
@@ -59,6 +76,14 @@ __all__ = [
 OVERRIDE_ENV = "AGENT_YIELD_BOUNDARY_OVERRIDE"
 
 PROBE_PATH = Path(".agent-yield") / "boundary-probe.jsonl"
+
+# The exit-2 measurement, armed by hand and fired exactly once. gate.py's
+# exit 2 was measured by making one dispatch fail on purpose under human
+# approval; this is the same move for prompts, with one addition -- the
+# sentinel is deleted BEFORE the refusal is returned, so even if exit 2 does
+# block the prompt, the operator's next one goes through. A measurement that
+# can lock someone out of their session is not a measurement worth having.
+REFUSAL_ARMED_PATH = Path(".agent-yield") / "boundary-refusal-armed"
 
 
 def handoff_is_current(handoff_path: Path, stats: SessionStats) -> bool:
@@ -120,42 +145,94 @@ def boundary_message(
 
 def _stats_for(payload: dict) -> SessionStats | None:
     """Measure the session this prompt belongs to, or give up quietly."""
-    # Which keys UserPromptSubmit carries is unverified here, so every read
-    # is a guess with a fallback and no read is required to be present.
-    path: Path | None = None
-    raw = payload.get("transcript_path")
-    if isinstance(raw, str) and raw:
-        candidate = Path(raw)
-        if candidate.exists():
-            path = candidate
-    if path is None:
-        session_id = payload.get("session_id") or payload.get("sessionId")
-        path = find_session(session_id if isinstance(session_id, str) else None)
+    path, _route = resolve_transcript(payload)
     if path is None:
         return None
     stats = session_stats(path)
     return stats if stats.calls else None
 
 
-def _probe(payload: dict, message: str | None, enforce: bool) -> None:
+def _resolution(payload: dict) -> dict:
+    """How the payload identified its session -- shape only, never content.
+
+    The first probe recorded which keys arrived but not whether they *worked*,
+    which left issue #22's real question open: can the hook find the live
+    session's transcript, or is it measuring whichever session touched disk
+    last? This answers it from the recording. No path and no prompt text is
+    written -- a path carries the operator's home directory, and the boundary
+    measures the mechanism, not the operator.
+    """
+    path, route = resolve_transcript(payload)
+    session_id = payload.get("session_id") or payload.get("sessionId")
+    resolved_calls = None
+    matches_session_id = None
+    if path is not None:
+        try:
+            resolved_calls = session_stats(path).calls
+        except Exception:
+            resolved_calls = None
+        if isinstance(session_id, str) and session_id:
+            matches_session_id = path.stem == session_id
+    return {
+        "route": route,
+        "transcript_path_present": isinstance(
+            payload.get("transcript_path"), str
+        ) and bool(payload.get("transcript_path")),
+        "resolved": path is not None,
+        "resolved_calls": resolved_calls,
+        "stem_matches_session_id": matches_session_id,
+    }
+
+
+def _probe(
+    payload: dict,
+    message: str | None,
+    enforce: bool,
+    exit_code: int = 0,
+    refusal: bool = False,
+) -> None:
     """Record what arrived, for the session that can finally read it.
 
     Never raises: a probe that breaks the hook it is measuring measures the
     hook's failure mode instead of its behaviour.
     """
     try:
+        entry = {
+            "observed": dt.datetime.now(dt.timezone.utc).isoformat(),
+            "hook_event_name": payload.get("hook_event_name"),
+            "keys": sorted(k for k in payload if k != "prompt"),
+            "has_prompt": "prompt" in payload,
+            "would_stop": message is not None,
+            "enforce": enforce,
+            "refusal_probe": refusal,
+            "exit_code": exit_code,
+        }
+        entry.update(_resolution(payload))
         PROBE_PATH.parent.mkdir(parents=True, exist_ok=True)
         with PROBE_PATH.open("a", encoding="utf-8") as handle:
-            handle.write(json.dumps({
-                "observed": dt.datetime.now(dt.timezone.utc).isoformat(),
-                "hook_event_name": payload.get("hook_event_name"),
-                "keys": sorted(k for k in payload if k != "prompt"),
-                "has_prompt": "prompt" in payload,
-                "would_stop": message is not None,
-                "enforce": enforce,
-            }) + "\n")
+            handle.write(json.dumps(entry) + "\n")
     except Exception:
         return
+
+
+def arm_refusal(path: Path | None = None) -> Path:
+    """Arm one deliberate exit-2 refusal, for the next prompt only."""
+    target = Path(path) if path is not None else REFUSAL_ARMED_PATH
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        dt.datetime.now(dt.timezone.utc).isoformat() + "\n", encoding="utf-8"
+    )
+    return target
+
+
+def _disarm_refusal(path: Path | None = None) -> bool:
+    """Consume the sentinel. True if it was armed; disarms before refusing."""
+    target = Path(path) if path is not None else REFUSAL_ARMED_PATH
+    try:
+        target.unlink()
+    except OSError:
+        return False
+    return True
 
 
 def decide(
@@ -182,6 +259,15 @@ def decide(
     return (2 if enforce else 0), message
 
 
+REFUSAL_PROBE_MESSAGE = (
+    "[agent-yield] Deliberate one-shot measurement of UserPromptSubmit exit 2 "
+    "(issue #22): this hook has just exited 2. It has already disarmed itself, "
+    "so send your prompt again and it will go through. If you are reading this "
+    "and your prompt still ran, exit 2 does not refuse a prompt and `--enforce` "
+    "is not buildable; if the prompt was refused, it is."
+)
+
+
 def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
     args = list(argv or [])
     enforce = "--enforce" in args
@@ -191,10 +277,19 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
         payload = json.loads(stream.read() or "{}")
         if not isinstance(payload, dict):
             return 0
+        # The armed one-shot refusal outranks everything below it, including
+        # the override: it is not the boundary firing, it is the measurement
+        # the boundary's own enforce flag is waiting on. Disarm first, refuse
+        # second -- in that order a crash between the two leaves the operator
+        # with a working session rather than a hook that refuses every prompt.
+        if probing and _disarm_refusal():
+            _probe(payload, REFUSAL_PROBE_MESSAGE, enforce, 2, refusal=True)
+            print(REFUSAL_PROBE_MESSAGE, file=sys.stderr)
+            return 2
         # A probe observes; it never blocks, whatever else was asked for.
         code, message = decide(payload, enforce=enforce and not probing)
         if probing:
-            _probe(payload, message, enforce)
+            _probe(payload, message, enforce, code)
     except Exception:
         # Deliberately broad, and more important here than in gate.py: a
         # raising gate blocks dispatches, a raising boundary blocks the

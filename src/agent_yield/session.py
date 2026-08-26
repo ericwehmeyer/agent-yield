@@ -25,6 +25,7 @@ from .usage import Usage
 __all__ = [
     "SessionStats",
     "find_session",
+    "resolve_transcript",
     "session_stats",
     "restart_advice",
     "cost_crossings",
@@ -97,6 +98,45 @@ def find_session(session_id: str | None = None, root: Path | None = None) -> Pat
             return float("-inf")
 
     return max(paths, key=modified)
+
+
+def resolve_transcript(payload: dict) -> tuple[Path | None, str]:
+    """The transcript for the session a hook payload came from, and how.
+
+    MEASURED 2026-08-26 01:31 UTC, `UserPromptSubmit` on macOS, one prompt
+    (`.agent-yield/boundary-probe.jsonl`, issue #22): the payload carries
+    ``cwd``, ``hook_event_name``, ``permission_mode``, ``prompt_id``,
+    ``session_id``, ``transcript_path`` and ``prompt``. So the live session
+    is identified twice over, and the guessing the boundary shipped with is
+    no longer needed.
+
+    The route is returned alongside the path so a probe can record which one
+    fired without recording the path itself.
+
+    **It never widens to "the most recently modified transcript".** That
+    fallback is what makes a hook measure the wrong session on any machine
+    running two at once, and an enforcing boundary aimed at the wrong
+    session is worse than no boundary. Unidentified means ``None``, which
+    every caller here treats as "say nothing".
+    """
+    raw = payload.get("transcript_path")
+    if isinstance(raw, str) and raw:
+        candidate = Path(raw)
+        try:
+            exists = candidate.exists()
+        except OSError:
+            exists = False
+        if exists:
+            return candidate, "transcript_path"
+
+    session_id = payload.get("session_id") or payload.get("sessionId")
+    if isinstance(session_id, str) and session_id:
+        found = find_session(session_id)
+        if found is not None:
+            return found, "session_id"
+        return None, "session_id_unknown"
+
+    return None, "unidentified"
 
 
 def session_stats(path: Path, baseline_calls: int = 10) -> SessionStats:
