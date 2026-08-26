@@ -439,6 +439,57 @@ operator out of the session, if not out of their words. Enforcement remains
 opt-in per install, and `AGENT_YIELD_BOUNDARY_OVERRIDE` remains the escape.
 The mechanism is verified; the policy is still deliberately conservative.
 
+### Arriving: SessionStart loads the handoff (added 2026-08-26, issue #26)
+
+The boundary and the handoff make *leaving* cheap. Nothing made *arriving*
+cheap, and the two are one lever: a fresh session opened blank and the operator
+re-explained, which is precisely the cost the restart was supposed to avoid.
+Half a lever is not a lever.
+
+**Measured contract.** `SessionStart` fires with matchers `startup`, `resume`,
+`clear`, `compact`, `fork`, names which one in `session_start_reason`, and
+injects context as `{"hookSpecificOutput": {"hookEventName": "SessionStart",
+"additionalContext": ...}}`. **It cannot block a session from starting** — exit
+2 only surfaces stderr, and the session proceeds. Where `UserPromptSubmit` gave
+a verified refusal (§5, #22), this gives a loader. The asymmetry is the design
+constraint: enforcement lives at the prompt, loading lives at the start.
+
+**The injection is context, so it is re-billed on every call of the session.**
+That is this tool's founding economics turned on the tool itself, and it decides
+the content question. Measured on a real handoff: 3,892 characters, **~973
+tokens, ~95,000 over a 100-call session** — against the ~7,000,000 the session
+that wrote it spent. A pointer to the file loses: the successor reads the file
+anyway, so a pointer costs the same recurring tokens plus an extra call, and
+adds a failure mode where it is ignored.
+
+**Staleness is solved by consuming, not by checking.** The hook archives the
+handoff as it injects it, so the injection is **exactly-once with no state
+anywhere** — no flag file, no "have I already loaded this" bookkeeping that can
+drift from reality. Older than 24 hours it is neither injected nor archived:
+still readable by hand, never loaded automatically. **A handoff describing a
+session that no longer exists is worse than no handoff**, because it is
+confidently wrong rather than absent.
+
+`startup` and `clear` only. A session that resumed, compacted or forked already
+carries the context; injecting there pays for it twice and buys nothing.
+
+**The objection this cannot answer, and why it ships anyway.** The hook cannot
+read intent, so a session starting genuinely unrelated work eats an injection it
+did not want. That is bounded — one session, one window, ~95K worst case, about
+1.5% of what the session that wrote it spent — and the preamble names the
+handoff as written by an ended session and tells such a session to set it aside.
+Against that, the alternative is a command the operator must remember, and this
+repo has measured twice what remembering is worth: `restart_advice` printed and
+the session ran another twenty minutes.
+
+**What this does not close.** Nothing in Claude Code can restart a session — no
+hook kills and respawns one, and `SessionStart` cannot prevent or control a
+session starting. Scheduling can launch `claude -p` non-interactively;
+launching an *interactive* session from cron is undocumented (issue #28). So
+the loop is `boundary` → `handoff` → `SessionStart` → **a human types the
+restart**, and claiming otherwise would be claiming a closed loop that is
+three-quarters closed.
+
 ### 4.7-adjacent: the status line, and what the harness already knows
 
 `statusLine` is the one lever that enforces itself at zero token cost, and

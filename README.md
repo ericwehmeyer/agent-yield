@@ -147,6 +147,58 @@ crashes locks the operator out of their own session. `AGENT_YIELD_BOUNDARY_OVERR
 silences it — named, never silent, and distinct from the gate's override so
 that quieting the session boundary does not also quiet the daily ceiling.
 
+## Arriving: the other half of the restart
+
+A boundary that makes leaving cheap is worth nothing if arriving is expensive.
+`handoff` wrote the findings down and **nothing loaded them**, so every fresh
+session opened blank and the operator re-explained — the exact cost the restart
+was supposed to avoid.
+
+```json
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {"type": "command", "command": "agent-yield resume --hook"}
+        ]
+      }
+    ]
+  }
+}
+```
+
+**`SessionStart` cannot block a session from starting** — unlike
+`UserPromptSubmit`, whose exit 2 was measured refusing a prompt outright. Exit 2
+here only surfaces stderr and the session proceeds. It is a **loader, never a
+gate**.
+
+**The injection is context, not a display**: it is re-billed on every call of
+that session. Measured on a real handoff — 3,892 characters, **~973 tokens,
+~95,000 over a 100-call session**, against the ~7,000,000 that the session
+writing it had spent. A pointer to the file would cost the same recurring
+tokens plus an extra call to read it, and adds a failure mode where the pointer
+is ignored.
+
+**Exactly once, and never stale.** `agent-yield resume --hook` archives the
+handoff as it injects it, so the injection is exactly-once with no state file
+anywhere. A handoff older than 24 hours is neither injected **nor archived** —
+still readable by hand, never loaded automatically, because a handoff
+describing a session that no longer exists is worse than no handoff at all. It
+injects on `startup` and `clear` only: a session that resumed, compacted or
+forked already carries the context, and injecting there pays for it twice.
+
+`agent-yield resume` on its own prints the handoff **without** consuming it, so
+looking is free.
+
+**Nothing in Claude Code can restart a session** — confirmed, not assumed: no
+hook kills and respawns one, and `SessionStart` cannot prevent or control a
+session starting. Scheduling can launch `claude -p` non-interactively;
+launching an *interactive* session from cron is undocumented. So the loop is
+`boundary` → `handoff` → `SessionStart` → **a human types the restart**, and
+that last step stays manual.
+
 ## The status line
 
 ```json
@@ -159,8 +211,8 @@ that quieting the session boundary does not also quiet the daily ceiling.
 ```
 
 ```
-ay 132K 13% 2.6x                          a session that is still cheap
-ay 296K 30% 7.4x KNEE -- handoff + restart    one that should have stopped
+ay 132K 13% 2.6x                              a session that is still cheap
+ay 512K 51% 7.4x RESTART -- handoff + restart  one that should have stopped
 ```
 
 Context, share of the window, growth since the session's opening calls, and a
