@@ -479,6 +479,22 @@ still readable by hand, never loaded automatically. **A handoff describing a
 session that no longer exists is worse than no handoff**, because it is
 confidently wrong rather than absent.
 
+**The injection is invisible, so it announces itself — and as of 2026-08-26
+that is measured, not assumed.** `additionalContext` puts text into the
+successor's context with nothing on screen: a working loader and #29's broken
+one look identical to the operator, which is precisely how #29 stayed hidden
+for a day while the operator said "I don't see it" and was right. The hook now
+emits an announcement — `[agent-yield] handoff loaded: N chars, written … ago.`
+— on **both** `systemMessage` and stderr, and records which it emitted in the
+probe log. **The operator confirmed seeing that line** at the 20:01 UTC `clear`
+start (7,596 chars, session `b008f92d`), the first start after the announcement
+shipped. What is settled is that a line renders; **which of the two channels
+rendered it is not**, because both were emitted on the same start and neither
+was suppressed to isolate the other. Recorded that way rather than credited to
+`systemMessage` because the docs say so — that substitution is §4.6's original
+failure. `resume --status` reads the flag back and now says which half it is
+reporting: receipt from the transcript, visibility from the announcement.
+
 `startup` and `clear` only. A session that resumed, compacted or forked already
 carries the context; injecting there pays for it twice and buys nothing.
 

@@ -47,10 +47,11 @@ take it, and ``--status`` says so rather than reporting the log as a pass.
 is indistinguishable from a broken one.** ``additionalContext`` is injected
 silently: nothing on screen when it works and nothing when it does not. One
 line goes out on ``systemMessage`` and on stderr -- both, because WHICH ONE
-THE OPERATOR SEES IS NOT MEASURED. stderr is measured for UserPromptSubmit
-under exit 2 (``boundary.py``) and that says nothing about SessionStart under
-exit 0. The probe records which channels were emitted, so the next start
-settles it from a log entry rather than from the docs. The four silences stay
+THE OPERATOR SEES IS STILL NOT MEASURED. What IS measured, 2026-08-26: the
+operator confirmed seeing the line at that day's 20:01 UTC ``clear`` start, so
+an announcement does render under SessionStart at exit 0. Both channels were
+emitted on that start and neither was suppressed, so neither is credited alone
+and both stay. The probe records which were emitted. The four silences stay
 silent: a line on every session start, most of them saying nothing happened,
 is how a hook gets turned off.
 
@@ -396,9 +397,23 @@ def format_status(report: dict) -> str:
         lines.append("No injection in the entries above. The decision column names which of "
                      "the five outcomes it was; four of them are silences.")
     elif len(confirmed) == len(injected):
+        # Whether the operator SAW anything is a separate question from whether
+        # a session RECEIVED anything, and this report used to answer only the
+        # second while asserting the first was silent. Since 2026-08-26 an
+        # injection announces itself and records that it did; say which.
+        announced = [e for e in injected if e.get("announced")]
         lines.append(f"{len(confirmed)}/{len(injected)} injections are CONFIRMED in a session "
-                     "transcript. The loader is working -- it is silent by design, because "
-                     "`additionalContext` is injected without anything on screen.")
+                     "transcript.")
+        if not announced:
+            lines.append("None of them announced itself, so nothing appeared on screen when they "
+                         "worked -- this report is the only evidence there is.")
+        elif len(announced) == len(injected):
+            lines.append("Each announced itself on screen as it loaded (operator-confirmed "
+                         "visible, 2026-08-26), so this report corroborates that line rather "
+                         "than standing in for it.")
+        else:
+            lines.append(f"{len(announced)}/{len(injected)} announced themselves on screen; the "
+                         "rest predate the announcement and loaded with nothing visible.")
     else:
         lines.append(f"ONLY {len(confirmed)}/{len(injected)} injections are confirmed. An entry "
                      "the hook logged as injected with no matching transcript record means the "
@@ -463,12 +478,12 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
         # gap -- it is the same gap that let this hook decline every real
         # session for a day.
         #
-        # Which channel an operator actually sees is NOT measured. stderr is
-        # measured for UserPromptSubmit under exit 2 (boundary.py, 2026-08-26)
-        # and that says nothing about SessionStart under exit 0. `systemMessage`
-        # is the harness's documented field for text meant for the operator.
-        # So: emit both, record which were emitted, and let the next session
-        # start settle it -- `resume --status` reads the answer back.
+        # SETTLED 2026-08-26, half of it: the operator confirmed seeing this
+        # line at the 20:01 UTC `clear` start. So an announcement DOES render
+        # under SessionStart at exit 0 -- the invisibility that hid #29 for a
+        # day is closed. WHICH channel rendered it is still unknown: both were
+        # emitted on that start and neither was suppressed to isolate the
+        # other. Both stay until an isolating run says one is dead weight.
         announcement = (
             f"[agent-yield] handoff loaded: {len(message):,} chars, written "
             f"{_format_age(age_hours) if age_hours is not None else 'unknown age'} "

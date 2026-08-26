@@ -472,3 +472,36 @@ def test_status_survives_a_corrupt_probe_log(tmp_path):
                      encoding="utf-8")
     entries = probe_entries(probe)
     assert [e["decision"] for e in entries] == ["injected"]
+
+
+def test_status_distinguishes_an_announced_injection_from_a_silent_one(tmp_path):
+    # Receipt and visibility are two questions. Before 2026-08-26 the report
+    # answered only "did a session receive it" and asserted the other half
+    # ("silent by design") instead of reading it, which is the shape of #29:
+    # a claim about the operator's screen made from the code's own assumption.
+    from agent_yield.resume import RECEIPT_MARKER, format_status, status
+
+    def render(entry: dict) -> str:
+        probe = tmp_path / f"probe-{entry.get('announced') and 'a' or 's'}.jsonl"
+        probe.write_text(json.dumps({
+            "observed": "2026-08-26T20:01:55.000000+00:00",
+            "decision": "injected", "injected": True, "injected_chars": 7596,
+            **entry,
+        }) + "\n", encoding="utf-8")
+        transcripts = tmp_path / "projects"
+        transcripts.mkdir(exist_ok=True)
+        (transcripts / "b008f92d.jsonl").write_text(json.dumps({
+            "type": "attachment",
+            "timestamp": "2026-08-26T20:01:55.100000+00:00",
+            "content": RECEIPT_MARKER + ", about 1 minute ago.",
+        }) + "\n", encoding="utf-8")
+        return format_status(status(out=tmp_path / "handoff.md", probe_path=probe,
+                                    transcripts=transcripts))
+
+    announced = render({"announced": ["systemMessage", "stderr"]})
+    assert "1/1 injections are CONFIRMED" in announced
+    assert "announced itself on screen" in announced
+
+    silent = render({})
+    assert "1/1 injections are CONFIRMED" in silent
+    assert "nothing appeared on screen" in silent
