@@ -68,11 +68,25 @@ class SessionStats:
 def project_slug(cwd: Path | None = None) -> str:
     """The transcript directory name Claude Code derives from a cwd.
 
-    Measured against the real tree: `/Users/x/IdeaProjects/agent-yield`
-    becomes `-Users-x-IdeaProjects-agent-yield`.
+    Measured against the real tree on both platforms:
+    `/Users/x/IdeaProjects/agent-yield` becomes `-Users-x-IdeaProjects-agent-yield`,
+    and `C:\\Users\\ewehm\\repos\\agent-yield` becomes
+    `C--Users-ewehm-repos-agent-yield` -- the doubled dash is the drive colon
+    followed by the first backslash.
+
+    Backslash and colon are not decoration. Without them the slug returned a
+    Windows path unchanged, nothing ever matched `parent.name`, and
+    `find_session` returned None for every session on that machine.
     """
     base = Path(cwd) if cwd is not None else Path.cwd()
-    return str(base).replace("/", "-").replace(".", "-").replace("_", "-")
+    return (
+        str(base)
+        .replace("/", "-")
+        .replace("\\", "-")
+        .replace(":", "-")
+        .replace(".", "-")
+        .replace("_", "-")
+    )
 
 
 def find_session(

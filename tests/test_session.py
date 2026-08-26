@@ -208,6 +208,33 @@ def test_a_session_that_opens_in_a_band_crossed_the_ones_below_it_on_call_one(tm
     assert cost_crossings(session_stats(path)) == {"dispatch": 1, "restart": 1}
 
 
+def test_project_slug_handles_windows_separators():
+    """Measured on Windows 2026-08-26, against the real tree.
+
+    `C:\\Users\\ewehm\\repos\\agent-yield` is stored by Claude Code as
+    `C--Users-ewehm-repos-agent-yield`: the drive colon and every backslash
+    become a dash, which is why the doubled dash appears after the drive
+    letter. The slug replaced `/`, `.` and `_` and neither of those, so on
+    Windows it returned the path unchanged, no candidate ever matched
+    `parent.name`, and `find_session` returned None for *every* session --
+    `status` measured nothing on that machine and said so silently.
+
+    The POSIX case is asserted alongside it so a future edit cannot fix one
+    platform by breaking the other. §3.1 is the standing reminder: a constant
+    measured on one machine is not a constant.
+    """
+    from agent_yield.session import project_slug
+
+    assert (
+        project_slug(Path(r"C:\Users\ewehm\repos\agent-yield"))
+        == "C--Users-ewehm-repos-agent-yield"
+    )
+    assert (
+        project_slug(Path("/Users/x/IdeaProjects/agent-yield"))
+        == "-Users-x-IdeaProjects-agent-yield"
+    )
+
+
 def test_find_session_does_not_reach_into_another_project(tmp_path, monkeypatch):
     """Measured 2026-08-25: `status` reported another repo's session.
 
