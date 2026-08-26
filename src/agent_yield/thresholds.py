@@ -56,8 +56,12 @@ COST_LADDER = ("dispatch", "restart", "stop")
 # regimes, and the cost family being silent on a small window is correct
 # behaviour rather than a hole.
 
-# The tool cannot read the model's context window, so a caller must say. 1M
-# is this operator's working default, not a fact about any model.
+# LAST RESORT, and it should almost never be reached. Two better answers come
+# first: the window the session reports in its own payload, and failing that
+# `pricing.MODEL_WINDOWS`, which is observed from `modelUsage.contextWindow`
+# and so is a fact about the model rather than a habit of this operator. 1M is
+# this operator's working default and nothing more; reaching it means the tool
+# does not know which model it is looking at.
 DEFAULT_WINDOW = 1_000_000
 
 # Session growth, the other trigger: context/call relative to the session's

@@ -178,3 +178,44 @@ def test_a_payload_without_the_context_block_falls_back_to_the_transcript(tmp_pa
     assert statusline.payload_context({}) is None
     assert statusline.payload_window({"context_window": {}}) is None
     assert line_for(path, current_context=None) == "ay 20K 2% 1.0x"
+
+
+# -- The context denominator ---------------------------------------------------
+
+def test_payload_model_reads_the_id():
+    assert statusline.payload_model({"model": {"id": "claude-opus-5"}}) == "claude-opus-5"
+    assert statusline.payload_model({"model": {}}) is None
+    assert statusline.payload_model({"model": "claude-opus-5"}) is None
+    assert statusline.payload_model({}) is None
+
+
+def test_the_model_registry_supplies_the_window_when_the_payload_does_not(tmp_path, capsys):
+    """A fraction against the wrong window is off by five, not by a little.
+
+    Opus is 1M and Haiku is 200K, both observed in `modelUsage.contextWindow`.
+    Falling straight to DEFAULT_WINDOW on a Haiku session would report a call
+    at 75% of capacity as 15%, which is the regime the capacity family exists
+    for and the one where it would go quiet.
+    """
+    transcript = _transcript(tmp_path, [150_000] * 20)
+    payload = json.dumps({
+        "transcript_path": str(transcript),
+        "model": {"id": "claude-haiku-4-5-20251001"},
+    })
+    assert main([], stdin=io.StringIO(payload)) == 0
+    line = capsys.readouterr().out.strip()
+    # 150,000 of a 200,000 window is 75%. Against DEFAULT_WINDOW it is 15%.
+    assert "75%" in line
+
+
+def test_the_payload_window_still_beats_the_registry(tmp_path, capsys):
+    transcript = _transcript(tmp_path, [100_000] * 20)
+    payload = json.dumps({
+        "transcript_path": str(transcript),
+        "model": {"id": "claude-haiku-4-5-20251001"},
+        "context_window": {"context_window_size": 500_000},
+    })
+    assert main([], stdin=io.StringIO(payload)) == 0
+    # 100,000 of the session's own 500,000 is 20%; of the registry's 200,000
+    # it would be 50%. The session knows better than the registry.
+    assert "20%" in capsys.readouterr().out

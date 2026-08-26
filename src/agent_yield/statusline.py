@@ -69,6 +69,7 @@ from pathlib import Path
 from typing import TextIO
 
 from .hookio import read_payload
+from .pricing import window_for
 from .records import parse_line
 from .session import SessionStats, resolve_transcript, session_stats
 from .thresholds import (
@@ -83,6 +84,7 @@ __all__ = [
     "CACHE_PATH",
     "PROBE_PATH",
     "payload_context",
+    "payload_model",
     "payload_window",
     "render",
     "line_for",
@@ -211,6 +213,15 @@ def payload_context(payload: dict) -> int | None:
             continue
         total += value
     return total or None
+
+
+def payload_model(payload: dict) -> str | None:
+    """The model id this session is running, or None."""
+    model = payload.get("model")
+    if not isinstance(model, dict):
+        return None
+    identifier = model.get("id")
+    return identifier if isinstance(identifier, str) and identifier else None
 
 
 def payload_window(payload: dict) -> int | None:
@@ -367,10 +378,18 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
         loaded = json.loads(raw or "{}")
         if isinstance(loaded, dict):
             payload = loaded
-            # An explicit --window is the operator overriding a measurement,
-            # so it wins; otherwise the measured window beats the provisional
-            # constant, which exists only because nothing else knew.
-            window = asked_window or payload_window(payload) or DEFAULT_WINDOW
+            # Four answers, best first. An explicit --window is the operator
+            # overriding a measurement, so it wins. Then the window this
+            # session reports for itself. Then the registry, which is observed
+            # from `modelUsage.contextWindow` and is a fact about the model
+            # rather than a habit of this operator -- 1M for opus, 200K for
+            # haiku, and a fraction against the wrong one of those is off by
+            # five. DEFAULT_WINDOW last, and reaching it means the tool does
+            # not know which model it is looking at.
+            window = (asked_window
+                      or payload_window(payload)
+                      or window_for(payload_model(payload))
+                      or DEFAULT_WINDOW)
             path, _route = resolve_transcript(payload)
             if path is not None:
                 line = line_for(path, window,
