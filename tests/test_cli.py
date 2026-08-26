@@ -329,3 +329,22 @@ def test_boundary_subcommand_fails_open_on_junk(monkeypatch):
     import sys
     monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
     assert main(["boundary", "--enforce"]) == 0
+
+
+def test_statusline_subcommand_prints_one_line_and_exits_0(monkeypatch, capsys):
+    import io
+    import sys
+    monkeypatch.setattr(sys, "stdin", io.StringIO("not json"))
+    assert main(["statusline"]) == 0
+    out = capsys.readouterr().out
+    assert out.count("\n") == 1
+    assert "$" not in out
+
+
+def test_arming_a_refusal_is_an_explicit_command(tmp_path, monkeypatch, capsys):
+    from agent_yield import boundary as boundary_module
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(boundary_module, "REFUSAL_ARMED_PATH", tmp_path / "armed")
+    assert main(["boundary", "--arm-refusal"]) == 0
+    assert (tmp_path / "armed").exists()
+    assert "one exit-2 refusal" in capsys.readouterr().out

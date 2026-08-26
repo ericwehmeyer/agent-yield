@@ -9,6 +9,7 @@ from . import boundary as boundary_module
 from . import gate as gate_module
 from . import handoff as handoff_module
 from . import session as session_module
+from . import statusline as statusline_module
 from .discovery import default_roots
 from .ingest import ingest, load_ingested
 from .interventions import load_interventions
@@ -177,6 +178,27 @@ def _cmd_status(args) -> int:
     return 0
 
 
+def _cmd_boundary(args) -> int:
+    """The hook entry point, plus the one thing a hook cannot do for itself.
+
+    Arming is a separate, explicit command rather than a flag on the hook
+    line: an exit-2 refusal that could arm itself from inside the hook is a
+    lockout waiting to happen.
+    """
+    if args.arm_refusal:
+        path = boundary_module.arm_refusal()
+        print(f"armed one exit-2 refusal: {path}")
+        print("Send any prompt. The hook refuses it once, disarms itself, and "
+              "records the attempt in .agent-yield/boundary-probe.jsonl.")
+        print("Requires the boundary installed as a UserPromptSubmit hook with "
+              "--probe, and that hook loaded at session start.")
+        return 0
+    return boundary_module.main(
+        (["--enforce"] if args.enforce else [])
+        + (["--probe"] if args.probe else [])
+    )
+
+
 def _num(value: float | None) -> str:
     """A number, or `-`. Never `0` for something unmeasured."""
     return "-" if value is None else f"{round(value):,}"
@@ -340,6 +362,19 @@ def main(argv: list[str] | None = None) -> int:
                    help="print the handoff instead of writing one")
     p.set_defaults(func=_cmd_handoff)
 
+    p = subs.add_parser(
+        "statusline",
+        help="one line for Claude Code's statusLine -- costs no tokens",
+    )
+    p.add_argument("--probe", action="store_true",
+                   help="record the shape of the stdin payload (keys only)")
+    p.add_argument("--window", type=int, default=None,
+                   help="override the window the harness reports (rarely needed)")
+    p.set_defaults(func=lambda args: statusline_module.main(
+        (["--probe"] if args.probe else [])
+        + ([] if args.window is None else ["--window", str(args.window)])
+    ))
+
     p = subs.add_parser("gate", help="PreToolUse hook entry point")
     p.set_defaults(func=lambda _args: gate_module.main())
 
@@ -351,10 +386,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="exit 2 to refuse the prompt -- UNVERIFIED mechanism")
     p.add_argument("--probe", action="store_true",
                    help="record what the hook receives; never blocks")
-    p.set_defaults(func=lambda args: boundary_module.main(
-        (["--enforce"] if args.enforce else [])
-        + (["--probe"] if args.probe else [])
-    ))
+    p.add_argument("--arm-refusal", dest="arm_refusal", action="store_true",
+                   help="arm ONE deliberate exit-2 refusal on the next prompt, "
+                        "to measure whether exit 2 refuses one at all")
+    p.set_defaults(func=_cmd_boundary)
 
     try:
         args = parser.parse_args(argv)
