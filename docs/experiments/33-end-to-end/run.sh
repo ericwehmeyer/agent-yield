@@ -4,6 +4,7 @@
 #   run.sh baton 1
 #   run.sh reader 1
 #   run.sh baton1 1     # #47: the baton arm with the packing fixed at one agent
+#   run.sh relay1 1     # #83: baton1v with one intermediary between parent and worker
 #
 # Both arms get IDENTICAL flags. The only difference is which arm-*.md is
 # prepended to the shared task, because a flag difference (allowing `Agent` in
@@ -15,7 +16,7 @@
 # Measuring only the audit turn would measure the wrong half of the claim.
 set -euo pipefail
 
-ARM="${1:?arm: baton|reader|baton1|baton1v}"
+ARM="${1:?arm: baton|reader|baton1|baton1v|relay1}"
 PY="${PY:-python3}"
 REP="${2:?replicate: 1|2}"
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -26,7 +27,8 @@ case "$ARM" in
   reader) ARMNUM=2 ;;
   baton1) ARMNUM=3 ;;   # #47: the baton, but ONE agent for all 19 modules
   baton1v) ARMNUM=4 ;;  # #47: baton1, plus a required second pass in the agent brief
-  *) echo "arm must be baton, reader, baton1 or baton1v" >&2; exit 2 ;;
+  relay1) ARMNUM=5 ;;   # #83: baton1v, plus one intermediary that dispatches and relays
+  *) echo "arm must be baton, reader, baton1, baton1v or relay1" >&2; exit 2 ;;
 esac
 SID="33333333-0000-4000-8000-00000000${ARMNUM}0${REP}0"
 
