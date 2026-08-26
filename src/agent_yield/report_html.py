@@ -33,7 +33,7 @@ import re
 from typing import Iterable
 
 from .records import CallRecord
-from .report import BeforeAfter, YieldRow
+from .report import BeforeAfter, YieldRow, cost_band_cells
 from .thresholds import COST_DISPATCH, COST_RESTART, COST_STOP
 from .usage import Usage
 
@@ -868,10 +868,11 @@ def _yield_table(rows: list[YieldRow]) -> str:
         # The columns #46 S1 adds are APPENDED, never interleaved: the dash
         # test downstream reads cells by index, and a column inserted in the
         # middle would move every assertion in it silently.
-        shares = ", ".join(
-            DASH if s.share is None else f"{s.share * 100:.0f}%"
-            for s in row.cost_band_shares
-        )
+        # Two cells, never one. The call share alone is #46's finding 4 --
+        # a mean over a session mixture, headlined undecomposed -- and
+        # `render_cost_bands` is the only formatter that emits either, so a
+        # future column cannot reintroduce the aggregate on its own.
+        calls_cell, sessions_cell = cost_band_cells(row.cost_bands)
         body.append(
             f'<tr><td class="mono">{_esc(row.day.isoformat())}</td>'
             f"<td>{_esc(row.mode)}</td>"
@@ -881,7 +882,8 @@ def _yield_table(rows: list[YieldRow]) -> str:
             f"{_cell(row.context_per_call)}"
             f"{_cell(row.code_lines)}{_cell(row.docs_lines)}"
             f"{_cell(row.other_lines)}{_cell(row.tokens_per_insertion)}"
-            f'<td class="num mono">{_esc(shares)}</td></tr>'
+            f'<td class="num mono">{_esc(calls_cell)}</td>'
+            f'<td class="num mono">{_esc(sessions_cell)}</td></tr>'
         )
     return (
         "<h2>Yield per day and mode</h2>"
@@ -892,10 +894,16 @@ def _yield_table(rows: list[YieldRow]) -> str:
         "Tokens/insertion is the whole-day ratio. There is deliberately no "
         "per-area ratio here: across 2026-08-25 and 08-26 the code half moved "
         "2.38x &quot;better&quot; on a mix shift alone, which is a larger "
-        "apparent win than the one this page exists to reject. Cost bands are "
-        "the share of that row&#39;s main-thread calls at or above "
+        "apparent win than the one this page exists to reject.</p>"
+        '<p class="lede">The two cost-band columns are one reading, not two: '
+        "counts and share of this row&#39;s main-thread calls at or above "
         f"{COST_DISPATCH:,}, {COST_RESTART:,} and {COST_STOP:,} context "
-        "tokens.</p>"
+        "tokens, and then of the main SESSIONS those calls came from, a "
+        "session counted by its most expensive call. A share of calls is a "
+        "mean over a session mixture -- cheap short sessions move it with "
+        "nothing changed about how any session is run -- so it does not "
+        "appear here without the session figure and both denominators beside "
+        "it.</p>"
         '<div class="scroll"><table><thead><tr><th>Day</th><th>Mode</th>'
         '<th class="num">Tokens</th><th class="num">Calls</th>'
         '<th class="num">Merges</th><th class="num">Commits</th>'
@@ -904,7 +912,8 @@ def _yield_table(rows: list[YieldRow]) -> str:
         '<th class="num">Context/call</th>'
         '<th class="num">Code</th><th class="num">Docs</th>'
         '<th class="num">Other</th><th class="num">Tokens/insertion</th>'
-        '<th class="num">Cost bands</th></tr></thead>'
+        '<th class="num">Cost bands, calls</th>'
+        '<th class="num">Cost bands, sessions</th></tr></thead>'
         f'<tbody>{"".join(body)}</tbody></table></div>'
     )
 

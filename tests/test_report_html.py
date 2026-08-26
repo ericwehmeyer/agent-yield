@@ -84,6 +84,11 @@ def _rows() -> list[YieldRow]:
             commits=3,
             lines=420,
             tests=None,
+            # One expensive call and one cheap one, both in the same session:
+            # half the calls crossed the dispatch line and all of the sessions
+            # did. The two figures disagreeing is the point of carrying both.
+            main_contexts=(400_000, 100),
+            main_session_peaks=(400_000,),
         ),
         YieldRow(
             day=NEXT,
@@ -301,6 +306,30 @@ def test_the_html_yield_table_carries_the_area_split_and_the_band_shares():
     for column in ("Code", "Docs", "Other", "Tokens/insertion"):
         assert f">{column}</th>" in yield_table, column
     assert "300,000" in yield_table
+
+
+def test_the_html_cost_bands_never_show_calls_without_sessions():
+    """#46 review, finding 4, in the view that would be screenshotted.
+
+    The share of main calls above a threshold is a mean over a session
+    mixture: cheap short sessions move it with nothing changed about how any
+    session is run. On this repo's own 2026-08-26 corpus the two figures
+    disagree by 3x at every cut where either is non-zero. So the calls column
+    does not exist without the sessions column, and both carry their
+    denominator rather than a bare percentage.
+    """
+    yield_table = _render().split("Yield per day and mode", 1)[1]
+    assert ">Cost bands, calls</th>" in yield_table
+    assert ">Cost bands, sessions</th>" in yield_table
+    assert yield_table.count(">Cost bands, calls</th>") == \
+        yield_table.count(">Cost bands, sessions</th>")
+    # Counts and denominators, not bare percentages: a share without its n is
+    # not a measurement. Here 50% of calls crossed the dispatch line and 100%
+    # of sessions did, off the same two calls.
+    assert "calls 1/0/0 of 2 50/0/0%" in yield_table
+    assert "sessions 1/0/0 of 1 100/0/0%" in yield_table
+    # And the row with no main calls dashes rather than reading 0 of 0.
+    assert "calls - of 0" in yield_table
 
 
 def test_the_html_table_offers_no_per_area_ratio():

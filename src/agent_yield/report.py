@@ -60,19 +60,105 @@ class PerInsertion:
 
 
 @dataclass(frozen=True)
-class CostBandShare:
-    """The share of one day's main calls at or above one cost threshold.
+class CostBand:
+    """One cost threshold, counted over BOTH populations that can cross it.
+
+    The #46 review's blocking finding 4, closed as #68. The plan headlined
+    "share of main calls at or above 300,000" and left it undecomposed, one
+    row after naming the session-length confound for context/call and omitting
+    it here. The share of calls above a threshold is a mean over a session
+    mixture: adding cheap short sessions moves it with nothing changed about
+    how any session is run, and the two measured days changed the population
+    being averaged 2.7x (146 calls -> 398). 20% -> 4% is the number the plan
+    called "the cleanest real signal", and a mixture shift is exactly what
+    this design exists to refuse to read as a signal.
+
+    Measured on this clone's own 2026-08-26 corpus, the two are not the same
+    quantity: cut at 200,000 tokens, 8.9% of the 1,420 main calls are above
+    the line and 26.3% of the 19 sessions are. They disagree at every cut and
+    they cross over below ~75,000. The lower cuts are a diagnostic; the series
+    stays pinned at the constants below.
+
+    So a band carries the call count, the session count and both denominators,
+    and `cost_band_cells` formats all four or none -- the same structural
+    guard `PerInsertion` applies to the insertion halves. The session figure
+    is the share of that row's main sessions whose most expensive main call
+    crossed the threshold; a per-session maximum is what "did this session get
+    into the expensive band" means, and it is recoverable from nothing coarser.
+
+    The counts are carried rather than only the percentages because the review
+    is right that "4%" without its n is not a measurement: on this clone
+    2026-08-26 the session denominator is 19, where one session moves the
+    share five points.
 
     `threshold` is on the result rather than looked up at read time (S3's
-    pinning rule): two days' shares are comparable only if they were cut at
+    pinning rule): two days' figures are comparable only if they were cut at
     the same number, and carrying the constant is what lets a reader notice a
     retune instead of reading straight through one.
     """
     band: str
     threshold: int
-    share: float | None
-    """None when the day made no main-thread calls -- not 0.0, which would
-    read as "none of them were expensive"."""
+    calls_above: int
+    calls: int
+    sessions_above: int
+    sessions: int
+
+    @property
+    def call_share(self) -> float | None:
+        """None when the row made no main-thread calls -- not 0.0, which would
+        read as "none of them were expensive"."""
+        return self.calls_above / self.calls if self.calls else None
+
+    @property
+    def session_share(self) -> float | None:
+        return self.sessions_above / self.sessions if self.sessions else None
+
+
+def cost_band_cells(bands: Iterable[CostBand]) -> tuple[str, str]:
+    """The calls half and the sessions half, always returned together.
+
+    There is deliberately no function that formats the call share by itself.
+    That is finding 4's remedy in the same shape as finding 2's: the display
+    rule -- no decomposable aggregate without its decomposition beside it --
+    is a rule only where the code cannot express its violation. A caller that
+    wants the aggregate has to take the decomposition with it.
+    """
+    bands = list(bands)
+    calls = bands[0].calls if bands else 0
+    sessions = bands[0].sessions if bands else 0
+    if not calls:
+        # No main calls is no evidence, and `0/0/0 of 0` reads as a
+        # measurement that came back clean. Dash-never-zero, one level up
+        # from the shares.
+        return ("calls - of 0", "sessions - of 0")
+    return (
+        f"calls {_counts(b.calls_above for b in bands)} of {calls:,}"
+        f" {_shares(b.call_share for b in bands)}",
+        f"sessions {_counts(b.sessions_above for b in bands)} of {sessions:,}"
+        f" {_shares(b.session_share for b in bands)}",
+    )
+
+
+def render_cost_bands(bands: Iterable[CostBand]) -> str:
+    """One line carrying both populations and both denominators."""
+    calls, sessions = cost_band_cells(bands)
+    return f"{calls}   {sessions}"
+
+
+def _counts(values: Iterable[int]) -> str:
+    return "/".join(f"{v:,}" for v in values)
+
+
+def _shares(values: Iterable[float | None]) -> str:
+    """`20/0/0%`, or a single dash when the denominator is empty.
+
+    All three shares of a band set share one denominator, so they are None
+    together or not at all; a mixed `-/0/0%` cannot occur and is not spelled.
+    """
+    values = list(values)
+    if any(v is None for v in values):
+        return "-"
+    return "/".join(f"{v * 100:.0f}" for v in values) + "%"
 
 
 @dataclass(frozen=True)
@@ -95,6 +181,18 @@ class YieldRow:
     main_contexts: tuple[int, ...] = ()
     """Every main call's context, kept rather than summed, because a share
     above a threshold cannot be recovered from a mean."""
+    main_session_peaks: tuple[int, ...] = ()
+    """The most expensive main call in each of this row's main sessions.
+
+    The decomposition the call-level share needs (#46 review, finding 4). A
+    peak is the right per-session summary because the question a threshold
+    asks -- did this session get into the band where the remedy is to leave --
+    is answered by the worst call in it, not by its average call.
+
+    Sessions, not calls, and only the sessions that made MAIN calls: a row
+    whose subagents ran hot has a failed brief, not a session to restart, and
+    `cost_band`'s own contract keeps the two populations apart.
+    """
 
     @property
     def tokens_per_merge(self) -> float | None:
@@ -127,8 +225,9 @@ class YieldRow:
         return self.per_insertion.all
 
     @property
-    def cost_band_shares(self) -> tuple[CostBandShare, ...]:
-        """Share of this row's MAIN calls at or above each cost threshold.
+    def cost_bands(self) -> tuple[CostBand, ...]:
+        """This row's MAIN calls, and the main SESSIONS they came from, at or
+        above each cost threshold.
 
         Main-thread only, which is `cost_band`'s own rule one level up: a
         subagent above 300,000 is a brief that failed, not a session to
@@ -137,18 +236,21 @@ class YieldRow:
 
         At-or-above rather than in-band: the bands nest, and "what share of
         the day was expensive enough to dispatch" is the question an operator
-        asks. Each share therefore includes the ones above it.
+        asks. Each count therefore includes the ones above it.
+
+        Read `CostBand` for why the session figure is here and not optional.
         """
         thresholds = (COST_DISPATCH, COST_RESTART, COST_STOP)
         return tuple(
-            CostBandShare(
+            CostBand(
                 band=band,
                 threshold=threshold,
-                share=(
-                    sum(1 for c in self.main_contexts if c >= threshold)
-                    / len(self.main_contexts)
-                    if self.main_contexts else None
+                calls_above=sum(1 for c in self.main_contexts if c >= threshold),
+                calls=len(self.main_contexts),
+                sessions_above=sum(
+                    1 for p in self.main_session_peaks if p >= threshold
                 ),
+                sessions=len(self.main_session_peaks),
             )
             for band, threshold in zip(COST_LADDER, thresholds)
         )
@@ -231,8 +333,16 @@ def build_rows(
         main_usage = Usage.zero()
         subagent_usage = Usage.zero()
         main_contexts: list[int] = []
+        # session id -> the most expensive main call seen in it. A record with
+        # no `session_id` becomes a session of its own rather than joining one
+        # anonymous bucket: two calls that do not say which session they are
+        # in are not evidence that they share one, and pooling them would move
+        # the session denominator on a guess. Where identity is missing
+        # everywhere the decomposition degrades to the call-level share, which
+        # is visible on the page as sessions == calls rather than hidden.
+        peaks: dict[object, int] = {}
         subagent_calls = 0
-        for call in calls:
+        for index, call in enumerate(calls):
             usage = usage + call.usage
             if call.is_subagent:
                 subagent_usage = subagent_usage + call.usage
@@ -240,6 +350,8 @@ def build_rows(
             else:
                 main_usage = main_usage + call.usage
                 main_contexts.append(call.context)
+                key = call.session_id if call.session_id else ("call", index)
+                peaks[key] = max(peaks.get(key, 0), call.context)
         outcome = outcome_by_day.get(day, DailyOutcome(day))
         rows.append(YieldRow(
             day=day, mode=mode, usage=usage, calls=len(calls),
@@ -250,6 +362,7 @@ def build_rows(
             code_lines=outcome.code_lines, docs_lines=outcome.docs_lines,
             other_lines=outcome.other_lines,
             main_contexts=tuple(main_contexts),
+            main_session_peaks=tuple(peaks.values()),
         ))
     return rows
 
@@ -401,25 +514,30 @@ def render_table(rows: Iterable[YieldRow]) -> str:
     are the mix. The per-area ratios are not here and are not properties --
     see `PerInsertion`, and the 2.38x it exists to stop.
 
-    The band shares are named in the header and quantified in the legend
-    underneath, from the constants themselves. Numbers baked into a header go
-    stale the day `thresholds.py` is retuned; a legend read from the module
-    moves when it does, which is S3's pinning rule on the page.
+    The cost bands moved OFF the grid and into a block under it, one line per
+    row, and that is the #46 review's finding 4 rather than a layout
+    preference. Finding 4 is that the share of main calls above a threshold is
+    an aggregate over a session mixture and was headlined undecomposed; the
+    remedy is the session share and both counts beside it. Eight numbers per
+    row -- three call counts, three session counts, two denominators -- do not
+    fit in a twelve-column cell, and in the limit two `100/100/100` triples
+    are twenty-five characters on their own. **A cell that fits only after the
+    decomposition is dropped is how the aggregate got printed alone in the
+    first place**, so the grid gives the bands up rather than the reverse.
+    The constants are still read from `thresholds.py` for the legend, which is
+    S3's pinning rule: numbers baked into a header go stale the day the module
+    is retuned.
 
-    120 columns, which needs a 140-wide terminal. The blended
-    `context_per_call` is off the table but stays on the row.
+    108 columns now, down from 120, which is the width the bands were paying
+    for. The blended `context_per_call` is off the table but stays on the row.
     """
     header = (
         f"{'day':<11}{'mode':<9}{'tokens':>13}{'calls':>7}{'commits':>8}"
         f"{'code':>8}{'docs':>8}{'other':>8}{'tok/ins':>9}"
-        f"{'main ctx/call':>14}{'sub ctx/call':>13}{'cost bands':>12}"
+        f"{'main ctx/call':>14}{'sub ctx/call':>13}"
     )
     lines = [header, "-" * len(header)]
     for row in rows:
-        shares = "/".join(
-            "-" if s.share is None else f"{s.share * 100:.0f}"
-            for s in row.cost_band_shares
-        )
         lines.append(
             f"{row.day.isoformat():<11}{row.mode:<9}"
             f"{row.usage.total:>13,}{row.calls:>7,}{row.commits:>8,}"
@@ -427,12 +545,17 @@ def render_table(rows: Iterable[YieldRow]) -> str:
             f"{_fmt(row.tokens_per_insertion):>9}"
             f"{_fmt(row.main_context_per_call):>14}"
             f"{_fmt(row.subagent_context_per_call):>13}"
-            f"{shares + '%':>12}"
         )
     lines.append(
-        f"cost bands: share of main calls at or above {COST_DISPATCH:,}"
-        f" / {COST_RESTART:,} / {COST_STOP:,} context tokens"
+        f"cost bands, at or above {COST_DISPATCH:,} / {COST_RESTART:,} /"
+        f" {COST_STOP:,} context tokens -- main calls, then the main sessions"
+        f" they came from"
     )
+    for row in rows:
+        lines.append(
+            f"  {row.day.isoformat()} {row.mode:<9}"
+            f" {render_cost_bands(row.cost_bands)}"
+        )
     return "\n".join(lines)
 
 

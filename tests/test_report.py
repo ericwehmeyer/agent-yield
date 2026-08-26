@@ -14,6 +14,7 @@ from agent_yield.thresholds import (
 from agent_yield.report import (
     build_model_rows,
     build_rows,
+    cost_band_cells,
     compare_interventions,
     render_interventions,
     render_model_table,
@@ -195,22 +196,28 @@ def test_table_shows_both_context_columns_and_dashes_a_missing_population():
 
     main_only = render_table(build_rows([_call("2026-08-24", "s1", 300)],
                                         _outcome(), {"s1": "build"}))
-    # The subagent column, by position -- it is no longer the last one, and
-    # `endswith` would now be reading the cost-band cell.
+    # The subagent column is the last one on the grid again: the cost bands
+    # moved off it and into the block underneath (#46 review, finding 4).
     columns = main_only.splitlines()[2]
-    assert columns[-25:-12].strip() == "-"
+    assert columns[-13:].strip() == "-"
     assert "$" not in main_only
 
 
 def test_table_stays_within_terminal_width():
-    """120, up from 100, and the twenty columns bought four numbers.
+    """120 is the bound; the grid is 108 and the twelve came back.
 
     #46 S1 asks one table to carry tokens, calls, commits, insertions split
-    three ways, both context populations and the cost-band shares. Ten
-    quantities do not fit in a hundred columns; `merges` and `tok/merge` were
-    dropped to pay for part of it -- neither is in v1's column list, and on a
-    linear history both render as a dash and a zero. `tokens_per_merge` stays
-    on the row and stays scorable.
+    three ways and both context populations. Ten quantities do not fit in a
+    hundred columns; `merges` and `tok/merge` were dropped to pay for part of
+    it -- neither is in v1's column list, and on a linear history both render
+    as a dash and a zero. `tokens_per_merge` stays on the row and stays
+    scorable.
+
+    The cost bands then gave twelve columns back by leaving the grid for the
+    block underneath (#46 review, finding 4): a band needs three call counts,
+    three session counts and two denominators, which is not a cell. The
+    headroom is deliberate rather than spare -- the next column can be added
+    without another argument about what to drop.
 
     120 is the bound because it is a terminal width people actually have, and
     a table that wraps is not a table.
@@ -522,7 +529,7 @@ def test_the_paired_ratio_is_none_and_never_zero_on_an_empty_denominator():
     assert "-" in row.per_insertion.render()
 
 
-def test_cost_band_shares_count_main_thread_calls_only():
+def test_cost_bands_count_main_thread_calls_only():
     """`cost_band`'s own rule, applied one level up.
 
     A subagent above 300,000 is a brief that failed, not a session to restart.
@@ -534,13 +541,18 @@ def test_cost_band_shares_count_main_thread_calls_only():
         _sub_call("2026-08-24", "s1", 900_000),
     ]
     row = build_rows(records, _areas(), {"s1": "build"})[0]
-    shares = {s.band: s.share for s in row.cost_band_shares}
-    assert shares["dispatch"] == 0.5
-    assert shares["restart"] == 0.0
-    assert shares["stop"] == 0.0
+    bands = {b.band: b for b in row.cost_bands}
+    assert bands["dispatch"].call_share == 0.5
+    assert bands["dispatch"].calls_above == 1
+    assert bands["dispatch"].calls == 2
+    assert bands["restart"].call_share == 0.0
+    assert bands["stop"].call_share == 0.0
+    # The 900,000 subagent call is in neither population: it did not make the
+    # session expensive, it made the brief wrong.
+    assert bands["stop"].sessions_above == 0
 
 
-def test_cost_band_shares_carry_the_threshold_they_were_computed_at():
+def test_cost_bands_carry_the_threshold_they_were_computed_at():
     """S3's pinning rule: a retune must not silently rewrite the series.
 
     Two days' shares are only comparable if they were cut at the same number.
@@ -548,25 +560,116 @@ def test_cost_band_shares_carry_the_threshold_they_were_computed_at():
     were not.
     """
     row = build_rows([_call("2026-08-24", "s1", 100)], _areas(), {"s1": "build"})[0]
-    assert [s.threshold for s in row.cost_band_shares] == [
+    assert [b.threshold for b in row.cost_bands] == [
         COST_DISPATCH, COST_RESTART, COST_STOP
     ]
-    assert [s.band for s in row.cost_band_shares] == list(COST_LADDER)
+    assert [b.band for b in row.cost_bands] == list(COST_LADDER)
 
 
-def test_cost_band_shares_are_none_when_the_day_made_no_main_calls():
+def test_cost_bands_are_none_when_the_day_made_no_main_calls():
     row = build_rows([_sub_call("2026-08-24", "s1", 900_000)], _areas(),
                      {"s1": "build"})[0]
-    assert all(s.share is None for s in row.cost_band_shares)
+    assert all(b.call_share is None for b in row.cost_bands)
+    assert all(b.session_share is None for b in row.cost_bands)
+    assert all(b.calls == 0 and b.sessions == 0 for b in row.cost_bands)
+    # And it prints as a dash. `0/0/0 of 0` would read as a day that was
+    # measured and came back clean, which is the reassuring direction.
+    assert cost_band_cells(row.cost_bands) == ("calls - of 0", "sessions - of 0")
 
 
-def test_table_carries_the_area_split_the_paired_ratio_and_the_band_shares():
+def test_the_call_share_is_decomposed_by_session_and_the_two_disagree():
+    """#46 review, finding 4, on the shape that produced it.
+
+    One long session makes forty expensive calls; four short sessions make one
+    cheap call each. 91% of the day's calls are above the dispatch threshold
+    and 20% of its sessions are, and only the second figure says how many
+    times somebody should have restarted. Adding cheap short sessions moves
+    the call share with nothing changed about how any session is run, which is
+    the session mixture the plan named for context/call and omitted here.
+    """
+    records = [_call("2026-08-24", "long", 400_000 + i) for i in range(40)]
+    records += [_call("2026-08-24", f"short{i}", 1_000) for i in range(4)]
+    row = build_rows(records, _areas(), {})[0]
+    dispatch = row.cost_bands[0]
+    assert dispatch.calls_above == 40 and dispatch.calls == 44
+    assert dispatch.sessions_above == 1 and dispatch.sessions == 5
+    assert round(dispatch.call_share, 4) == round(40 / 44, 4)
+    assert dispatch.session_share == 0.2
+
+
+def test_a_session_is_counted_by_its_most_expensive_call():
+    """The peak, not the mean: the question is whether the session ever got
+    into the band whose remedy is to leave, and one call answers it."""
+    records = [
+        _call("2026-08-24", "s1", 10_000),
+        _call("2026-08-24", "s1", 10_000),
+        _call("2026-08-24", "s1", 800_000),
+    ]
+    row = build_rows(records, _areas(), {"s1": "build"})[0]
+    assert row.main_session_peaks == (800_000,)
+    assert [b.sessions_above for b in row.cost_bands] == [1, 1, 1]
+
+
+def test_calls_with_no_session_id_are_not_pooled_into_one_session():
+    """Two calls that do not say which session they are in are not evidence
+    that they share one, and pooling them would move the denominator on a
+    guess. The decomposition degrades to the call share, visibly."""
+    records = [
+        CallRecord(
+            timestamp=dt.datetime.fromisoformat("2026-08-24T12:00:00+00:00"),
+            usage=Usage(cache_read_tokens=400_000),
+            request_id="r1", message_id="m1",
+        ),
+        CallRecord(
+            timestamp=dt.datetime.fromisoformat("2026-08-24T12:00:00+00:00"),
+            usage=Usage(cache_read_tokens=1_000),
+            request_id="r2", message_id="m2",
+        ),
+    ]
+    row = build_rows(records, _areas(), {})[0]
+    dispatch = row.cost_bands[0]
+    assert dispatch.sessions == 2 == dispatch.calls
+    assert dispatch.session_share == dispatch.call_share == 0.5
+
+
+def test_there_is_no_formatter_for_the_call_share_alone():
+    """Finding 4's guard, in finding 2's shape.
+
+    `cost_band_cells` returns both halves or neither, and nothing else in the
+    module formats a band. A display convention that lives in a design
+    document is not a guard; a missing function is.
+    """
+    from agent_yield import report as report_module
+
+    records = [_call("2026-08-24", "s1", 400_000)]
+    row = build_rows(records, _areas(), {"s1": "build"})[0]
+    calls_cell, sessions_cell = cost_band_cells(row.cost_bands)
+    assert "calls" in calls_cell and "sessions" in sessions_cell
+    # Both counts and both denominators, not only the percentages: a share
+    # printed without its n is not a measurement.
+    assert "1/0/0 of 1" in calls_cell and "1/0/0 of 1" in sessions_cell
+    assert "100/0/0%" in calls_cell and "100/0/0%" in sessions_cell
+    assert not hasattr(row, "cost_band_shares")
+    assert not any(
+        name.startswith("render_call_share") or name.endswith("_call_share")
+        for name in dir(report_module)
+    )
+
+
+def test_table_carries_the_area_split_the_paired_ratio_and_the_band_block():
     records = [_call("2026-08-24", "s1", 400_000), _sub_call("2026-08-24", "s1", 100)]
     rendered = render_table(build_rows(records, _areas(), {"s1": "build"}))
     header, _rule, row_line = rendered.splitlines()[:3]
-    for column in ("code", "docs", "other", "tok/ins", "cost bands"):
+    for column in ("code", "docs", "other", "tok/ins"):
         assert column in header
     assert "60" in row_line and "30" in row_line and "10" in row_line
+    # The bands are a block under the grid, one line per row, because eight
+    # numbers per row do not fit in a cell -- and a cell that fits only after
+    # the decomposition is dropped is how the aggregate got printed alone.
+    assert "cost bands" not in header
+    block = rendered.splitlines()[-1]
+    assert block.startswith("  2026-08-24")
+    assert "calls 1/0/0 of 1" in block and "sessions 1/0/0 of 1" in block
     assert "$" not in rendered
 
 
