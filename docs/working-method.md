@@ -483,6 +483,56 @@ apart from a different kind of task before it refuses anything.
 
 ---
 
+
+### 12.1 The rubric, scored (issue #18 Part C, 2026-08-25)
+
+`agent-yield agents` joins each dispatch to the transcript of the agent it
+started, which is what makes §11's length rule and §12's marker rubric
+scorable at all. Before it, the prompt was in the parent's transcript and the
+call count was in the child's, and **hooks do not fire inside a subagent**, so
+`gate` could see the brief and never learn what it cost.
+
+Scored over **73 dispatches** joined to their transcripts (0 unmatched):
+
+| | n | median calls | median ctx/call | median tokens |
+|---|---|---|---|---|
+| carried all three markers | 4 | **6** | 39,139 | 264,622 |
+| did not | 69 | **57** | 84,357 | 5,074,043 |
+
+**9.5x on calls, 2.2x on context, 19x on tokens.** This is the first evidence
+that the markers *predict* dispatch length rather than merely correlating with
+an author who was being careful anyway, and the direction is what §12 claimed.
+
+**Three things temper it, and they are the reason this reports rather than
+retunes:**
+
+1. **n=4.** Four briefed dispatches is not a population. One of them ran 30
+   calls against a stated cap of 14 — stating a cap still does not enforce one.
+2. **The ranges overlap** — briefed 3–30, un-briefed 3–118. `thresholds.py`
+   previously recorded that the two populations "do not overlap at all"; that
+   was true of eight hand-picked dispatches and is not true of seventy-three.
+   Corrected in place.
+3. **Marker-detected ≠ hand-identified.** The four the regexes find are not the
+   four a human labelled briefed when the constants were fitted. Automatic
+   selection picks a different set, so this is a new measurement, not a
+   replication of the old one.
+
+**The finding nobody wanted: 4 of 73 dispatches carried all three markers, and
+60 of 73 exceeded the 10-call cap** (longest: 118 calls). The rubric is
+followed about 5% of the time, in a repo whose subject is the rubric, by the
+people who wrote it. That is not a discipline problem any more than the
+restart was — it is the argument for #27 Stage 2, which now has the data it
+was blocked on.
+
+**The join is a heuristic and says so.** There is no structural link from a
+dispatch to its child: the parent's `tool_use` id appears nowhere in the
+child's transcript, and the child's first record has `parentUuid: null`. The
+match is same session, same subagent type, child starting within 120s after
+the dispatch (measured lag: 1.4–1.6s). When it cannot match it reports
+`unlinked` rather than picking one, and `--unlinked` lists the orphans,
+because a join whose failures are invisible is indistinguishable from one that
+always works — the same lesson as #29, one file over.
+
 ## What would falsify this
 
 - **If a fresh agent's context is not much smaller than the parent's**, §1

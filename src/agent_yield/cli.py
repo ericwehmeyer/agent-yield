@@ -8,6 +8,7 @@ from pathlib import Path
 from . import boundary as boundary_module
 from . import gate as gate_module
 from . import handoff as handoff_module
+from . import agents as agents_module
 from . import resume as resume_module
 from . import session as session_module
 from . import statusline as statusline_module
@@ -238,6 +239,17 @@ def _cmd_resume(args) -> int:
     return 0
 
 
+def _cmd_agents(args) -> int:
+    """#18 Part C: what each dispatch was briefed to do, and what it cost."""
+    audits, orphans = agents_module.audit()
+    if not audits:
+        print("no dispatches found -- subagent transcripts evaporate (§8), "
+              "so an audit run days later measures what is left, not what ran")
+        return 0
+    print(agents_module.render(audits, orphans, show_unlinked=args.unlinked))
+    return 0
+
+
 def _num(value: float | None) -> str:
     """A number, or `-`. Never `0` for something unmeasured."""
     return "-" if value is None else f"{round(value):,}"
@@ -422,6 +434,17 @@ def main(argv: list[str] | None = None) -> int:
                         f"{resume_module.PROBE_PATH} -- the hook fires once, "
                         "before anyone can watch it")
     p.set_defaults(func=_cmd_resume)
+
+    p = subs.add_parser(
+        "agents",
+        help="audit dispatches: call counts against §11's cap, brief markers "
+             "against §12's rubric",
+    )
+    p.add_argument("--unlinked", action="store_true",
+                   help="list agent transcripts that matched no dispatch -- "
+                        "the join is a heuristic and its failures should be "
+                        "visible")
+    p.set_defaults(func=_cmd_agents)
 
     p = subs.add_parser(
         "statusline",
