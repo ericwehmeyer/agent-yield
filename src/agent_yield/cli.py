@@ -238,6 +238,8 @@ def _cmd_boundary(args) -> int:
 def _cmd_resume(args) -> int:
     """Load a handoff into a fresh session, once -- or read it back by hand."""
     out = Path(args.out)
+    if getattr(args, "status", False):
+        return resume_module.main(["--out", str(out), "--status"])
     if args.hook:
         argv = ["--out", str(out)]
         if getattr(args, "probe", False):
@@ -492,6 +494,11 @@ def main(argv: list[str] | None = None) -> int:
                         "and no payload values) to "
                         f"{resume_module.PROBE_PATH} -- the hook fires once, "
                         "before anyone can watch it")
+    p.add_argument("--status", action="store_true",
+                   help="did the loader run, and did a session RECEIVE what it "
+                        "emitted -- the probe log joined to the session "
+                        "transcripts, because the hook's own log cannot answer "
+                        "the second question")
     p.set_defaults(func=_cmd_resume)
 
     p = subs.add_parser(

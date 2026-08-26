@@ -45,7 +45,9 @@ def test_startup_injects_the_handoff(tmp_path):
     code, printed = _run(out, "startup")
     assert code == 0
     payload = json.loads(printed)
-    assert set(payload.keys()) == {"hookSpecificOutput"}
+    # `systemMessage` joined it deliberately: additionalContext is injected
+    # silently, so a loader nobody can see working reads as a broken one.
+    assert set(payload.keys()) == {"hookSpecificOutput", "systemMessage"}
     inner = payload["hookSpecificOutput"]
     assert set(inner.keys()) == {"hookEventName", "additionalContext"}
     assert inner["hookEventName"] == "SessionStart"
@@ -333,3 +335,140 @@ def test_hand_run_does_not_probe(tmp_path, monkeypatch):
     assert "do the thing" in stdout.getvalue()
     assert not probe.exists()
     assert out.exists(), "reading by hand must not consume"
+
+
+# --- The diagnostics -------------------------------------------------------
+#
+# The probe answers "did the hook emit a handoff". It cannot answer "did a
+# session receive one", and those failed apart once already (#29). These pin
+# the second question, and pin that the announcement is not silent.
+
+
+def test_the_preamble_starts_with_the_marker_the_receipt_check_looks_for(tmp_path):
+    # If these ever drift apart, `--status` reports every real injection as
+    # NOT FOUND -- a diagnostic that cries wolf is worse than none.
+    from agent_yield.resume import RECEIPT_MARKER, preamble
+
+    assert preamble(0.5).startswith(RECEIPT_MARKER)
+    assert preamble(48.0).startswith(RECEIPT_MARKER)
+
+
+def test_an_injection_announces_itself_on_both_visible_channels(tmp_path, monkeypatch, capsys):
+    monkeypatch.chdir(tmp_path)
+    out = _out(tmp_path)
+    write(out, "# Handoff\n\n" + NOTES_HEADING + "\n\n- a thing\n")
+
+    assert main(["--out", str(out), "--probe"], stdin=io.StringIO(_payload("startup"))) == 0
+    captured = capsys.readouterr()
+
+    payload = json.loads(captured.out)
+    # stdout stays the injection AND carries the operator's line: which channel
+    # is actually rendered is unmeasured, so both are emitted.
+    assert "handoff loaded" in payload["systemMessage"]
+    assert payload["hookSpecificOutput"]["additionalContext"]
+    assert "handoff loaded" in captured.err
+
+    entry = json.loads(
+        (tmp_path / "resume-probe.jsonl").read_text(encoding="utf-8").splitlines()[-1]
+        if (tmp_path / "resume-probe.jsonl").exists()
+        else (tmp_path / ".agent-yield" / "resume-probe.jsonl")
+        .read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert entry["announced"] == ["systemMessage", "stderr"]
+
+
+def test_a_silence_announces_nothing_at_all(tmp_path, monkeypatch, capsys):
+    # Four of the five outcomes are silences and must stay silent: a line on
+    # every session start, most of them saying nothing happened, gets the hook
+    # turned off -- the same failure the cost thresholds were retuned to avoid.
+    monkeypatch.chdir(tmp_path)
+    out = _out(tmp_path)
+
+    assert main(["--out", str(out), "--probe"], stdin=io.StringIO(_payload("startup"))) == 0
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err == ""
+
+    entry = json.loads(
+        (tmp_path / ".agent-yield" / "resume-probe.jsonl")
+        .read_text(encoding="utf-8").splitlines()[-1]
+    )
+    assert entry["decision"] == "no_handoff"
+    assert entry["announced"] == []
+
+
+def test_status_confirms_an_injection_against_the_session_transcript(tmp_path):
+    from agent_yield.resume import RECEIPT_MARKER, status
+
+    probe = tmp_path / "probe.jsonl"
+    probe.write_text(json.dumps({
+        "observed": "2026-08-26T15:23:58.000000+00:00",
+        "decision": "injected", "injected": True, "injected_chars": 4927,
+    }) + "\n", encoding="utf-8")
+
+    transcripts = tmp_path / "projects"
+    transcripts.mkdir()
+    (transcripts / "42d51cbc.jsonl").write_text(json.dumps({
+        "type": "attachment",
+        "timestamp": "2026-08-26T15:23:58.100000+00:00",
+        "content": RECEIPT_MARKER + ", about 1 minute ago.",
+    }) + "\n", encoding="utf-8")
+
+    report = status(out=tmp_path / "handoff.md", probe_path=probe, transcripts=transcripts)
+    assert report["recent"][0]["received"] is True
+    assert report["recent"][0]["received_by"] == "42d51cbc"
+
+
+def test_status_reports_an_injection_no_session_took_as_NOT_received(tmp_path):
+    # The failure this exists to make visible: the hook logs `injected` and no
+    # transcript carries it. Reporting that as a pass would be #29 again, in
+    # the flattering direction.
+    from agent_yield.resume import format_status, status
+
+    probe = tmp_path / "probe.jsonl"
+    probe.write_text(json.dumps({
+        "observed": "2026-08-26T15:23:58.000000+00:00",
+        "decision": "injected", "injected": True, "injected_chars": 4927,
+    }) + "\n", encoding="utf-8")
+    transcripts = tmp_path / "projects"
+    transcripts.mkdir()
+
+    report = status(out=tmp_path / "handoff.md", probe_path=probe, transcripts=transcripts)
+    assert report["recent"][0]["received"] is False
+    rendered = format_status(report)
+    assert "NOT FOUND" in rendered
+    assert "ONLY 0/1" in rendered
+
+
+def test_a_session_quoting_its_own_handoff_back_is_not_a_second_load(tmp_path):
+    # This session does exactly that. Counting it twice would inflate every
+    # receipt figure, so only the first hit in a transcript counts.
+    from agent_yield.resume import RECEIPT_MARKER, receipts
+
+    transcripts = tmp_path / "projects"
+    transcripts.mkdir()
+    lines = [
+        json.dumps({"type": "attachment", "timestamp": "2026-08-26T15:00:00+00:00",
+                    "content": RECEIPT_MARKER + ", about 1 minute ago."}),
+        json.dumps({"type": "assistant", "timestamp": "2026-08-26T15:30:00+00:00",
+                    "message": {"content": "quoting: " + RECEIPT_MARKER}}),
+        json.dumps({"type": "attachment", "timestamp": "2026-08-26T15:40:00+00:00",
+                    "content": RECEIPT_MARKER}),
+    ]
+    (transcripts / "s1.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+    got = receipts(transcripts)
+    assert len(got) == 1
+    assert got[0]["at"] == "2026-08-26T15:00:00+00:00"
+
+
+def test_status_survives_a_corrupt_probe_log(tmp_path):
+    # A diagnostic that dies on its own log reports the log's failure instead
+    # of the loader's, which is the thing it was built to stop doing.
+    from agent_yield.resume import probe_entries
+
+    probe = tmp_path / "probe.jsonl"
+    probe.write_text("not json\n" + json.dumps({"decision": "injected"}) + "\n[]\n",
+                     encoding="utf-8")
+    entries = probe_entries(probe)
+    assert [e["decision"] for e in entries] == ["injected"]
