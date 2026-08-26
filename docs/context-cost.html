@@ -308,25 +308,25 @@ footer {
 <div class="wrap">
 
 <header>
-  <p class="eyebrow">agent-yield &nbsp;/&nbsp; 20,757 calls, one machine, 23 days</p>
-  <h1>We spent 3.09 billion tokens. 451 million of them bought nothing.</h1>
+  <p class="eyebrow">agent-yield &nbsp;/&nbsp; 21,614 calls, one machine, 23 days</p>
+  <h1>We spent 3.21 billion tokens. 452 million of them bought nothing.</h1>
   <p class="standfirst">Not on failed work. On context: the same files and conversation, read again on every call, long after anyone needed them.</p>
 </header>
 
 <div class="tiles">
   <div class="tile">
     <span class="k">Spent</span>
-    <span class="v">3.09B</span>
+    <span class="v">3.21B</span>
     <span class="n">tokens of context, 23 days</span>
   </div>
   <div class="tile accent">
     <span class="k">Avoidable</span>
-    <span class="v">451M</span>
+    <span class="v">452M</span>
     <span class="n">spent above the limits below</span>
   </div>
   <div class="tile accent">
     <span class="k">Share of the bill</span>
-    <span class="v">15%</span>
+    <span class="v">14%</span>
     <span class="n">before the cost of restarting</span>
   </div>
 </div>
@@ -335,9 +335,9 @@ footer {
   <span class="num">What we found</span>
   <h2>Where it goes</h2>
 
-  <p><strong>1. Half of all main-session calls carry more than 236,360 tokens.</strong> A call reads its whole context before it does anything. At that size it bills a quarter of a million tokens to run a two-line command.</p>
+  <p><strong>1. Half of all main-session calls carry more than 218,440 tokens.</strong> A call reads its whole context before it does anything. At that size it bills a quarter of a million tokens to run a two-line command.</p>
 
-  <p><strong>2. Subagents cost three times what they need to.</strong> The median subagent call carries 96,583 tokens. One given a written brief and told not to explore carries 31,618. The difference is the agent reading the repo to work out what you meant.</p>
+  <p><strong>2. Subagents cost three times what they need to.</strong> The median subagent call carries 96,567 tokens. One given a written brief and told not to explore carries 31,618. The difference is the agent reading the repo to work out what you meant.</p>
 
   <p><strong>3. Nothing warns you, because nothing happens.</strong> Cost does not jump at a threshold. It climbs from the first call to the last. We looked for a knee in the curve. There is none.</p>
 
@@ -345,20 +345,20 @@ footer {
 </section>
 
 <figure>
-  <div class="scroller"><svg id="fig1" viewBox="0 0 900 360" role="img" aria-label="Cumulative share of spending against calls ranked from most context to least. The main-session curve bows far above the equality line. The first threshold we had, at 600,000 tokens, sits at 4% of calls and 10% of spending."></svg></div>
-  <p class="cap"><b>The alarm we had catches 4% of calls and 10% of the money.</b> Every call ranked by the context it carried, largest first, against the running share of spending. The dotted diagonal is what the curve would look like if every call cost the same. Main sessions bow a long way above it: the largest 41% of their calls, everything above 300,000 tokens, accounts for two thirds of what they spend. Each marker is where one rule bites; the fourth, stop at 700,000, sits just under the old alarm and is left off for room. Hover anywhere to read the pair off the axes.</p>
+  <div class="scroller"><svg id="fig1" viewBox="0 0 900 360" role="img" aria-label="Cumulative share of spending against calls ranked from most context to least. The main-session curve bows far above the equality line. The first threshold we had, at 600,000 tokens, sits at 3.3% of calls and 9.3% of spending."></svg></div>
+  <p class="cap"><b>The alarm we had catches 3.3% of calls and 9.3% of the money.</b> Every call ranked by the context it carried, largest first, against the running share of spending. The dotted diagonal is what the curve would look like if every call cost the same. Main sessions bow a long way above it: the largest 34% of their calls, everything above 300,000 tokens, accounts for three fifths of what they spend. Each marker is where one rule bites; the fourth, stop at 700,000, sits just under the old alarm and is left off for room. Hover anywhere to read the pair off the axes.</p>
 </figure>
 
 <section>
   <div class="col">
     <span class="num">The shape of it</span>
     <h2>Main sessions and subagents need different limits</h2>
-    <p>We have one set for both. The median main call carries 2.6 times the median subagent call. A subagent that grows past its brief is a briefing problem; a main session that grows is a restart problem. One number, and it is wrong for one of them.</p>
+    <p>We have one set for both. The median main call carries 2.3 times the median subagent call. A subagent that grows past its brief is a briefing problem; a main session that grows is a restart problem. One number, and it is wrong for one of them.</p>
   </div>
   <figure>
     <div class="legend">
-      <span><span class="swatch" style="background:var(--main)"></span> Main session, 5,016 calls</span>
-      <span><span class="swatch" style="background:var(--sub)"></span> Subagent, 15,239 calls</span>
+      <span><span class="swatch" style="background:var(--main)"></span> Main session, 6,101 calls</span>
+      <span><span class="swatch" style="background:var(--sub)"></span> Subagent, 15,513 calls</span>
     </div>
     <div class="scroller"><svg id="fig2" viewBox="0 0 900 340" role="img" aria-label="Two distributions. Subagent calls peak near 60,000 tokens. Main session calls form a broad plateau from 100,000 to 450,000 tokens."></svg></div>
     <p class="cap">Each drawn as a share of its own calls, so the shapes compare. Subagents peak and come down. Main sessions spread across a plateau and stay there. Hover a column for the numbers.</p>
@@ -370,15 +370,15 @@ footer {
       <span><span class="swatch" style="background:var(--sub)"></span> Subagent</span>
     </div>
     <div class="scroller"><svg id="fig3" viewBox="0 0 900 340" role="img" aria-label="Share of spending occurring at or above each context size. The main-session curve decays smoothly with no break."></svg></div>
-    <p class="cap"><b>No knee. Nothing to trip over.</b> How much of the bill would survive if you never made another call above a given size. The main curve slides through 83%, 74%, 65%, 42%, 21% without a break. No limit is in the data; every one is chosen. The dashed line is the 200,000 figure that started this: a bucket edge in a histogram.</p>
+    <p class="cap"><b>No knee. Nothing to trip over.</b> How much of the bill would survive if you never made another call above a given size. The main curve slides through 79%, 68%, 59%, 37%, 18% without a break — at 200,000, 250,000, 300,000, 400,000 and 500,000 tokens. No limit is in the data; every one is chosen. The dashed line is the 200,000 figure that started this: a bucket edge in a histogram.</p>
   </figure>
 </section>
 
 <section class="col">
   <span class="num">So what</span>
-  <h2>451 million tokens, and what to take off it</h2>
-  <p>That is what went above the limits in the table below: 15% of everything. It is the gross figure. Restarting is not free, because a fresh session reads whatever you hand it. The last method change we measured end to end returned 1.07&times; where per-call arithmetic promised 6.2&times;. The parent session ate the difference.</p>
-  <p>So halve it. <strong>It is still 225 million tokens.</strong></p>
+  <h2>452 million tokens, and what to take off it</h2>
+  <p>That is what went above the limits in the table below: 14% of everything. It is the gross figure. Restarting is not free, because a fresh session reads whatever you hand it. The last method change we measured end to end returned 1.07&times; where per-call arithmetic promised 6.2&times;. The parent session ate the difference.</p>
+  <p>So halve it. <strong>It is still 226 million tokens.</strong></p>
 </section>
 
 <section>
@@ -396,12 +396,12 @@ footer {
       <tr>
         <td><span class="chip m">dispatch</span><br><span class="mono">300,000</span></td>
         <td><b>Stop reading things into this session. Send the reads and the searches to a briefed subagent instead.</b> Capacity is fine at this point. Spending is not: every call from here re-reads all 300,000 tokens.</td>
-        <td class="n">282M<br><span class="dim">9%</span></td>
+        <td class="n">283M<br><span class="dim">8.8%</span></td>
       </tr>
       <tr>
         <td><span class="chip m">restart</span><br><span class="mono">500,000</span></td>
         <td><b>Finish the task you are on, push it, start a new session.</b> Do not compact. Write down anything you would lose first: <span class="mono">agent-yield handoff</span> does that.</td>
-        <td class="n">51M of it<br><span class="dim">2%</span></td>
+        <td class="n">51M of it<br><span class="dim">1.6%</span></td>
       </tr>
       <tr>
         <td><span class="chip m">stop</span><br><span class="mono">700,000</span></td>
@@ -411,7 +411,7 @@ footer {
       <tr>
         <td><span class="chip s">brief failed</span><br><span class="mono">150,000</span></td>
         <td><b>A subagent this size did not get a good enough brief.</b> It is reading the repo to work out the job. Give it exact line ranges and tell it not to explore. <span class="dim">Advice only; no constant in the code yet.</span></td>
-        <td class="n">169M<br><span class="dim">6%</span></td>
+        <td class="n">169M<br><span class="dim">5.3%</span></td>
       </tr>
       <tr>
         <td><span class="chip s">split it</span><br><span class="mono">10 calls</span></td>
@@ -434,19 +434,19 @@ footer {
   <p>It does not. A call carrying 200,000 tokens costs 200,000 tokens. Change the window to two million and the same call is cheap; change it to half a million and it is steep. The bill never moved. The window has nothing to do with the price. How full the window is, and what a call costs, are different questions, and writing both as percentages is what hid this for a month.</p>
   <p><strong>Fixed the same night, in <span class="mono">#23</span>, on two machines at once.</strong> The limits are absolute tokens and the cost path no longer takes a window at all.</p>
   <p>Setting the actual numbers was the harder half, and it was not free. The first proposal was 150,000 / 250,000 / 400,000, and 250,000 is this machine's median main-thread call: a restart rule that fires on every second call. A rule that fires that often gets turned off, and a rule that is turned off saves nothing. So the numbers moved up, to 300,000 / 500,000 / 700,000.</p>
-  <p><b>That is the whole trade, and there is no way around it.</b> Leverage climbs as the limit rises. The share of spending caught, divided by the share of calls disturbed, goes 1.25, 1.49, 1.60, 1.87, 2.24, 2.67. It never climbs faster than coverage falls away. There is no knee to hide in. Moving the restart line from 250,000 to 500,000 took the estimate on this page from 565 million tokens to 451 million, and most of what survives now comes from the gentlest rule of the four.</p>
+  <p><b>That is the whole trade, and there is no way around it.</b> Leverage climbs as the limit rises. The share of spending caught, divided by the share of calls disturbed, goes 1.29, 1.43, 1.59, 1.72, 2.02, 2.41. It never climbs faster than coverage falls away. There is no knee to hide in. Moving the restart line from 250,000 to 500,000 took the estimate on this page from 569 million tokens to 452 million, and most of what survives now comes from the gentlest rule of the four.</p>
 </section>
 
 <footer>
-  All figures from <span class="mono">.agent-yield/calls.jsonl</span>: 20,757 calls, deduplicated, 2026-08-26. Context per call is <span class="mono">cache_read + input + cache_creation</span>. The medians and the spend figures are measured. The limits (300,000, 500,000, 700,000 for a main session, 150,000 for a subagent) are chosen, not discovered: the curve has no break in it. Each is recorded in <span class="mono">thresholds.py</span> with the share of calls it fires on. One operator, one machine; issue <span class="mono">#20</span> is a blind re-run on a second.
+  All figures from <span class="mono">.agent-yield/calls.jsonl</span>: 21,614 calls, deduplicated, 2026-07-24 to 2026-08-26, captured 22:39 UTC, re-derived by <span class="mono">docs/context-cost-data.py</span>. Context per call is <span class="mono">cache_read + input + cache_creation</span>. The medians and the spend figures are measured. The limits (300,000, 500,000, 700,000 for a main session, 150,000 for a subagent) are chosen, not discovered: the curve has no break in it. Each is recorded in <span class="mono">thresholds.py</span> with the share of calls it fires on. One operator, one machine; issue <span class="mono">#20</span> is a blind re-run on a second.
 </footer>
 
 </div>
 <div id="tip" role="status" aria-live="polite"></div>
 
 <script>
-const D = {"main": {"n": 5364,"total": 1427803567,"median": 236360,"toks": [0,5957640,25992283,30130092,35771147,49080996,50839610,61333481,69393172,67794213,59048195,75247147,74678838,94545106,78705042,74955342,87791755,82183953,64136574,57455923,54742982,44150778,20884096,19881291,11593635,9574051,21192292,23465780,19810978,13319174,26672905,9399163,8075933],"hist": [5,136,411,345,318,358,313,328,326,286,226,262,239,280,217,193,213,188,139,118,107,82,37,34,19,15,32,34,28,18,35,12,10],"cum": [100.0,100.0,99.6,97.8,95.7,93.1,89.7,86.1,81.9,77.0,72.2,68.1,62.8,57.6,51.0,45.5,40.2,34.1,28.3,23.8,19.8,16.0,12.9,11.4,10.0]},"sub": {"n": 15393,"total": 1651080457,"median": 96583,"toks": [9747719,89327164,168623631,219165717,250189580,238390958,221521424,173129299,100243425,51196981,30390441,6282942,5338287,18394811,21701024,29484874,13632553,4319627,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"hist": [555,2281,2707,2507,2229,1736,1372,925,476,216,117,22,17,54,60,76,33,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"cum": [100.0,99.4,94.0,83.8,70.5,55.4,40.9,27.5,17.0,10.9,7.8,6.0,5.6,5.3,4.2,2.9,1.1,0.3,0.0,0.0,0.0,0.0,0.0,0.0,0.0]}};
-const CURVE = {"main":{"pts":[[0.8,2.35],[1.6,4.57],[2.4,6.67],[3.21,8.68],[4.01,10.52],[4.81,12.25],[5.61,13.91],[6.41,15.53],[7.21,17.1],[8.02,18.64],[8.82,20.15],[9.62,21.64],[10.42,23.09],[11.22,24.52],[12.02,25.93],[12.83,27.31],[13.63,28.67],[14.43,30.01],[15.23,31.33],[16.03,32.64],[16.83,33.93],[17.64,35.2],[18.44,36.46],[19.24,37.7],[20.04,38.93],[20.84,40.14],[21.64,41.34],[22.45,42.52],[23.25,43.69],[24.05,44.84],[24.85,45.97],[25.65,47.09],[26.45,48.19],[27.26,49.27],[28.06,50.35],[28.86,51.4],[29.66,52.45],[30.46,53.48],[31.26,54.5],[32.07,55.51],[32.87,56.51],[33.67,57.49],[34.47,58.47],[35.27,59.43],[36.07,60.38],[36.88,61.31],[37.68,62.23],[38.48,63.13],[39.28,64.03],[40.08,64.91],[40.88,65.77],[41.69,66.63],[42.49,67.47],[43.29,68.3],[44.09,69.12],[44.89,69.92],[45.69,70.7],[46.5,71.47],[47.3,72.23],[48.1,72.97],[48.9,73.71],[49.7,74.43],[50.5,75.14],[51.3,75.84],[52.11,76.53],[52.91,77.21],[53.71,77.88],[54.51,78.54],[55.31,79.19],[56.11,79.83],[56.92,80.46],[57.72,81.09],[58.52,81.7],[59.32,82.3],[60.12,82.89],[60.92,83.46],[61.73,84.03],[62.53,84.59],[63.33,85.14],[64.13,85.68],[64.93,86.21],[65.73,86.73],[66.54,87.24],[67.34,87.74],[68.14,88.23],[68.94,88.71],[69.74,89.18],[70.54,89.64],[71.35,90.08],[72.15,90.52],[72.95,90.95],[73.75,91.37],[74.55,91.78],[75.35,92.18],[76.16,92.58],[76.96,92.96],[77.76,93.34],[78.56,93.7],[79.36,94.06],[80.16,94.41],[80.97,94.74],[81.77,95.07],[82.57,95.38],[83.37,95.69],[84.17,95.98],[84.97,96.27],[85.78,96.54],[86.58,96.81],[87.38,97.07],[88.18,97.32],[88.98,97.55],[89.78,97.78],[90.59,98.0],[91.39,98.22],[92.19,98.43],[92.99,98.63],[93.79,98.82],[94.59,99.01],[95.4,99.18],[96.2,99.35],[97.0,99.51],[97.8,99.66],[98.6,99.8],[99.4,99.93],[100.0,100.0]],"marks":{"600000":[3.78,10.02],"700000":[1.92,5.41],"500000":[8.63,19.8],"400000":[20.9,40.22],"300000":[38.22,62.84],"250000":[47.32,72.24],"150000":[70.67,89.71]}},"sub":{"pts":[[0.81,2.99],[1.61,5.59],[2.42,7.59],[3.22,9.42],[4.03,11.15],[4.83,12.8],[5.64,14.39],[6.44,15.93],[7.25,17.44],[8.06,18.92],[8.86,20.38],[9.67,21.81],[10.47,23.22],[11.28,24.59],[12.08,25.94],[12.89,27.27],[13.69,28.58],[14.5,29.86],[15.31,31.13],[16.11,32.37],[16.92,33.6],[17.72,34.81],[18.53,36.01],[19.33,37.19],[20.14,38.36],[20.94,39.51],[21.75,40.65],[22.56,41.77],[23.36,42.88],[24.17,43.98],[24.97,45.06],[25.78,46.13],[26.58,47.19],[27.39,48.23],[28.19,49.26],[29.0,50.27],[29.81,51.27],[30.61,52.26],[31.42,53.23],[32.22,54.18],[33.03,55.13],[33.83,56.07],[34.64,56.99],[35.44,57.9],[36.25,58.8],[37.06,59.7],[37.86,60.58],[38.67,61.45],[39.47,62.31],[40.28,63.16],[41.08,64.0],[41.89,64.83],[42.69,65.65],[43.5,66.46],[44.31,67.26],[45.11,68.05],[45.92,68.82],[46.72,69.59],[47.53,70.35],[48.33,71.1],[49.14,71.84],[49.94,72.57],[50.75,73.29],[51.56,74.0],[52.36,74.7],[53.17,75.39],[53.97,76.08],[54.78,76.75],[55.58,77.42],[56.39,78.07],[57.19,78.72],[58.0,79.35],[58.81,79.98],[59.61,80.59],[60.42,81.2],[61.22,81.8],[62.03,82.39],[62.83,82.97],[63.64,83.54],[64.44,84.1],[65.25,84.66],[66.06,85.2],[66.86,85.74],[67.67,86.26],[68.47,86.78],[69.28,87.29],[70.08,87.79],[70.89,88.29],[71.69,88.77],[72.5,89.24],[73.31,89.71],[74.11,90.17],[74.92,90.61],[75.72,91.05],[76.53,91.49],[77.33,91.91],[78.14,92.32],[78.94,92.73],[79.75,93.13],[80.56,93.52],[81.36,93.9],[82.17,94.27],[82.97,94.64],[83.78,94.99],[84.58,95.34],[85.39,95.68],[86.2,96.01],[87.0,96.34],[87.81,96.65],[88.61,96.96],[89.42,97.25],[90.22,97.54],[91.03,97.82],[91.83,98.09],[92.64,98.36],[93.45,98.61],[94.25,98.84],[95.06,99.07],[95.86,99.28],[96.67,99.47],[97.47,99.65],[98.28,99.81],[99.08,99.93],[99.89,100.0],[100.0,100.0]],"marks":{"600000":[0.0,0.0],"400000":[0.28,1.09],"250000":[2.53,7.85],"150000":[21.95,40.92]}}};
+const D = {"main":{"n":6101,"total":1545836582,"median":218440,"toks":[0,6265286,29678347,37771285,47667588,65251714,62503626,75100714,89022688,78695966,66176336,83234098,80947044,95530243,78705042,74955342,87791755,82183953,64136574,57455923,54742982,44150778,20884096,19881291,11593635,9574051,21192292,23465780,19810978,13319174,26672905,9399163,8075933],"hist":[5,143,471,432,423,475,385,401,418,332,253,290,259,283,217,193,213,188,139,118,107,82,37,34,19,15,32,34,28,18,35,12,10],"cum":[100.0,100.0,99.6,97.7,95.2,92.1,87.9,83.9,79.0,73.3,68.2,63.9,58.5,53.3,47.1,42.0,37.2,31.5,26.2,22.0,18.3,14.8,11.9,10.5,9.3]},"sub":{"n":15513,"total":1662079834,"median":96567,"toks":[9789289,89969728,170245890,221067435,252598974,242455601,221838653,173129299,100243425,51196981,30390441,6282942,5338287,18394811,21701024,29484874,13632553,4319627,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"hist":[557,2298,2733,2529,2250,1766,1374,925,476,216,117,22,17,54,60,76,33,10,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],"cum":[100.0,99.4,94.0,83.8,70.5,55.3,40.7,27.3,16.9,10.9,7.8,6.0,5.6,5.3,4.2,2.9,1.1,0.3,0.0,0.0,0.0,0.0,0.0,0.0,0.0]}};
+const CURVE = {"main":{"pts":[[0.79,2.42],[1.57,4.68],[2.36,6.82],[3.15,8.83],[3.93,10.65],[4.72,12.39],[5.51,14.07],[6.29,15.69],[7.08,17.28],[7.87,18.84],[8.65,20.36],[9.44,21.85],[10.23,23.32],[11.01,24.75],[11.8,26.16],[12.59,27.54],[13.37,28.91],[14.16,30.26],[14.95,31.58],[15.74,32.89],[16.52,34.18],[17.31,35.46],[18.1,36.71],[18.88,37.95],[19.67,39.18],[20.46,40.38],[21.24,41.56],[22.03,42.73],[22.82,43.87],[23.6,45.0],[24.39,46.11],[25.18,47.21],[25.96,48.28],[26.75,49.35],[27.54,50.41],[28.32,51.45],[29.11,52.47],[29.9,53.48],[30.68,54.48],[31.47,55.47],[32.26,56.44],[33.04,57.39],[33.83,58.34],[34.62,59.26],[35.4,60.18],[36.19,61.08],[36.98,61.96],[37.76,62.84],[38.55,63.7],[39.34,64.55],[40.12,65.38],[40.91,66.2],[41.7,67.0],[42.48,67.79],[43.27,68.56],[44.06,69.33],[44.85,70.08],[45.63,70.82],[46.42,71.55],[47.21,72.26],[47.99,72.97],[48.78,73.67],[49.57,74.36],[50.35,75.04],[51.14,75.71],[51.93,76.37],[52.71,77.03],[53.5,77.68],[54.29,78.32],[55.07,78.95],[55.86,79.56],[56.65,80.17],[57.43,80.77],[58.22,81.36],[59.01,81.94],[59.79,82.51],[60.58,83.07],[61.37,83.62],[62.15,84.16],[62.94,84.7],[63.73,85.22],[64.51,85.74],[65.3,86.24],[66.09,86.73],[66.87,87.22],[67.66,87.69],[68.45,88.16],[69.23,88.62],[70.02,89.07],[70.81,89.51],[71.59,89.94],[72.38,90.37],[73.17,90.78],[73.96,91.19],[74.74,91.6],[75.53,91.99],[76.32,92.38],[77.1,92.76],[77.89,93.13],[78.68,93.49],[79.46,93.84],[80.25,94.19],[81.04,94.52],[81.82,94.85],[82.61,95.17],[83.4,95.47],[84.18,95.77],[84.97,96.06],[85.76,96.35],[86.54,96.62],[87.33,96.88],[88.12,97.14],[88.9,97.39],[89.69,97.63],[90.48,97.86],[91.26,98.08],[92.05,98.3],[92.84,98.5],[93.62,98.71],[94.41,98.9],[95.2,99.08],[95.98,99.26],[96.77,99.43],[97.56,99.59],[98.34,99.74],[99.13,99.88],[99.92,100.0],[100.0,100.0]],"marks":{"600000":[3.33,9.26],"700000":[1.69,5.0],"500000":[7.59,18.29],"400000":[18.37,37.15],"300000":[33.98,58.51],"250000":[42.88,68.18],"150000":[68.05,87.93]}},"sub":{"pts":[[0.8,2.97],[1.6,5.55],[2.4,7.54],[3.2,9.36],[4.0,11.08],[4.8,12.71],[5.6,14.29],[6.39,15.83],[7.19,17.33],[7.99,18.8],[8.79,20.25],[9.59,21.67],[10.39,23.06],[11.19,24.43],[11.99,25.77],[12.79,27.09],[13.59,28.39],[14.39,29.66],[15.19,30.92],[15.99,32.16],[16.79,33.37],[17.59,34.58],[18.38,35.77],[19.18,36.94],[19.98,38.1],[20.78,39.25],[21.58,40.38],[22.38,41.5],[23.18,42.6],[23.98,43.69],[24.78,44.76],[25.58,45.83],[26.38,46.88],[27.18,47.92],[27.98,48.94],[28.78,49.95],[29.58,50.94],[30.37,51.92],[31.17,52.89],[31.97,53.85],[32.77,54.79],[33.57,55.72],[34.37,56.64],[35.17,57.55],[35.97,58.45],[36.77,59.34],[37.57,60.22],[38.37,61.09],[39.17,61.94],[39.97,62.79],[40.77,63.63],[41.57,64.46],[42.36,65.28],[43.16,66.09],[43.96,66.88],[44.76,67.67],[45.56,68.45],[46.36,69.22],[47.16,69.97],[47.96,70.72],[48.76,71.46],[49.56,72.19],[50.36,72.91],[51.16,73.62],[51.96,74.32],[52.76,75.01],[53.56,75.7],[54.35,76.37],[55.15,77.04],[55.95,77.69],[56.75,78.34],[57.55,78.97],[58.35,79.6],[59.15,80.21],[59.95,80.82],[60.75,81.42],[61.55,82.01],[62.35,82.59],[63.15,83.17],[63.95,83.73],[64.75,84.29],[65.55,84.83],[66.34,85.37],[67.14,85.9],[67.94,86.42],[68.74,86.93],[69.54,87.44],[70.34,87.93],[71.14,88.42],[71.94,88.9],[72.74,89.36],[73.54,89.82],[74.34,90.28],[75.14,90.72],[75.94,91.15],[76.74,91.58],[77.53,92.0],[78.33,92.41],[79.13,92.81],[79.93,93.2],[80.73,93.59],[81.53,93.97],[82.33,94.34],[83.13,94.7],[83.93,95.05],[84.73,95.39],[85.53,95.73],[86.33,96.06],[87.13,96.38],[87.93,96.69],[88.73,96.99],[89.52,97.29],[90.32,97.57],[91.12,97.85],[91.92,98.12],[92.72,98.38],[93.52,98.63],[94.32,98.86],[95.12,99.08],[95.92,99.29],[96.72,99.48],[97.52,99.65],[98.32,99.81],[99.12,99.93],[99.92,100.0],[100.0,100.0]],"marks":{"600000":[0.0,0.0],"400000":[0.28,1.08],"250000":[2.51,7.79],"150000":[21.79,40.67]}}};
 const STEP = 25000, NS = "http://www.w3.org/2000/svg";
 const fmt = n => n.toLocaleString("en-US");
 const kfmt = n => n === 0 ? "0" : (n % 1000000 === 0 ? (n/1e6) + "M" : Math.round(n/1000) + "K");
