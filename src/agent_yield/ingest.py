@@ -1,10 +1,36 @@
-"""Walk transcripts, dedup calls, persist a normalized copy."""
+"""Walk transcripts, dedup calls, persist a normalized copy.
+
+The dedup rule is the load-bearing part. Claude Code writes one transcript
+record per CONTENT BLOCK -- thinking, text, each tool_use -- all sharing
+`(message.id, requestId)` and byte-identical cache and input figures, with
+`output_tokens` correct only on the terminal record. Keeping the FIRST of a
+group therefore keeps a partial: on the archived #33 arms it held 7,912 output
+tokens where the CLI's own accounting says 42,292, a 5.3x undercount. Cache
+read and creation are identical across the copies, which is why the error
+survived four experiments unnoticed.
+
+The undercount is proportional to how much an arm dispatches -- subagents emit
+more content blocks -- so it biased exactly the comparison this tool exists to
+make, in the flattering direction.
+
+The rule is NOT keep-max. Keep-max and keep-terminal agree on all 101 groups in
+the archive, so that data cannot choose between them, and max is wrong on a
+retry or a `max_tokens` continuation sharing a message id. So: take the
+terminal record if the group has one; otherwise take the largest AND MARK THE
+GROUP INCOMPLETE, because that output figure is a lower bound.
+
+Incompleteness is not a tolerance to be sized. It is detectable per group with
+no ground truth at all, and it accounts for the shortfall exactly: 2 incomplete
+groups on baton-r1 and 2 on baton-r2, 0 on both reader arms, and the shortfall
+against the CLI is non-zero on precisely the arms that have them.
+"""
 from __future__ import annotations
 
 import datetime as dt
 import json
 import statistics
 from collections import defaultdict
+from dataclasses import replace
 from pathlib import Path
 from typing import Iterable
 
@@ -13,14 +39,34 @@ from .records import CallRecord, parse_line
 from .usage import Usage
 
 
+def _supersedes(new: CallRecord, held: CallRecord) -> bool:
+    """Should `new` replace the record already held for this call?
+
+    A terminal record beats a non-terminal one, whatever the counts say. Among
+    two terminal records the first is kept -- the second is a continuation or a
+    retry, not more of the same call, and taking the larger would be picking a
+    number rather than a call. Among two non-terminal records the larger output
+    wins, which is the best available lower bound.
+    """
+    if held.is_terminal:
+        return False
+    if new.is_terminal:
+        return True
+    return new.usage.output_tokens > held.usage.output_tokens
+
+
 def load_records(paths: Iterable[Path]) -> list[CallRecord]:
-    """Every billable call under `paths`, each counted once.
+    """Every billable call under `paths`, each counted once, at its full size.
 
     A file that is empty, unreadable, or full of junk contributes nothing and
     does not abort the walk: subagent transcripts are routinely zero bytes.
+
+    Calls whose group held no terminal record come back with `incomplete` set:
+    their `output_tokens` is a lower bound, and a caller that reports a total
+    should say how many there were rather than present the sum as exact.
     """
     records: list[CallRecord] = []
-    seen: set[tuple[str, str]] = set()
+    at: dict[tuple[str, str], int] = {}
     for path in paths:
         try:
             text = Path(path).read_text(encoding="utf-8", errors="replace")
@@ -31,12 +77,29 @@ def load_records(paths: Iterable[Path]) -> list[CallRecord]:
             if record is None:
                 continue
             key = record.dedup_key
-            if key is not None:
-                if key in seen:
-                    continue
-                seen.add(key)
-            records.append(record)
+            if key is None:
+                # Unkeyed records cannot be grouped, so they are kept as they
+                # come -- undercounting is the error this tool exists to
+                # prevent -- and they are never marked incomplete, because
+                # nothing here can tell whether they finished.
+                records.append(record)
+                continue
+            index = at.get(key)
+            if index is None:
+                at[key] = len(records)
+                records.append(record)
+            elif _supersedes(record, records[index]):
+                records[index] = record
+    for key, index in at.items():
+        held = records[index]
+        if not held.is_terminal:
+            records[index] = replace(held, incomplete=True)
     return records
+
+
+def incomplete_calls(records: Iterable[CallRecord]) -> int:
+    """How many calls came back with a lower-bound `output_tokens`."""
+    return sum(1 for record in records if record.incomplete)
 
 
 def total_usage(records: Iterable[CallRecord]) -> Usage:
@@ -83,6 +146,8 @@ def _to_json(record: CallRecord) -> str:
         "model": record.model,
         "is_subagent": record.is_subagent,
         "cwd": record.cwd,
+        "stop_reason": record.stop_reason,
+        "incomplete": record.incomplete,
         "usage": {
             "input_tokens": record.usage.input_tokens,
             "output_tokens": record.usage.output_tokens,
@@ -118,6 +183,8 @@ def load_ingested(path: Path) -> list[CallRecord]:
             model=raw.get("model"),
             is_subagent=raw.get("is_subagent", False),
             cwd=raw.get("cwd"),
+            stop_reason=raw.get("stop_reason"),
+            incomplete=raw.get("incomplete", False),
         ))
     return records
 

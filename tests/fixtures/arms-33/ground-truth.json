@@ -1,0 +1,86 @@
+{
+  "_costBasis": "list -- every modelUsage block in the archive carries costBasis: list, so these are list-price equivalents and not a bill",
+  "_source": "claude -p --output-format json, the `modelUsage` and `total_cost_usd` blocks of each of the six turns of each #33 arm. These are the CLI's own accounting and are the ground truth the transcripts are checked against. The `.jsonl` beside this file are the real transcript records for the same arms, reduced to the fields `parse_line` reads -- the live transcripts under ~/.claude are volatile and one arm's are already gone.",
+  "arms": {
+    "baton-r1": {
+      "model_usage": {
+        "claude-haiku-4-5-20251001": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "context_window": 200000,
+          "input_tokens": 1471,
+          "output_tokens": 17
+        },
+        "claude-opus-5": {
+          "cache_creation_tokens": 193932,
+          "cache_read_tokens": 773418,
+          "context_window": 1000000,
+          "input_tokens": 76,
+          "output_tokens": 42292
+        }
+      },
+      "total_cost_usd": 2.912285,
+      "transcript_lines": 83
+    },
+    "baton-r2": {
+      "model_usage": {
+        "claude-haiku-4-5-20251001": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "context_window": 200000,
+          "input_tokens": 1471,
+          "output_tokens": 15
+        },
+        "claude-opus-5": {
+          "cache_creation_tokens": 143267,
+          "cache_read_tokens": 539087,
+          "context_window": 1000000,
+          "input_tokens": 62,
+          "output_tokens": 38643
+        }
+      },
+      "total_cost_usd": 2.18177075,
+      "transcript_lines": 67
+    },
+    "reader-r1": {
+      "model_usage": {
+        "claude-haiku-4-5-20251001": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "context_window": 200000,
+          "input_tokens": 1390,
+          "output_tokens": 17
+        },
+        "claude-opus-5": {
+          "cache_creation_tokens": 212173,
+          "cache_read_tokens": 1135705,
+          "context_window": 1000000,
+          "input_tokens": 30,
+          "output_tokens": 20300
+        }
+      },
+      "total_cost_usd": 3.1987075,
+      "transcript_lines": 44
+    },
+    "reader-r2": {
+      "model_usage": {
+        "claude-haiku-4-5-20251001": {
+          "cache_creation_tokens": 0,
+          "cache_read_tokens": 0,
+          "context_window": 200000,
+          "input_tokens": 1390,
+          "output_tokens": 17
+        },
+        "claude-opus-5": {
+          "cache_creation_tokens": 215062,
+          "cache_read_tokens": 1242652,
+          "context_window": 1000000,
+          "input_tokens": 34,
+          "output_tokens": 19216
+        }
+      },
+      "total_cost_usd": 3.253991,
+      "transcript_lines": 42
+    }
+  }
+}

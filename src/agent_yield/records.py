@@ -19,6 +19,11 @@ class CallRecord:
     model: str | None = None
     is_subagent: bool = False
     cwd: str | None = None
+    stop_reason: str | None = None
+    # True when this call's group held no terminal record, so `usage.output_tokens`
+    # is a LOWER BOUND. Set by `load_records`, never by `parse_line`: a single
+    # line cannot know whether its siblings finished.
+    incomplete: bool = False
 
     @property
     def day(self) -> dt.date:
@@ -26,6 +31,17 @@ class CallRecord:
         # a local-time bucket would silently move calls between days depending
         # on where the report is run.
         return self.timestamp.date()
+
+    @property
+    def is_terminal(self) -> bool:
+        """This record carries the call's final `output_tokens`.
+
+        Claude Code writes one record per CONTENT BLOCK -- thinking, text, each
+        tool_use -- all sharing `(message.id, requestId)` and identical cache and
+        input figures, with `output_tokens` correct only on the last. The last is
+        the one that carries a `stop_reason`.
+        """
+        return bool(self.stop_reason)
 
     @property
     def dedup_key(self) -> tuple[str, str] | None:
@@ -86,4 +102,5 @@ def parse_line(line: str) -> CallRecord | None:
         model=message.get("model"),
         is_subagent=bool(payload.get("isSidechain")),
         cwd=payload.get("cwd"),
+        stop_reason=message.get("stop_reason"),
     )

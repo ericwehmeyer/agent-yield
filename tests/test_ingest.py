@@ -5,6 +5,7 @@ import pytest
 
 from agent_yield.ingest import (
     context_per_call,
+    incomplete_calls,
     ingest,
     load_ingested,
     load_records,
@@ -30,6 +31,7 @@ def _line(**kw):
                 "cache_creation_input_tokens": kw.get("cw", 0),
                 "cache_read_input_tokens": kw.get("cr", 0),
             },
+            "stop_reason": kw.get("stop"),
         },
     })
 
@@ -227,3 +229,83 @@ def test_the_ttl_split_survives_the_persisted_round_trip(tmp_path):
     assert held.usage.cache_creation_5m == 4_071
     assert held.usage.cache_creation_1h == 3_000
     assert held.usage.cache_creation_unattributed == 0
+
+
+# -- One call, several records ------------------------------------------------
+#
+# Claude Code writes one record per content block. They share
+# `(message.id, requestId)` and their cache and input figures, and only the last
+# -- the one carrying a `stop_reason` -- has the call's real `output_tokens`.
+
+def test_the_terminal_record_wins_not_the_first(tmp_path):
+    path = tmp_path / "s.jsonl"
+    path.write_text(
+        _line(req="r1", msg="m1", out=1, cr=5_417, cw=3_153) + "\n"
+        + _line(req="r1", msg="m1", out=197, cr=5_417, cw=3_153,
+                stop="tool_use") + "\n"
+    )
+    (record,) = load_records([path])
+    assert record.usage.output_tokens == 197
+    assert record.usage.cache_read_tokens == 5_417
+    assert not record.incomplete
+
+
+def test_a_later_terminal_record_does_not_lose_to_an_earlier_one(tmp_path):
+    """Two terminal records under one id are a continuation or a retry.
+
+    Not more of the same call: taking the larger would be picking a number
+    rather than a call. The archive holds no such group -- which is exactly why
+    it is asserted here, where it can be constructed.
+    """
+    path = tmp_path / "s.jsonl"
+    path.write_text(
+        _line(req="r1", msg="m1", out=4_096, stop="max_tokens") + "\n"
+        + _line(req="r1", msg="m1", out=9_000, stop="end_turn") + "\n"
+    )
+    (record,) = load_records([path])
+    assert record.usage.output_tokens == 4_096
+
+
+def test_a_group_with_no_terminal_record_is_marked_incomplete(tmp_path):
+    """The case the archived arms hold and no synthetic guess would have found.
+
+    Two such groups on baton-r1, two on baton-r2, none on either reader arm --
+    and the shortfall against the CLI's own accounting is non-zero on precisely
+    the arms that have them. The largest record is the best lower bound
+    available, and the flag is what stops a caller reporting it as exact.
+    """
+    path = tmp_path / "s.jsonl"
+    path.write_text(
+        _line(req="r1", msg="m1", out=4) + "\n"
+        + _line(req="r1", msg="m1", out=6) + "\n"
+    )
+    (record,) = load_records([path])
+    assert record.usage.output_tokens == 6
+    assert record.incomplete
+    assert incomplete_calls([record]) == 1
+
+
+def test_unkeyed_records_are_kept_and_never_called_incomplete(tmp_path):
+    # They cannot be grouped, so nothing here knows whether they finished.
+    path = tmp_path / "s.jsonl"
+    path.write_text(json.dumps({
+        "type": "assistant",
+        "timestamp": "2026-08-24T12:00:00.000Z",
+        "message": {"id": None, "usage": {"output_tokens": 7}},
+    }) + "\n")
+    records = load_records([path])
+    assert [r.usage.output_tokens for r in records] == [7]
+    assert incomplete_calls(records) == 0
+
+
+def test_the_incomplete_flag_survives_the_persisted_round_trip(tmp_path):
+    src = tmp_path / "s.jsonl"
+    src.write_text(
+        _line(req="r1", msg="m1", out=4) + "\n"
+        + _line(req="r2", msg="m2", out=99, stop="end_turn") + "\n"
+    )
+    dest = tmp_path / "calls.jsonl"
+    ingest(dest, [tmp_path])
+    held = {r.message_id: r for r in load_ingested(dest)}
+    assert held["m1"].incomplete and held["m1"].stop_reason is None
+    assert not held["m2"].incomplete and held["m2"].stop_reason == "end_turn"
