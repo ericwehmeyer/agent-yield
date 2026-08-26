@@ -20,6 +20,12 @@ exit 2 refuses the prompt** (#22, closed), **the status line is live** (#18
 Part B), **and the cost thresholds you are about to read are in the wrong
 units** — #23 is right and answered, and implementing it is the next action.
 
+**[macOS 2026-08-26] #23 is implemented and closed; the cost family is in
+absolute tokens.** Anything below this line still quoting `COST_KNEE = 0.20`
+or a "steep band" is describing the previous units — `thresholds.py` and
+design.md §5 are the current statement. **`working-method.md` §12 is new: the
+dispatch rubric**, which is what §11's levers look like as an instruction.
+
 ## State of the board
 
 **The tool is built and works.** Nineteen modules, **187 tests**, green on
@@ -95,12 +101,11 @@ both are corrected.
 
 | | |
 |---|---|
-| **#23** | **Do this first.** The cost thresholds are fractions of the window and should be absolute tokens: cost is `context × rate` and the window is not in that expression, so `0.20 × W` moves when `W` changes while the bill does not. **The argument is right, it is conceded on the issue, and it is not implemented.** A full reply with the replication and a counter-proposal on the numbers is on the ticket — read it before touching `thresholds.py`. |
+| ~~**#23**~~ | **Closed 2026-08-26.** Cost is absolute tokens now — `COST_DISPATCH = 300_000` (p65) / `COST_RESTART = 500_000` (p87) / `COST_STOP = 700_000` (p93), each carrying the share of main-thread calls it fires on, and a test that fails if a constant loses its percentile. `window` is off the cost path: `cost_band` and `cost_advice` raise `TypeError` if handed one. Three bands because there are three actions; `cost_band` is main-thread only. design.md §5 rewritten. |
 | **#18** | Three levers. Parts A, B and D **done**; **C (agent-length audit) and E (the falsification test) are open.** E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
 | **#24** | The status line could carry `rate_limits.seven_day.used_percentage` — measured, free on every render, and on a subscription it is the operator's *real* currency. The design question is whether an allowance percentage counts as "money" under the tokens-never-money rule. **Retitle it: it says "Task 23" and collides with #23.** |
 | ~~**#22**~~ | **Closed 21:55.** Exit 2 refuses the prompt, stderr reaches the operator, and the harness echoes the prompt back. |
 | **#20, #21** | Opened by the Windows machine at 01:19–01:20 UTC while the macOS session was working: a blind re-measurement of context/call by model and role, and `report --by-model`. Not started. |
-| **#23** | **Cost thresholds should be absolute tokens, not fractions of the window.** `COST_KNEE = 0.20` moves when the window moves; the bill does not. Filed by Windows 21:33 against `thresholds.py` as shipped, per §4 — not edited. Argument, tables and the breaking case are in the issue. |
 | **#13** | `predict` must use the context it is projecting *for*. **Deliberately deferred** to the week-1 review — do not implement before 09-01. **Partly overtaken:** `bb2cbc0` split predict into two populations, which answers most of it. Read that commit before the review argues with the ticket. |
 | ~~**#19**~~ | **Closed 21:30.** Handoff, status, boundary — B before A before C, as it insisted. |
 | ~~**#17**~~ | **Closed 21:30.** `COST_KNEE`/`COST_STEEP` implemented; the family is surfaced by `status` and the boundary, and gate still does not carry it. |
@@ -384,12 +389,14 @@ Two things were added to the ticket rather than just agreeing:
    — its readout puts `restart 250,000` at 49.88% of calls. Both machines
    measured a threshold that fires on half of everything; neither set out to.
 
-**The next action is implementing #23**: absolute tokens, `window` off the cost
-path, `cost_band` main-thread only, and the ordering test replaced — it
-currently asserts `COST_KNEE < COST_STEEP < PREFER_FRESH < CONTEXT_WARN`, which
-compares 0.20 against 0.60 across two families that measure different things.
+**#23 was the next action and it is done** (`8c280eb`): absolute tokens,
+`window` off the cost path, `cost_band` main-thread only, and the ordering test
+replaced — it asserted `COST_KNEE < COST_STEEP < PREFER_FRESH < CONTEXT_WARN`,
+comparing 0.20 against 0.60 across two families that measure different things.
 Once the units differ that comparison is meaningless, which is #23's point in
-test form.
+test form. What is left in its neighbourhood is the *aggressiveness* of
+300K/500K/700K, which is a policy choice nobody has evidence for — the
+percentile beside each constant is what makes it arguable later.
 
 ## Two review routines still armed
 
