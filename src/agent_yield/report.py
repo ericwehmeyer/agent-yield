@@ -184,3 +184,85 @@ def render_table(rows: Iterable[YieldRow]) -> str:
             f"{_fmt(row.subagent_context_per_call):>13}"
         )
     return "\n".join(lines)
+
+
+@dataclass(frozen=True)
+class ModelRow:
+    """One model at one role. No outcome join -- see `build_rows`' docstring.
+
+    Carries every call's context rather than only a summed `Usage`, because a
+    median cannot be recovered from a sum and the mean alone misreads a skewed
+    distribution. `contexts` is the raw material; the properties are the read.
+    """
+    model: str
+    is_subagent: bool
+    calls: int
+    usage: Usage
+    contexts: tuple[int, ...] = ()
+
+    @property
+    def total_context(self) -> int:
+        return sum(self.contexts)
+
+    @property
+    def context_per_call(self) -> float | None:
+        # Cache reads, matching `YieldRow.context_per_call`: the same name in
+        # the same module counts the same tokens.
+        return self.usage.cache_read_tokens / self.calls if self.calls else None
+
+    @property
+    def median_context_per_call(self) -> float | None:
+        return statistics.median(self.contexts) if self.contexts else None
+
+    @property
+    def output_per_call(self) -> float | None:
+        return self.usage.output_tokens / self.calls if self.calls else None
+
+
+def build_model_rows(records: Iterable[CallRecord]) -> list[ModelRow]:
+    """One row per (model, role), ordered by total context descending.
+
+    `model` is `None` on some records and the literal `<synthetic>` on others.
+    Neither is a model and both are kept: a table that quietly drops calls is
+    the failure this tool exists to catch. `None` is labelled `none`.
+    """
+    buckets: dict[tuple[str, bool], list[CallRecord]] = {}
+    for record in records:
+        key = (record.model or "none", record.is_subagent)
+        buckets.setdefault(key, []).append(record)
+
+    rows: list[ModelRow] = []
+    for (model, is_subagent), calls in buckets.items():
+        usage = Usage.zero()
+        for call in calls:
+            usage = usage + call.usage
+        rows.append(ModelRow(
+            model=model, is_subagent=is_subagent, calls=len(calls),
+            usage=usage,
+            contexts=tuple(c.usage.cache_read_tokens for c in calls),
+        ))
+    # Descending spend, because the question is where the money went.
+    rows.sort(key=lambda r: (-r.total_context, r.model, r.is_subagent))
+    return rows
+
+
+def render_model_table(rows: Iterable[ModelRow]) -> str:
+    """Absolute tokens throughout. The window is a capacity fact, not a cost.
+
+    Mean and median sit side by side deliberately. Where they part, the mean is
+    being carried by a tail, and the pair says so at a glance.
+    """
+    header = (
+        f"{'model':<26}{'role':<10}{'calls':>8}{'tokens':>16}"
+        f"{'ctx/call':>12}{'median ctx':>12}{'out/call':>10}"
+    )
+    lines = [header, "-" * len(header)]
+    for row in rows:
+        lines.append(
+            f"{row.model:<26}{'subagent' if row.is_subagent else 'main':<10}"
+            f"{row.calls:>8,}{row.usage.total:>16,}"
+            f"{_fmt(row.context_per_call):>12}"
+            f"{_fmt(row.median_context_per_call):>12}"
+            f"{_fmt(row.output_per_call):>10}"
+        )
+    return "\n".join(lines)

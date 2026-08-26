@@ -24,7 +24,13 @@ from .modes import (
 from .handoff import DEFAULT_HANDOFF_PATH
 from .outcomes import daily_outcomes
 from .predict import project
-from .report import build_rows, compare_interventions, render_table
+from .report import (
+    build_model_rows,
+    build_rows,
+    compare_interventions,
+    render_model_table,
+    render_table,
+)
 from .thresholds import (
     DEFAULT_EXPECTED_CALLS,
     DEFAULT_WINDOW,
@@ -72,9 +78,16 @@ def _cmd_report(args) -> int:
     since = dt.date.fromisoformat(args.since) if args.since else days[0]
     until = dt.date.fromisoformat(args.until) if args.until else days[-1]
 
+    windowed = [r for r in records if since <= r.day <= until]
+    if args.by_model:
+        # Absolute tokens, no outcome join. Outcomes are per-day and cannot be
+        # attributed to a model any more than to a mode.
+        print(render_model_table(build_model_rows(windowed)))
+        return 0
+
     repo = Path(args.repo)
     rows = build_rows(
-        [r for r in records if since <= r.day <= until],
+        windowed,
         daily_outcomes(repo, since, until),
         load_modes(repo / MODES_FILENAME),
     )
@@ -322,6 +335,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--until")
     p.add_argument("--metric", choices=METRICS, default=METRICS[0],
                    help="which yield the intervention comparison reads")
+    p.add_argument("--by-model", action="store_true",
+                   help="cost per call per model, instead of the day/mode join")
     p.set_defaults(func=_cmd_report)
 
     p = subs.add_parser("tag", help="record a session's work mode")

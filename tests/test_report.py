@@ -3,7 +3,13 @@ import datetime as dt
 from agent_yield.interventions import Intervention
 from agent_yield.outcomes import DailyOutcome
 from agent_yield.records import CallRecord
-from agent_yield.report import build_rows, compare_interventions, render_table
+from agent_yield.report import (
+    build_model_rows,
+    build_rows,
+    compare_interventions,
+    render_model_table,
+    render_table,
+)
 from agent_yield.usage import Usage
 
 
@@ -170,3 +176,73 @@ def test_table_shows_both_context_columns_and_dashes_a_missing_population():
 def test_table_stays_within_terminal_width():
     header = render_table([]).splitlines()[0]
     assert len(header) <= 100
+
+
+def _model_call(model: str | None, cache_read: int, *,
+                is_subagent: bool = False, output: int = 0) -> CallRecord:
+    tag = f"{model}{cache_read}{is_subagent}{output}"
+    return CallRecord(
+        timestamp=dt.datetime.fromisoformat("2026-08-24T12:00:00+00:00"),
+        usage=Usage(cache_read_tokens=cache_read, output_tokens=output),
+        session_id="s1",
+        request_id=f"r{tag}",
+        message_id=f"m{tag}",
+        model=model,
+        is_subagent=is_subagent,
+    )
+
+
+def test_models_that_are_not_models_are_reported_rather_than_dropped():
+    rows = build_model_rows([
+        _model_call("claude-opus-5", 500),
+        _model_call(None, 300),
+        _model_call("<synthetic>", 100),
+    ])
+    assert {r.model for r in rows} == {"claude-opus-5", "none", "<synthetic>"}
+    assert sum(r.calls for r in rows) == 3
+
+
+def test_one_model_at_both_roles_stays_two_rows():
+    rows = build_model_rows([
+        _model_call("claude-opus-5", 900),
+        _model_call("claude-opus-5", 100, is_subagent=True),
+    ])
+    assert len(rows) == 2
+    by_role = {r.is_subagent: r for r in rows}
+    assert by_role[False].usage.cache_read_tokens == 900
+    assert by_role[True].usage.cache_read_tokens == 100
+
+
+def test_median_context_is_reported_beside_the_mean_it_corrects():
+    rows = build_model_rows([
+        _model_call("claude-opus-5", 100),
+        _model_call("claude-opus-5", 100),
+        _model_call("claude-opus-5", 1000, output=90),
+    ])
+    row = rows[0]
+    assert row.context_per_call == 400
+    assert row.median_context_per_call == 100
+    assert row.output_per_call == 30
+
+
+def test_rows_are_ordered_by_where_the_money_went():
+    rows = build_model_rows([
+        _model_call("cheap", 100),
+        _model_call("dear", 5000),
+        _model_call("middling", 900),
+    ])
+    assert [r.model for r in rows] == ["dear", "middling", "cheap"]
+
+
+def test_empty_row_set_renders_a_header_and_no_lines():
+    assert render_model_table([]).count("\n") == 1
+
+
+def test_the_model_table_names_every_model_it_was_given():
+    text = render_model_table(build_model_rows([
+        _model_call("claude-opus-5", 500),
+        _model_call(None, 300),
+        _model_call("<synthetic>", 100),
+    ]))
+    for name in ("claude-opus-5", "none", "<synthetic>"):
+        assert name in text
