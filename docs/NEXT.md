@@ -82,6 +82,7 @@ both are corrected.
 | **#18** | Three levers. Parts A and D **done**; **B (statusline), C (agent-length audit) and E (the falsification test) are open.** Part B is the highest value left: the only lever that enforces itself at zero token cost, and #19 landed the scriptable half it can call (`agent-yield status`). |
 | **#22** | Read the boundary probe and decide whether `--enforce` is buildable. **Cannot be done by the session that installs the hook** — that is the whole ticket. Install the probe, start a *new* session, then read `.agent-yield/boundary-probe.jsonl`. |
 | **#20, #21** | Opened by the Windows machine at 01:19–01:20 UTC while the macOS session was working: a blind re-measurement of context/call by model and role, and `report --by-model`. Not started. |
+| **#23** | **Cost thresholds should be absolute tokens, not fractions of the window.** `COST_KNEE = 0.20` moves when the window moves; the bill does not. Filed by Windows 21:33 against `thresholds.py` as shipped, per §4 — not edited. Argument, tables and the breaking case are in the issue. |
 | **#13** | `predict` must use the context it is projecting *for*. **Deliberately deferred** to the week-1 review — do not implement before 09-01. **Partly overtaken:** `bb2cbc0` split predict into two populations, which answers most of it. Read that commit before the review argues with the ticket. |
 | ~~**#19**~~ | **Closed 21:30.** Handoff, status, boundary — B before A before C, as it insisted. |
 | ~~**#17**~~ | **Closed 21:30.** `COST_KNEE`/`COST_STEEP` implemented; the family is surfaced by `status` and the boundary, and gate still does not carry it. |
@@ -215,6 +216,65 @@ The handoff one is the falsification test the whole restart lever rests on: a
 session started from a handoff should open under 60,000 context/call, and its
 first ten calls should cost less than the last ten of the session it replaced.
 It is design.md §7 as well, so it can fail in public.
+
+## [Windows 21:55] What this session added
+
+**Two style guides, and they are enforced, not decorative.**
+`docs/style.md` governs prose, `docs/style-charts.md` governs figures. Every
+example in both is a real line or a real chart written here and thrown away.
+The operator's verdict on the first draft of the cost page was that it was
+machine-generated slop, and he was right: it was pages of measurement that
+never said what anything cost or what to do on Monday.
+
+The two rules that account for most of the damage:
+
+- **Lead with the finding, not the approach.** "Every threshold we have measures
+  the wrong thing" is a claim about our instruments. "We spent 3.02 billion
+  tokens, 565 million of them bought nothing" is a claim about money.
+- **A chart contains data or it is not a chart.** The cost page's first figure
+  was a token axis with six of our own policy constants marked on it. No
+  measured value was plotted anywhere on it.
+
+**`docs/context-cost.html` — the argument for #17/#23, drawn.** Three figures:
+the concentration curve, the two populations, and the smooth no-knee decay.
+Published at https://claude.ai/code/artifact/9cd30289-ff9b-40e6-a80b-76016a6ab14b
+and committed, so it survives the artifact.
+
+**The savings number, which #17 never produced.** Spend above the proposed
+limits, over 20,255 calls:
+
+```
+main capped at 250,000     396M    13% of the corpus
+sub  capped at 150,000     169M     6%
+                          -----
+                           565M    19% of 3,019,183,507
+```
+
+Halve it for what restarting costs — §11 measured 1.07x where per-call
+arithmetic promised 6.2x — and **280M still stands.**
+
+**The concentration readout, which is the strongest single argument for #23:**
+
+```
+                      share of calls   share of spending
+first alarm 600,000         4.05%            10.41%
+stop        400,000        22.35%            41.78%
+restart     250,000        49.88%            74.28%
+dispatch    150,000        72.27%            90.55%
+```
+
+**The alarm we had catches 4% of calls and 10% of the money.**
+
+**A Fable dispatch, briefed by line range, did the second editorial pass.**
+13 tool calls, ~54K reported (understated as always). It caught a factual error
+two humans had read past — "half of every main-session call carries more than
+249,257 tokens" claims half of *each call* — and its criticism of `style.md`
+was sharper than its prose edits: four genuine holes, including that rule 9's
+two-em-dash budget contradicted rule 6's own exemplar. All four are fixed. **One
+dispatch is not evidence about a model**; #21 is what turns that into a table.
+
+**Open, and mine, not the Mac's:** #20 (blind re-measurement, deliberately
+withheld the Windows numbers), #21 (`report --by-model`), #23 (the units).
 
 ## Two review routines still armed
 
