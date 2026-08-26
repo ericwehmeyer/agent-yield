@@ -58,6 +58,45 @@ documents. Sessions are tagged by mode — `build`, `review`, `design`, `audit`,
 and must be recorded by the operator, not inferred**, because a tool that guesses
 the denominator's meaning will guess flatteringly.
 
+### 3.1 Correction, measured 2026-08-25: context size is not a constant
+
+`case-study.md` §3 says average context is ~136K and is *"stable to 0.4% across
+two days and two unrelated workloads."* Run against 20,273 real calls over 15
+days, that claim does not survive:
+
+```
+median   140,293      min  74,349      max  391,473
+stdev / mean = 50.4%
+```
+
+The two figures the case study compared (136,449 and 135,943) were adjacent days
+of similar work. **Two points agreeing is not stability; it is a sample of two.**
+
+What survives and what does not:
+
+- `cost ≈ tool_calls × context_size` is **unaffected** — it is near-definitional,
+  and the join it enables is unchanged.
+- **~136K as a usable constant is withdrawn.** The central tendency is real
+  (median 140,293 across 15 days, within 3% of the case-study figure), but the
+  spread is ±50% and a point estimate hides it.
+
+**Consequence for `predict` (§4.4).** Defaulting to a hardcoded
+`REFERENCE_CONTEXT` was reasonable when 136K looked stable and is not now. The
+projection should be driven by the session's *measured current context*, which
+is knowable at dispatch time, and fall back to the reference only when it cannot
+be read. The existing band already carries the 3× call-count spread; it must also
+carry the context spread, or it will read as far more precise than the data
+supports.
+
+**Consequence for §5.** The daily and session thresholds were calibrated from the
+same two-day sample. They should be treated as provisional in the strong sense —
+not merely "revisit later" but "derived from a sample now known to be
+unrepresentative."
+
+This is exactly the failure the case study documents, turned on the case study
+itself: a careful measurement of a real quantity, over-generalised, and then
+relied upon. It was caught because the tool was pointed at its own evidence.
+
 ## 4. Components
 
 ### 4.1 `transcripts` — the reader
