@@ -115,7 +115,7 @@ both are corrected.
 | **#29** | ~~SessionStart needs a probe~~ — **closed `c979f52`.** Named silences + `--probe`. The general rule is the keeper: *the one hook a session cannot measure by installing it is the one that most needs a probe.* `UserPromptSubmit` at least fires again next prompt; `SessionStart` fires once, before anyone can watch. |
 | **#31** | **[Windows] Open, and addressed, not assigned.** Reinstall the hook with `--probe`, expect 233 tests, restart, paste the probe line. Its `keys` list is the ask — one machine, one binary read, no live capture. |
 | **#28** | What a scheduler can and cannot do, measured: no session can replace itself, `claude -p` works non-interactively, **interactive launch from cron is undocumented**, routines run in Anthropic's cloud. Filed so the assumption stops being repeated without its caveat. Three things worth measuring are listed there. |
-| **#18** | Three levers. Parts A, B, C and D **done**; **only E (the falsification test) is open.** **Part C shipped `10db8f4`** — `agent-yield agents` joins each dispatch to its child's transcript, which is what makes either rubric scorable. Headline: marker-briefed dispatches hold a median **6 calls** against **57** un-briefed (n=4 vs 69, 73 joined, 0 unmatched). It reports, it does not retune. E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
+| **#18** | Three levers. Parts A, B, C and D **done**; **only E (the falsification test) is open.** **Part C shipped `10db8f4`, and its first headline was retracted the same hour.** The 9.5x briefed-vs-un-briefed effect was **project, not brief**; within one project it is 6.0 vs 6.5 calls. **No evidence the markers predict length.** What stands: 4/73 dispatches carried all three markers, 60/73 blew the 10-call cap, and the “populations do not overlap” claim is retired. E is the one that could invalidate §11's headline — one task dispatched as one long agent against three short ones. It needs subagents and a lot of tokens: give it a fresh session, not the tail of one. |
 | **#24** | The status line could carry `rate_limits.seven_day.used_percentage` — measured, free on every render, and on a subscription it is the operator's *real* currency. The design question is whether an allowance percentage counts as "money" under the tokens-never-money rule. **Retitle it: it says "Task 23" and collides with #23.** |
 | ~~**#22**~~ | **Closed 21:55.** Exit 2 refuses the prompt, stderr reaches the operator, and the harness echoes the prompt back. |
 | **#20, #21** | Opened by the Windows machine at 01:19–01:20 UTC while the macOS session was working: a blind re-measurement of context/call by model and role, and `report --by-model`. Not started. |
@@ -524,48 +524,57 @@ beside it, since this payload has been measured on exactly one machine, by
 reading a binary rather than catching a live call. If the Windows key list
 differs, §3.1's lesson applies again.
 
-## [macOS 2026-08-25] #18 Part C: the rubric, finally scored
+## [macOS 2026-08-25] #18 Part C: the rubric scored, and the first answer retracted
 
 `agent-yield agents` joins each dispatch to the transcript of the agent it
-started. That join is the whole point: §11's length rule needs the child's call
-count, §12's marker rubric needs the parent's prompt, they live in different
-files, and **hooks do not fire inside a subagent** — so `gate` could see a brief
-and never learn what it cost. Over **73 dispatches, 0 unmatched**:
+started - §11's length rule needs the child's call count, §12's markers need
+the parent's prompt, they live in different files, and **hooks do not fire
+inside a subagent**. 73 dispatches joined, 0 unmatched.
 
-| | n | median calls | median ctx/call | median tokens |
-|---|---|---|---|---|
-| all three markers | 4 | **6** | 39,139 | 264,622 |
-| missing one or more | 69 | **57** | 84,357 | 5,074,043 |
+**Read this before quoting any number from it.** The first result was a 9.5x
+effect, it was wrong, and it was in `thresholds.py`, a commit message, this
+page and two issue comments within the hour.
 
-**9.5× on calls, 2.2× on context, 19× on tokens.** First evidence the markers
-*predict* length rather than correlating with an author who was being careful
-anyway.
+| pooled, all projects | n | median calls |
+|---|---|---|
+| all three markers | 4 | 6 |
+| missing one or more | 69 | 57 |
 
-**It reports; it does not retune, and the reasons are the interesting part.**
-n=4. The marker-detected four are **not** the hand-identified four the
-constants were fitted to — automatic selection picks a different set, so this
-is a new measurement, not a replication. Retuning wants #27's prospective 20.
+**Entirely project.** All 61 long un-briefed dispatches were
+`model-migration-kit`'s audit fleet; all 4 briefed ones were this repo's.
+Exactly one project held both groups:
 
-**A written-down claim did not survive the bigger corpus.** `thresholds.py`
-said the briefed and un-briefed populations *"do not overlap at all"* (4–27 vs
-62–188). Over 73 they overlap: **briefed 3–30, un-briefed 3–118.** True of
-eight hand-picked dispatches, false of seventy-three, and corrected next to the
-constants rather than in a commit message nobody reading them would find.
+| agent-yield only | n | median calls | median ctx/call |
+|---|---|---|---|
+| all three markers | 4 | **6.0** | 39,139 |
+| missing one or more | 8 | **6.5** | 28,353 |
 
-**The uncomfortable number: 4 of 73 dispatches carried all three markers, and
-60 of 73 exceeded the 10-call cap** (longest **118**). The rubric is followed
-about 5% of the time, in the repo whose subject is the rubric, by the people
-who wrote it. That also reshapes #27 Stage 2 — an enforcement firing on 95% of
-dispatches is the `RESTART_HARD_FACTOR` failure again, so the compound
-condition is load-bearing, not decoration.
+**There is currently no evidence that the three detectable markers predict
+dispatch length.** The briefed ones carried *more* context per call. `render`
+now refuses the pooled comparison and prints per-project rows, with a test
+asserting the tempting number never appears - **the tool made the confound
+invisible, so the tool was the bug**, and "remember to check" is not a fix.
 
-**The join is a heuristic and is labelled one.** No structural link exists: the
-parent's `tool_use` id appears nowhere in the child, and the child's first
-record has `parentUuid: null`. Match is same session, same subagent type, child
-starting within 120s (measured lag 1.4–1.6s). It reports `unlinked` rather than
-guessing, and `--unlinked` lists the orphans — **a join whose failures are
-invisible is indistinguishable from one that always works**, which is #29's
-lesson one file over.
+**What survives, and it is not nothing:**
+
+- **The overlap claim is retired.** `thresholds.py` said the two populations
+  "do not overlap at all" (4-27 vs 62-188). Within agent-yield: un-briefed
+  3-27, briefed 3-30. True of eight hand-picked dispatches, false of twelve
+  measured ones.
+- **4 of 73 carried all three markers; 60 of 73 blew the 10-call cap**
+  (longest **118**). The rubric is followed ~5% of the time, in the repo whose
+  subject is the rubric.
+- **§12's asymmetry is untouched** - "the child pays once, the parent pays on
+  every call after" is per-call economics measured elsewhere. What is
+  unsupported is that *these three regexes* are what capture it.
+- **#27 Stage 2 is now worse-supported, not better.** It was blocked on this
+  data; the data does not justify refusing a dispatch on markers. Keep
+  `--enforce-brief` off.
+
+**The lesson worth carrying: speed of publication is a risk multiplier.** It
+was a *good* result, and good results do not invite scrutiny. The gap between
+measuring and quoting is where this gets expensive - the same shape as #29,
+where a contract was labelled "measured" because it had been read carefully.
 
 ## Two review routines still armed
 
