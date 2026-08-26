@@ -1013,3 +1013,37 @@ itself the input to #38.
 | **#36** | the index and the parent loop | as a practice, **no code** — `predict` is the standing example of shipping a subcommand for an unvalidated shape. |
 | **#37** | `BRIEF:` / `EXPLORE:` self-declaration | what §12 left open and what #32 says the detector cannot do. Makes the exploratory share measurable. Related: #27, #32. |
 | **#38** | **can the method build itself?** | build #36 and #37 through the baton rather than by hand. A method that cannot carry its own implementation is not a method. Three outcomes, all recorded in advance, and "it cannot hold discipline" is the most useful of them. |
+
+### [Windows 23:55] Three more tickets, and a Windows bug that was hiding under them
+
+**`project_slug` never handled Windows paths** (`68f068f`). `C:\...` becomes
+`C--Users-...` in the transcript tree — drive colon and every backslash become a
+dash — and the slug replaced neither. So `cb8bb7d`'s project scoping returned
+`None` for **every** session on this machine: `status` and `restart_advice`
+measured nothing and said nothing about it. Worse than the cross-project
+fallback it replaced, which at least failed loudly. It surfaced as `cb8bb7d`'s
+own test failing here, because the fixture builds its directory *from* the slug.
+250 green; `status` resolves a session on Windows for the first time.
+
+**The `SessionStart` hook is installed here** (#31). `.claude/settings.json` did
+not exist at all — **`gate`, `boundary` and the status line have never been
+installed on this machine either**; the only local hook was a stale `PreToolUse`
+probe pointing at *migration-kit's* venv. The probe line posted to #31 carries
+**synthetic keys**: this session installed the hook and no session can measure a
+hook it installs. **The real Windows key list still needs a restart, and that is
+#31's actual ask.**
+
+| | |
+|---|---|
+| **#39** | the harness ships a `Workflow` orchestrator and superpowers ships three relevant skills. **Evaluate before #36 writes a parent loop by hand.** `agent(prompt, {schema})` validates the return at the tool layer and retries the model on mismatch — the two-line contract stops being a request. It does not dodge re-entry, and if #33's arms use different dispatch mechanisms the result is confounded. |
+| **#40** | `handoff` appends where it should supersede: ~2,800 of 3,716 injected characters are the same paragraph four times. |
+| **#41** | Windows mojibake — the injection carries `Â§12` and `§7` in the same payload, so one write path omits `encoding="utf-8"` and another does not. |
+
+**#35 now has a protocol and a recorded prediction** (`7ffc414`). Slice set cut
+once and held fixed; only the packing varies — 12 agents / 3 agents / 1 agent
+over the same 12 slices. Part E's limits paragraph is why this is worth running:
+it says the long-unit regime is **untested** and that what it retracted was
+*"splitting saves"*, not *"splitting never saves"*. Quality is scored only
+through each slice's own test command — pass, fail, or never run — because
+silently skipped slices are invisible in a token count. **If the 12-agent arm
+wins, the 10-call cap should be un-retracted rather than left quietly retired.**
