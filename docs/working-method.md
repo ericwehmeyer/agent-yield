@@ -503,6 +503,86 @@ saves".** What replaces it is narrower and has a number attached: *a split
 costs ~19,800 tokens per extra agent before any work happens, and only pays if
 it also reduces total calls — which, on this task, it did not.*
 
+
+## 11.2 Re-entry, measured across the corpus (issue #34)
+
+**§11.1's ~19,800 was one number from one run, and the entire cost model on the
+baton rests on it being *fixed*.** Fixed is what makes it amortise, and
+amortising is the only reason a long unit can beat a short one. If it scales
+with the brief instead, then §12's five-part brief is buying its own cost back
+and "one unit of work" is not free either.
+
+**The first call of an agent is charged before the agent has read anything**, so
+its context *is* the re-entry price: system prompt, tool schemas, brief. Every
+subagent transcript that survives on this machine, joined to the dispatch that
+started it by `agents.join`: 142 files, 84 with billable calls, 93 dispatches,
+**79 joined and 0 runs left unclaimed**.
+
+| | tokens |
+|---|---|
+| min | 8,909 |
+| median | **22,114** |
+| mean | 21,353 |
+| max | 26,401 |
+| stdev | 2,958 |
+
+**It is fixed, near enough, and §11.1's 19,800 is 12% low.** The band is tight —
+one standard deviation is 13% of the median — and anything estimating what a
+dispatch costs before it starts should use **~22,000 for a `general-purpose`
+agent**, not 19,800.
+
+### The brief moves it, and by less than the fit says
+
+```
+slope       780 tokens per 1,000 brief chars     intercept 18,160     r 0.412
+mechanical  ~250 tokens per 1,000 brief chars    (4 chars a token)
+```
+
+**The fitted slope is three times the mechanical price of the text**, and within
+each project separately it is 476 (agent-yield, n=17) and 1,835
+(model-migration-kit, n=62) — 2× and 7×. A brief cannot cost seven times what it
+tokenizes to. **So brief length is standing in for something else that arrives
+with it**, and the slope must not be read as "what a brief costs". Two candidates
+worth separating, neither measured here: a longer brief names more files, and a
+longer brief comes from a session that has more loaded.
+
+What the data does support is the size of the whole effect, which is small:
+
+| briefs | median brief | median first call |
+|---|---|---|
+| shortest quarter | 2,678 chars | 20,038 |
+| longest quarter | 4,950 chars | 22,281 |
+
+**11% across the interquartile range of real briefs.** So #34's question — *does
+the five-part brief buy its own cost back?* — is answered **no, and it does not
+need to**: at ~4,000 characters a brief accounts for something between 1,000
+tokens (mechanical) and 3,100 (the pooled fit) against a floor of ~18,000. Write
+the brief. It is not where the money is.
+
+### The one number here that could change a decision
+
+| subagent type | n | median first call |
+|---|---|---|
+| `general-purpose` | 74 | 22,131 |
+| `claude-code-guide` | 2 | 13,860 |
+| `statusline-setup` | 2 | 9,440 |
+| `Explore` | 1 | 8,909 |
+
+**A narrow agent type appears to arrive for a third of the price of a
+`general-purpose` one** — and re-entry is charged per agent, so on a twelve-agent
+baton that is the difference between ~265,000 tokens of arrival and ~110,000.
+**n is 1 and 2. That is a lead, not a finding**, and it is the cheapest
+measurement on this page: dispatch the same brief to `general-purpose` and to a
+narrow type and read the two first calls.
+
+### Limits
+
+One machine, two projects, and — the one that bites — **these are the survivors.**
+Subagent transcripts are volatile (`discovery`: 249 of 352 already empty on the
+Windows corpus, 1 of 112 here), files empty over time, so recent dispatches are
+over-represented and anything that changed the price of re-entry earlier in the
+history is invisible. 62 of the 79 rows come from a single project.
+
 ---
 
 ## 12. The dispatch rubric: what a brief must contain
