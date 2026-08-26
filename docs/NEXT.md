@@ -1921,3 +1921,81 @@ the return payload, not depth. §11.4 fitted runs of >=20 calls and was right to
 **Limits:** four runs of one task, one packing alternative (5 against 1, nothing
 between), two working trees of byte-identical source (#47 pinned `src/` to
 76cbf08), and a packed depth of 13.5 against a break-even in the high tens.
+
+### [Windows 11:42] The audit's last four, and the two guards that caught their own bugs
+
+**N4 (#64), N5, N9 and N11 are closed. That is eleven of eleven, and the
+audit is finished.** Nothing from it is open, silent, or latent any more.
+
+**N4 was the last live undercount, and it exits 0.** `find_transcripts` walked
+with `rglob`, which is built on `glob`, which catches `OSError` in six places
+on its scandir path. A subtree the process cannot enter simply does not
+appear: fewer files, a smaller call count from `ingest`, clean exit. **A
+partial walk and a complete walk were the same output.** Undercounting is the
+one error this tool's own docstrings say it exists to prevent.
+
+Measured here: `~/.claude/projects` has a longest path of 166 characters and
+the scratch tree **288** -- already past the 260-character MAX_PATH limit. It
+works on this box only because `LongPathsEnabled = 1` in the registry, which
+is off by default and is a per-machine setting nobody in this repo controls.
+**No attempt was made to solve long paths.** `scan_transcripts` returns what it
+found *and* what it could not reach, `os.walk` replacing `rglob` for the
+single reason that it takes an `onerror` callback, and `ingest` says on stderr
+that the count is a floor. Verified against the real tree before committing:
+824 files by `rglob`, 824 by the walk, identical lists.
+
+**N5 was a shape rule pretending to be a property.** `_repo` keeps a person's
+name off a page that may be shared, and its home check was `len(parts) == 2` --
+a description of one shape, a local home directory, which missed every path
+with anything in front of it. `//server/Users/ada` splits to three segments and
+returned the account name; `//wsl.localhost/Ubuntu/home/eric` to four. The rule
+is *the segment before the last* now, which is deliberately looser than needed:
+a repository whose parent is literally named `home` renders as `(home)` rather
+than by name. **That direction is chosen and written down** -- the cost of one
+error is a label, the cost of the other is somebody's name. A redaction should
+fail toward redacting. Eleven literal shapes as a table, because a redaction
+with a shape missing from its table is a redaction with a leak in it, and the
+two the audit found were missing precisely because nobody had typed them.
+
+**N11 is the smallest finding and produced the sharpest lesson, from the guard
+rather than the fix.** Every text file this tool writes now names its line
+ending. Nothing broke without it. It matters because `calls.jsonl`,
+`handoff.md` and the probe logs are what this repo compares between two
+machines, and `statusline._slice` already reads one of these trees in `"rb"`
+and cuts it by byte offset.
+
+**The guard's first run reported five modules clean that were not.** The mode
+is the *first* positional argument of `Path.open` and the *second* of the
+builtin; reading `args[1:]` for both scored every `PROBE_PATH.open("a", ...)`
+in the hooks as mode `"r"`. **A guard scoped one argument too narrowly says
+nothing while looking like it said yes** -- which is worse than the two failure
+modes already recorded here (firing on prose, and banning the fix), because
+those are visible and this one is a green tick. The only reason it was caught
+is that the offender list was read against the audit's list and came up two
+sites short.
+
+**Three of the four needed two tests each, and by now that is a rule rather
+than a habit.** A claim that can only be triggered on one platform gets a real
+trigger there *and* an injected one everywhere: N2's held file handle plus an
+injected `OSError`; N4's `chmod` on POSIX plus an injected `PermissionError`
+(the real MAX_PATH trigger cannot be built on the box that has long paths
+enabled); N11's byte assertions, vacuous on POSIX by construction, plus a
+static rule that fires on every platform. **A one-platform proof with no
+cross-platform companion is a branch that gets refactored away six weeks from
+now on the other machine, with a green suite.**
+
+**N9 needed no branch at all.** The git test helper stripped `SystemRoot`,
+which is a documented way to break a child process on Windows and would have
+presented as an unreproducible one-platform flake. The rule that fixes it --
+*pass it through if the parent has it* -- is correct on every platform, so
+there is no `os.name` check and the test asserts on all three. Reach for the
+platform-independent statement of a platform bug first; it exists more often
+than it looks.
+
+**CI could not confirm the last three commits.** Two runs came back
+`startup_failure`, one had every job `cancelled` with no concurrency group in
+the workflow to explain it, one has been queued for over twenty minutes, and
+the push of `#64` produced no run at all. That is an Actions problem, not a
+repo one -- `73b00ec` and `db28427` were green on all six jobs an hour
+earlier, and nothing since has touched the workflow. **Do not read the current
+matrix as a signal until a run completes.** Re-check before trusting it.
