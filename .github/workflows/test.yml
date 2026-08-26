@@ -1,0 +1,39 @@
+# Three operating systems, because a green suite on one is currently
+# indistinguishable from a correct one: two Windows-only defects rode a green
+# suite for a day or more before an unrelated test fixture and a question
+# about token usage turned them up.
+#
+# CI is deliberately NOT the whole answer, and this file should not be read as
+# "portability handled". Scored against the five platform defects found on
+# 2026-08-26, this matrix would have caught one of them -- the symlink
+# privilege, and only because it raises. Three had no test on any platform, so
+# a matrix would have turned them green on three operating systems instead of
+# one. tests/test_portability_guard.py is the half that catches those, and the
+# two ship together on purpose.
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        python: ["3.11", "3.14"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e . pytest
+      # No PYTHONUTF8 and no PYTHONIOENCODING. Either would paper over #43 --
+      # a cp1252 stdout is the exact class this matrix exists to catch, and a
+      # workflow that sets the encoding is measuring a machine nobody has.
+      #
+      # -rs because an invisible skip is issue #29's silence: a skipped arm
+      # that prints nothing reads as a passing one.
+      - run: python -m pytest -rs
