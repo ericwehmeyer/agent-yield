@@ -405,6 +405,17 @@ const TREE = {
     scope: [
       "<b>REAL:</b> " + REAL_SCOPE.calls,
       "<b>denominator:</b> " + REAL_SCOPE.outcomes,
+      /* One clone's work on BOTH sides -- calls scoped by cwd to that path,
+         commits from that clone's reflog -- and the other machine in \u00a77
+         keeps a corpus that is never pushed. So no figure on this page is
+         re-derivable anywhere but where it was captured. The path was always
+         inside REAL_SCOPE.calls, in prose; it is a field now because the
+         generator's own --check spent a day reading a foreign clone's numbers
+         as staleness for want of something it could read. */
+      "<b>one clone:</b> both sides of this leaf are " +
+        esc(REAL_SCOPE.machine || "the capturing clone") +
+        "'s own work; the other machine keeps a separate corpus and cannot " +
+        "re-derive a figure on this page",
       REAL_SCOPE.captured,
     ],
   }]),

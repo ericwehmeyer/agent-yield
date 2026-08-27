@@ -2717,6 +2717,13 @@ The bars are written on **weighted tokens**, which `cache-decomp.py` had already
 
 ## [macOS 2026-08-27 00:25] The org dashboard's staleness check treats the corpus as a history, and it is a survivors list
 
+> **SUPERSEDED THE SAME HOUR, and left standing because deleting it would hide
+> how the wrong answer was reached.** The diagnosis below -- §11.2 evaporation
+> -- is wrong, and the three-part fix it specifies would have papered over the
+> real defect. Read the entry after this one. What survives from here: the
+> corpus is correct, the page is correct, `--write` would have deleted a real
+> day, and the UTC red herring is still a red herring.
+
 **`pytest` is RED on this machine on two tests, and `dashboard-data.py --write` — the remedy the failure message prints — would make it worse by deleting a real day. Do not run it.**
 
 ```
@@ -2754,3 +2761,95 @@ So `--write` would drop the 08-25 row and **silently shrink the page's own scope
 3. **Guard the exemption.** Both tests skip reproduction *only* for rows explicitly marked frozen, and **still fail on a day that vanishes without being frozen**. Parts 1 and 2 alone are a blanket amnesty that would let a genuine ingest bug pass as evaporation — which is exactly how #26, #32, #44 and #33's own VOID bar went wrong.
 
 Also worth saying in `REAL_SCOPE`'s caveat: days past the transcript-retention horizon are **frozen captures, not live re-derivations**. A reader currently assumes every row is reproducible.
+
+## [macOS 2026-08-27 00:50] The page was never this clone's to check, and one hour of the wrong diagnosis is the finding
+
+**`pytest` was red on two dashboard tests. It was not evaporation. The page is
+the WINDOWS clone's leaf, and the check had no idea which machine it was
+running on.** Green now, on both machines, and no data was deleted.
+
+The previous entry read the failure as §11.2 evaporation -- transcripts aged
+out, the corpus is a survivors list -- and specified a three-part fix built
+around a new `evaporated` bucket. Every part of that would have been wrong, and
+wrong in the direction that looks like it is working.
+
+### Three confirmations, none of which needed a corpus walk
+
+- `REAL_SCOPE.calls` on the page names its own clone: `those whose recorded
+  cwd is C:\Users\ewehm\repos\agent-yield (21,614 calls in the corpus overall)`.
+- `7e858ec`, which wrote both blocks, is authored by `E. Wehmeyer`. This clone
+  commits as `ericw`.
+- This machine's corpus holds **6,529 records and not one** with a Windows
+  `cwd`. The Windows corpus holds 21,614. `.agent-yield/` is gitignored and is
+  never pushed.
+
+The leaf is per-clone on **both** sides -- the numerator is `scope_to_repo`'d
+to this clone's path, the denominator is `daily_outcomes(..., machine=Machine
+(ROOT))`, this clone's reflog. So `--check` here was comparing two disjoint
+populations and reporting thirteen true differences. Every one of them was
+correct. Together they meant one thing, and it was not staleness.
+
+### Why the specified fix was the trap its own part 3 warns about
+
+An `evaporated` bucket -- *the page has a closed day, the fresh build has no
+scoped records at all, do not fail* -- describes the cross-clone case
+**exactly**. It would have shipped as a blanket amnesty over the real defect,
+and the check would have gone quiet and stayed quiet on the wrong machine
+forever. Part 3 was written to prevent precisely that ("a genuine ingest bug
+passing as evaporation... which is how #26, #32, #44 and #33's own VOID bar
+each went wrong") and could not have, because the guard it proposes -- freeze
+the row -- keys on the wrong fact. **The exemption has to key on the thing that
+actually differs, and that was the machine.**
+
+And there is no evaporation. A day that has aged out has not been observed
+anywhere. Nothing was built for it.
+
+### What landed
+
+1. **`REAL_SCOPE.machine`** -- the capturing clone, machine-readable. The path
+   was always inside `REAL_SCOPE.calls`, in prose, where only a person reading
+   closely would find it, and for a day nobody did. Same argument as #73's
+   timestamp one field over: a claim a reader cannot mechanically check is a
+   claim that goes unchecked. Pages older than the field are still handled --
+   `capturing_clone()` falls back to parsing that prose, which is why this fix
+   works today without touching the Windows machine.
+2. **`diff()` returns a third bucket, `foreign`**, returned INSTEAD of a
+   comparison rather than alongside one. `--check` on a clone that did not
+   capture the page prints *NOT CHECKABLE HERE*, names both clones, and
+   **exits 0**. A check that cannot run is not a check that failed.
+3. **`--write` REFUSES on a foreign clone** and says what it would have
+   destroyed. Its old advice was the danger: the failure message told a reader
+   to run `--write`, and on this machine that would have replaced the page's
+   2026-08-25 row -- 146 calls, $15.18, 10 commits, 17.8M tokens of real
+   Windows work -- with a day this clone never made, silently shrinking the
+   page's scope. #72/#81's shape, third time. `--adopt` is how somebody moves
+   the leaf here in so many words.
+4. **The page carries the caveat for readers**, not just for the checker: the
+   scope strip now says both sides of this leaf are one clone's own work and
+   the other machine cannot re-derive a figure on it.
+5. **The two staleness tests skip on a foreign clone**, visibly, under the
+   `pytest -rs` rule #29 exists for -- and
+   `test_the_check_tells_a_foreign_clone_from_a_vanished_day` holds the skip to
+   being a skip. It asserts all three: another clone's leaf is never reported
+   as stale; on the capturing clone a vanished day **still fails**; and a
+   closed day that merely moved **still fails**, which is #73's original
+   criterion. It needs no corpus, so it runs in CI, where the pair it guards is
+   skipped.
+
+641 passed, 4 skipped, and every skip is a platform or clone fact with its
+reason on screen.
+
+### Still open, and it belongs to the other machine
+
+The Windows clone should run `dashboard-data.py --write` once. Two things are
+waiting on it: `2026-08-26` is captured as `partial: true` and that day has
+since closed, so the row is a floor presented as a total; and the explicit
+`machine` field only gets stamped by a write. Neither is urgent -- the fallback
+parse means the check is correct in the meantime -- and **this clone cannot do
+it for them**, which is now enforced rather than merely true.
+
+The general lesson is the cheap one and it is not about dashboards. **A metric
+scoped to one machine, published to a repo two machines share, needs to carry
+which machine it came from, or the other one will eventually check it and be
+told a lie in whichever direction it happens to point.** The page had that
+information the whole time. It was in prose.

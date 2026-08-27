@@ -17,6 +17,19 @@ renders in its scope strip.
 touching nothing, and exits non-zero if a CLOSED day has moved. `--write`
 rewrites the two blocks.
 
+**The leaf is ONE CLONE's work, on both sides**, and until now nothing said so
+in a form a program could read. The numerator is scoped by `cwd` to this
+clone's path; the denominator is this clone's reflog. Two machines work this
+repo (§7) and `.agent-yield/` is never pushed, so a page captured on one of
+them cannot be re-derived on the other -- every row differs, correctly, and
+`--check` read that as *the page is stale*. It is not: it is *this is not the
+population the page measured*. `REAL_SCOPE.machine` now records the capturing
+clone, `--check` elsewhere reports it and exits 0, and `--write` elsewhere
+REFUSES -- rewriting there would replace the capturing clone's real days with
+this one's and shrink the page's scope with nothing marking that a day was
+lost, which is #72/#81's shape exactly. `--adopt` is how somebody moves the
+leaf to this clone in so many words.
+
 A day that has not ended yet still moves. `partial: true` marks it, the page
 chips the row, and `--check` reports its drift without failing on it: a day
 that is still accruing is not stale, it is unfinished. The distinction is the
@@ -43,6 +56,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
 import re
 import sys
 from pathlib import Path
@@ -59,6 +73,12 @@ from agent_yield.report import scope_to_repo  # noqa: E402
 
 PAGE = HERE / "dashboard.html"
 CORPUS = ROOT / ".agent-yield" / "calls.jsonl"
+
+# `REAL_SCOPE.calls` has named the capturing clone since the block was first
+# generated, so a page written before `machine` existed can still say where it
+# came from. The explicit key wins; this only bridges pages older than it.
+CLONE_IN_CALLS = re.compile(
+    r"those whose recorded cwd is (.+?) \([\d,]+ calls in the corpus overall\)")
 
 # The window the leaf covers. Every call this repo has ever made falls inside
 # it; it is an argument rather than a constant so that widening it is a
@@ -165,6 +185,12 @@ def build(since: dt.date, until: dt.date) -> dict:
     note = (f"; {', '.join(partial)} had not ended and is marked PARTIAL"
             if partial else "")
     scope = {
+        # Machine-readable provenance, and the same argument as #73's
+        # timestamp one line down: the page already NAMED this path inside
+        # `calls`, in prose, where only a person could find it. `--check` ran
+        # on the other clone for a day and reported thirteen true differences
+        # as staleness because nothing it could read said whose leaf this is.
+        "machine": str(ROOT),
         "calls": f"{len(scoped):,} of {len(window):,} calls this machine made "
                  f"{since}..{until} -- those whose recorded cwd is {ROOT} "
                  f"({len(corpus):,} calls in the corpus overall)",
@@ -203,12 +229,74 @@ def page_days() -> list[dict]:
         raise Unreadable(f"REAL_DAYS is not JSON: {exc}") from None
 
 
-def diff(fresh: list[dict]) -> tuple[list[str], list[str]]:
-    """Disagreements, split by whether the day had ended. Closed ones fail."""
+def page_scope() -> dict:
+    """What the page's `REAL_SCOPE` block holds, parsed back out."""
+    text = PAGE.read_text(encoding="utf-8")
+    block = re.search(r"^const REAL_SCOPE = (\{.*?^\});$", text, re.M | re.S)
+    if not block:
+        raise Unreadable("no REAL_SCOPE block on the page at all")
+    try:
+        return json.loads(block.group(1))
+    except json.JSONDecodeError as exc:
+        raise Unreadable(f"REAL_SCOPE is not JSON: {exc}") from None
+
+
+def capturing_clone() -> str | None:
+    """The clone whose work the page's leaf is, or None if it does not say."""
+    scope = page_scope()
+    explicit = scope.get("machine")
+    if isinstance(explicit, str) and explicit:
+        return explicit
+    match = CLONE_IN_CALLS.search(scope.get("calls") or "")
+    return match.group(1) if match else None
+
+
+def same_clone(theirs: str, ours: Path) -> bool:
+    r"""Is the page's clone this one?
+
+    `normcase` on both sides and deliberately NO `abspath`, which is where
+    `scope_to_repo`'s rule stops applying: both values are already absolute,
+    and resolving a foreign absolute path against this filesystem is what
+    turns `C:\Users\...` into `/Users/ericw/.../C:\Users\...` -- a path that
+    matches nothing, by accident rather than by measurement.
+    """
+    return os.path.normcase(theirs) == os.path.normcase(str(ours))
+
+
+def diff(fresh: list[dict]) -> tuple[list[str], list[str], list[str]]:
+    """Disagreements, split three ways. Only `stale` fails.
+
+    `foreign` is not a gentler `stale`. It is the statement that nothing here
+    was measured over the same population, so there is nothing to compare --
+    and it is returned INSTEAD of a comparison, never alongside one. A
+    row-by-row diff of two clones' work is thirteen true differences that
+    mean one thing, and reading them as drift is how this check spent a day
+    pointing at the wrong defect.
+
+    It is also not an amnesty, and that distinction is the whole of it: on
+    the clone that DID capture the page, a day that vanishes is still
+    `stale` and still fails. #26, #32, #44 and #33's own VOID bar each went
+    wrong by widening an exemption until a real defect fitted inside it.
+    """
     try:
         on_page = {d["day"]: d for d in page_days()}
+        theirs = capturing_clone()
     except Unreadable as exc:
-        return [f"the page cannot be checked ({exc}); run --write once"], []
+        return [f"the page cannot be checked ({exc}); run --write once"], [], []
+    if theirs is None:
+        return [], [], [
+            "the page does not say which clone captured it, so its rows are "
+            "re-derivable nowhere; one --write on the clone whose work it is "
+            "stamps REAL_SCOPE.machine and this check starts working again",
+        ]
+    if not same_clone(theirs, ROOT):
+        return [], [], [
+            f"the page's leaf is {theirs}'s work; this clone is {ROOT}",
+            "both of its sides -- calls scoped by cwd, commits from that "
+            "clone's reflog -- were measured there, and .agent-yield/ is "
+            "never pushed, so nothing on the page can be re-derived here",
+            f"days it holds: {', '.join(sorted(on_page))}",
+        ]
     stale: list[str] = []
     drifting: list[str] = []
     for day in fresh:
@@ -222,7 +310,7 @@ def diff(fresh: list[dict]) -> tuple[list[str], list[str]]:
     measured_days = {d["day"] for d in fresh}
     stale.extend(f"{day}: on the page, absent from the corpus"
                  for day in on_page if day not in measured_days)
-    return stale, drifting
+    return stale, drifting, []
 
 
 def report(data: dict) -> str:
@@ -275,6 +363,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--write", action="store_true",
                         help="rewrite REAL_SCOPE and REAL_DAYS on the page")
+    parser.add_argument("--adopt", action="store_true",
+                        help="with --write on a clone that did not capture the "
+                             "page: move the leaf HERE, replacing that clone's "
+                             "days with this one's")
     parser.add_argument("--json", action="store_true",
                         help="dump the whole computation")
     parser.add_argument("--since", type=dt.date.fromisoformat, default=SINCE)
@@ -287,13 +379,35 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     print(report(data))
+    stale, drifting, foreign = diff(data["REAL_DAYS"])
+
     if args.write:
+        if foreign and not args.adopt:
+            print("\nREFUSING TO WRITE -- the page's leaf is not this clone's:")
+            for line in foreign:
+                print(f"  {line}")
+            print("\nWriting here would replace those days with this clone's own and "
+                  "shrink\nthe page's scope with nothing marking that a day was lost "
+                  "-- #72/#81's\nshape, and the reason that finding keeps being "
+                  "refiled. Re-run this on\nthe capturing clone, or pass --adopt to "
+                  "move the leaf here deliberately.")
+            return 1
         write(data)
         print("\nrewrote REAL_SCOPE and REAL_DAYS")
         print("prose is NOT rewritten -- design.md's opening quotes the rollup above")
         return 0
 
-    stale, drifting = diff(data["REAL_DAYS"])
+    if foreign:
+        # Exit 0. The page is not stale; it is not this clone's to check, and a
+        # check that cannot run is not a check that failed.
+        print("\nNOT CHECKABLE HERE -- the page was captured on another clone:")
+        for line in foreign:
+            print(f"  {line}")
+        print("\nThis is not staleness. Run --check on that clone to learn whether "
+              "the\npage has actually gone stale; the report above is this clone's "
+              "own work,\nwhich the page has never claimed to cover.")
+        return 0
+
     if drifting:
         print("\nstill accruing, so this is movement rather than staleness:")
         for line in drifting:

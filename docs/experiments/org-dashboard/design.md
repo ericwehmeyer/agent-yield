@@ -9,7 +9,13 @@ real number in `dashboard.html`.
 Those figures are a capture, and the page names the instant it was taken.
 `dashboard-data.py --write` produces them; `dashboard-data.py` alone re-derives
 them and exits non-zero if a closed day has moved, which is what
-`tests/test_org_dashboard_unit.py` runs. The second day had not ended when the
+`tests/test_org_dashboard_unit.py` runs. **On the clone that captured them** --
+both sides of the leaf are per-clone, calls scoped by `cwd` and commits from
+that clone's reflog, and `.agent-yield/` is never pushed, so the other machine
+in §7 can neither re-derive a figure here nor be told it has gone stale.
+`REAL_SCOPE.machine` names the clone, the check there says *not checkable* and
+exits 0, and `--write` there refuses rather than replacing a real day with a
+day this clone never made. The second day had not ended when the
 capture was taken and is chipped `PARTIAL` on its row: its figures are a floor,
 they are in the totals above unmarked, and excluding them would be a different
 silence. Numbers quoted from an earlier capture -- $116.26 over 12,696 lines,

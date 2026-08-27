@@ -1,4 +1,4 @@
-"""The org dashboard's numerator unit, and the three ways it can rot.
+"""The org dashboard's numerator unit, and the four ways it can rot.
 
 #72. The prototype's headline was `tokens per inserted line`, summing raw
 `usage.total`. `thresholds.py` L76 calls that unit crude in the same file the
@@ -8,7 +8,7 @@ discipline -- posts a lower total for the same work and ranks better. A
 Director reassigning headcount would be reassigning it on a cache-hit ranking.
 The headline is now list-price dollars per 1,000 inserted lines.
 
-Three failure modes, and this file has tests for each:
+Four failure modes, and this file has tests for each:
 
 * **The constants drift.** `PRICING` in `dashboard.html` is a hand-copy of
   `pricing.py`'s rate table. A copy that silently disagrees with its source is
@@ -24,6 +24,14 @@ Three failure modes, and this file has tests for each:
   one, and the page printed neither time. `dashboard-data.py` now writes both
   blocks in one stamped invocation, and the tests below are what keep the page
   from drifting away from it again.
+* **The leaf is checked against the wrong machine.** Both of its sides are
+  per-clone -- calls scoped by `cwd`, commits from that clone's reflog -- and
+  `.agent-yield/` is never pushed, so a page captured on one of §7's two
+  machines is re-derivable only there. `--check` on the other reported every
+  row as staleness, correctly and uselessly, and its printed remedy would have
+  replaced a real day with nothing. The pair below now SKIPS on a clone that
+  did not capture the page, and `test_the_check_tells_a_foreign_clone_from_a
+  _vanished_day` is what keeps that skip from becoming an amnesty.
 
 The staleness tests come in a pair on purpose. One asks whether the page still
 equals a fresh capture; the other recomputes the dollar figures straight from
@@ -106,6 +114,40 @@ def _real_days() -> list[dict]:
             "closed. Re-run `python docs/experiments/org-dashboard/"
             "dashboard-data.py --write` rather than editing the block."
         )
+
+
+def _skip_if_captured_elsewhere(module) -> None:
+    """Skip where the page's leaf is another clone's, and say so out loud.
+
+    Not `assert`, and not silence either: `pytest -rs` is what CI runs (#29),
+    so this reads as a reported skip rather than a pass. The condition is a
+    fact about which machine is running, exactly like the corpus skip above.
+    """
+    theirs = module.capturing_clone()
+    if theirs is None:
+        pytest.skip("the page does not record which clone captured it; one "
+                    "--write on that clone stamps REAL_SCOPE.machine")
+    if not module.same_clone(theirs, _ROOT):
+        pytest.skip(
+            f"the page's leaf is {theirs}'s work and this clone is {_ROOT}. "
+            "Both its sides are per-clone and .agent-yield/ is never pushed, "
+            "so there is nothing here to re-derive it from."
+        )
+
+
+def _fake_page(tmp_path: Path, machine: str, days: list[dict]) -> Path:
+    """A page holding just the two blocks the generator reads back."""
+    page = tmp_path / "dashboard.html"
+    scope = {"machine": machine, "calls": "", "outcomes": "",
+             "captured": "", "numerator": ""}
+    page.write_text(
+        "const REAL_SCOPE = " + json.dumps(scope, indent=2) + ";\n"
+        "const REAL_DAYS = [\n  "
+        + ",\n  ".join(json.dumps(d, separators=(", ", ": ")) for d in days)
+        + "\n];\n",
+        encoding="utf-8",
+    )
+    return page
 
 
 def _real_scope() -> dict:
@@ -217,6 +259,82 @@ def test_every_day_declares_whether_it_had_ended() -> None:
         assert "chip-part" in page, "no PARTIAL chip is rendered for the partial day"
 
 
+def test_the_page_says_which_clone_captured_it() -> None:
+    """Provenance, machine-readable, and it needs no corpus to check.
+
+    The path was always in `REAL_SCOPE.calls`, in prose, where only a person
+    reading carefully could find it -- and for a day nobody did: `--check` on
+    the other machine reported thirteen true cross-clone differences as
+    staleness, and the remedy it printed would have deleted a real day. Same
+    argument as #73's timestamp: a claim a reader cannot mechanically check is
+    a claim that goes unchecked.
+    """
+    module = _generator()
+    theirs = module.capturing_clone()
+    assert theirs, (
+        "the page no longer says which clone captured it. Re-run "
+        "`dashboard-data.py --write` on the clone whose work the leaf is; it "
+        "stamps REAL_SCOPE.machine."
+    )
+    assert "REAL_SCOPE.machine" in _page(), (
+        "the scope strip no longer tells a reader that this leaf is one "
+        "clone's work, which is the caveat that was missing when the check "
+        "read a foreign clone's numbers as drift"
+    )
+
+
+def _row(module, day: str, **over) -> dict:
+    """A generated day, zeroed, so a test can move exactly one field."""
+    row: dict = {"day": day, "partial": False}
+    for key in module.MEASURED:
+        row[key] = [] if key == "unpricedModels" else (
+            [0, 0, 0] if key == "bands" else 0)
+    row.update(over)
+    return row
+
+
+def test_the_check_tells_a_foreign_clone_from_a_vanished_day(
+        tmp_path, monkeypatch) -> None:
+    """The skip is keyed on the clone, and it is NOT an amnesty.
+
+    Both halves matter and only together. A page captured elsewhere cannot be
+    checked here and must not be called stale -- that is the defect. But on
+    the clone that DID capture it, a day that vanishes must still fail, and so
+    must a day that moved. #26, #32, #44 and #33's own VOID bar each went
+    wrong the other way: an exemption written for a real condition, widened
+    until a genuine defect fitted inside it and passed as the excused one.
+
+    No corpus needed -- `diff` is handed its fresh side -- so this runs in CI,
+    where the pair it guards is skipped.
+    """
+    module = _generator()
+    on_page = [_row(module, "2026-08-25", calls=146)]
+
+    monkeypatch.setattr(module, "PAGE",
+                        _fake_page(tmp_path, r"C:\elsewhere\agent-yield", on_page))
+    stale, _drifting, foreign = module.diff([])
+    assert foreign, "a page captured on another clone was not reported as such"
+    assert not stale, f"another clone's leaf was reported as staleness: {stale}"
+
+    # Same page, this clone. The day is gone from the fresh side and that is
+    # a result, not an exemption.
+    monkeypatch.setattr(module, "PAGE",
+                        _fake_page(tmp_path, str(_ROOT), on_page))
+    stale, _drifting, foreign = module.diff([])
+    assert not foreign
+    assert any("absent from the corpus" in line for line in stale), (
+        f"a day that vanished on the capturing clone was excused: {stale}"
+    )
+
+    # And a closed day that merely moved still fails, which is #73's original
+    # criterion and the thing all of this must not have quietly relaxed.
+    stale, _drifting, foreign = module.diff([_row(module, "2026-08-25", calls=999)])
+    assert not foreign
+    assert any("calls" in line for line in stale), (
+        f"a closed day moved and the check did not fail: {stale}"
+    )
+
+
 @pytest.mark.skipif(not _CORPUS.exists(), reason=".agent-yield/calls.jsonl is gitignored; no corpus on this machine")
 @pytest.mark.skipif(not _machine_attribution_available(), reason="this clone has no reflog, so --machine cannot re-derive the denominator")
 def test_no_closed_day_has_moved_since_the_capture() -> None:
@@ -228,8 +346,9 @@ def test_no_closed_day_has_moved_since_the_capture() -> None:
     is not stale.
     """
     module = _generator()
+    _skip_if_captured_elsewhere(module)
     data = module.build(module.SINCE, module.UNTIL)
-    stale, _drifting = module.diff(data["REAL_DAYS"])
+    stale, _drifting, _foreign = module.diff(data["REAL_DAYS"])
     assert not stale, (
         "the page's real leaf no longer matches the corpus:\n  "
         + "\n  ".join(stale)
@@ -251,6 +370,7 @@ def test_closed_day_dollars_reproduce_from_pricing_py() -> None:
     function under test and so survived a fix to it. This path starts at
     `pricing.py` instead.
     """
+    _skip_if_captured_elsewhere(_generator())
     records = load_ingested(_CORPUS)
     closed = [d for d in _real_days() if not d["partial"]]
     if not closed:
