@@ -2662,3 +2662,95 @@ The subject of `0d05054` is its second paragraph, and the subject it was written
 This repo puts an issue number first in almost every subject, and both machines rebase constantly. It is the mechanism behind "the rebase ate three commit subjects" recorded against #52, #56 and #57 — not a mystery, and not the Mac's fault.
 
 **Fix, one line:** `git config commit.cleanup whitespace` on both clones. Until then a subject beginning with `#` survives only if the commit is never replayed, which is not a property this repo has.
+
+
+## [macOS 2026-08-27 00:25] Both skinny-parent arms ran, and both came back as noise
+
+**`relay1` (#83) and `workflow` (#39/S5) are run, scored and pushed — `550b01b`.** Four replicates, macOS, $10.03. Neither arm is VOID and **neither arm saves anything**.
+
+| | weighted | vs baton1v | $ | mismatches | claims |
+|---|---|---|---|---|---|
+| baton1v (control) | 464,568 | 1.000x | 2.3229 | 8.5 | 106/109 |
+| **relay1** | **525,974** | **1.132x** | 2.6299 | 9.0 | 122/120 |
+| **workflow** | **476,642** | **1.026x** | 2.3832 | 8.5 | 107/119 |
+
+### Both are reported as NOISE, and that is #33's own bar 4 applied to them
+
+Bar 4 says it in terms: *"if the two replicates within an arm differ by more than the gap between the arms, the result is noise and is reported as noise."*
+
+- `relay1`: within-arm spread **1.428x** (618,686 against 433,262) against a **1.132x** gap. The point estimate is on the right side of the `>= 1.05x` prediction and **the magnitude is not established**.
+- `workflow`: within-arm spread **1.157x** against a **1.026x** gap.
+- The control's own spread is 1.108x, so `relay1` is now the widest on record in this family.
+
+**What IS established is the negative, and it is what both tickets were for.** The `relay1` retraction bar was `<= 0.90x`; its cheaper replicate is **0.933x**, above it. Across all four replicates of both arms nothing came in below the control's own replicate range (0.949x–1.051x). **No replicate anywhere supports "an intermediary saves" or "Workflow saves".**
+
+**So the floor holds and the distilling intermediary is answered without being run.** A verbatim relay was chosen to measure the floor — one extra instantiation, one extra hop, nothing else changed — and the floor is not below 1.0x anywhere. A distilling intermediary does strictly more work than a relaying one, so it cannot come in under it.
+
+### THE MECHANISM SEPARATED CLEANLY, and it is the thesis in one line
+
+| | parent tokens |
+|---|---|
+| baton1v control (mean) | 354,645 |
+| relay1 r1 / r2 | 198,168 / 198,439 |
+
+**A 44% thinner parent, and end-to-end cost still rose 13%. Thin is not cheap.** The parent's saving was re-paid with interest by the extra instantiation: an intermediary at 25,023 tokens over 2 calls, plus a worker whose own context climbed 9,923 → 165,376 over 17 calls. This is plan-skinny-parent §1 landing exactly where it said — an intermediary can only reach the child-return-payload slice, 11.4% of gross growth, and pays a full re-entry to get there.
+
+`workflow`'s answer is softer and should be quoted softly: **not "Workflow is expensive" but "Workflow is not the lever"** — indistinguishable from the hand practice on cost *and* on quality (8.5 mismatches, dead level with the control). The S5 row said *"never — the harness ships it or the hand practice stands"*. The hand practice stands because nothing displaced it. One shape difference is consistent across both replicates: the `workflow` parent takes **8 calls where every other arm takes 7**.
+
+**Not VOID, all four:** 19/19 modules exactly once, 0 parent reads of `src/`, all 5 tail turns answered, `discovery-two-locations` in every replicate, claims above the control's. The cheap-because-thin reading is excluded. Note `score.py` reports `parent_dispatches: 0` for `workflow` and that is **correct, not a violation** — it counts `Agent` dispatches and this arm dispatches through `Workflow`.
+
+### The pre-registered unit survived its own deprecation, and no bar was moved
+
+The bars are written on **weighted tokens**, which `cache-decomp.py` had already retired as *"dollars divided by a base rate, computed three ways wrong"*. It is a **pure rescale of dollars at $5/Mtok** — 464,568 × 5e-6 = $2.3228 reproduces the control's published $2.3229 — so the same constant applies to every arm and a 1.05x ratio on weighted is arithmetically identical to a 1.05x ratio on dollars. **Scored as written rather than substituted.**
+
+### #85 was load-bearing and is now confirmed live
+
+`workflow` turn 1 reported `agent_tokens: 1,019,867`. Without a8cc42a, `measure.py` would have read the `tasks/*.output` JSON summary, returned zero calls **without erroring**, and the arm would have reported `agent_tokens: 0` and **won on a silence**, in the flattering direction. The dedupe is confirmed too: the `tasks/*.output` copies report `calls: 0` because the real `subagents/agent-*.jsonl` transcripts are listed first and claim those calls.
+
+### The confound is mine and is recorded rather than buried
+
+`relay1 r1` ran alone; the other three ran concurrently. **Serial-versus-parallel is confounded with replicate for `relay1`, and r2 is both the parallel one and the cheap one.** Re-running r1 under the same concurrency separates them, and that is the cheapest thing that would narrow the widest spread on record. The control also ran on Windows where these ran on macOS.
+
+### #100: the control crashes its own scorer
+
+`results/baton1v-r2/turn-1-result.txt` is **cp1252**, not UTF-8 — a `§` written in the Windows console codepage — while every scorer opens `encoding="utf-8"`. That file exists *specifically* so a bar can be re-scored once the volatile transcripts are gone (`defects.py:36` says so), and for baton1v-r2 that fallback is already dead. **Recorded figures verified read-only and reproduce exactly** (12 mismatches, both ground-truth defects), so nothing published needs retracting. Third instance of one root cause after #70 and #85: an artifact written in a platform-dependent encoding and read back with a fixed one. **Do not fix it by loosening readers to `errors="replace"`** — that would silently turn the section sign into a replacement character and then score fine.
+
+## [macOS 2026-08-27 00:25] The org dashboard's staleness check treats the corpus as a history, and it is a survivors list
+
+**`pytest` is RED on this machine on two tests, and `dashboard-data.py --write` — the remedy the failure message prints — would make it worse by deleting a real day. Do not run it.**
+
+```
+FAILED tests/test_org_dashboard_unit.py::test_no_closed_day_has_moved_since_the_capture
+FAILED tests/test_org_dashboard_unit.py::test_closed_day_dollars_reproduce_from_pricing_py
+  2026-08-25: on the page, absent from the corpus
+```
+
+Both are `skipif(not _CORPUS.exists())`, so **CI is green and this is machine-local**. It is not caused by `550b01b`, which adds only files under `results/`.
+
+### What is actually true
+
+- **The corpus is correct.** A full fresh ingest into a scratch file reproduces it exactly. It faithfully reports what is on disk.
+- **The page is also correct.** Its 08-25 row — 146 calls, $15.18, 10 commits, 17.8M tokens — was real when `7e858ec` captured it *earlier the same day*. Those transcripts have since aged out. **This is §11.2 evaporation**, the hazard #65's entry already names: the corpus is the survivors, not the history.
+- **A red herring, so nobody re-chases it:** the six agent-yield transcripts with 08-25 *local* mtimes hold **08-26 UTC** records. This machine is UTC-4, so local-evening 08-25 work lands in the 08-26 UTC day. The corpus keys on UTC and is right to show zero agent-yield calls on 08-25.
+
+So `--write` would drop the 08-25 row and **silently shrink the page's own scope, with nothing marking that a day was lost**. Same failure family as #72/#81 — deleting a caveat instead of rewriting it — and as #85, where a zero read as a result.
+
+### Root cause
+
+`diff()` has two buckets — `stale` (fails) and `drifting` (partial days, reported, never fails) — and **no bucket for "correct but no longer re-derivable"**. So "the page has a closed day the corpus does not" is read as *the page is stale* when it means *the source aged out*.
+
+### The fix, three parts, and part 3 is not optional
+
+1. **`diff()` gains a third bucket, `evaporated`.** Fail only when the corpus *has* the day and disagrees:
+
+   | page has closed day | fresh build | verdict |
+   |---|---|---|
+   | numbers differ | day present | `stale` → **FAIL** |
+   | day absent entirely | no scoped records at all | `evaporated` → report, do not fail |
+   | numbers differ | day is `partial` | `drifting` → report (unchanged) |
+
+2. **Freeze the row so the page carries its own provenance.** `"frozen": "captured <stamp>"` written by a `--freeze` flag, and **`--write` must preserve frozen rows rather than regenerate over them** — otherwise the next `--write` drops 08-25 again and this recurs on every transcript rotation.
+
+3. **Guard the exemption.** Both tests skip reproduction *only* for rows explicitly marked frozen, and **still fail on a day that vanishes without being frozen**. Parts 1 and 2 alone are a blanket amnesty that would let a genuine ingest bug pass as evaporation — which is exactly how #26, #32, #44 and #33's own VOID bar went wrong.
+
+Also worth saying in `REAL_SCOPE`'s caveat: days past the transcript-retention horizon are **frozen captures, not live re-derivations**. A reader currently assumes every row is reproducible.
