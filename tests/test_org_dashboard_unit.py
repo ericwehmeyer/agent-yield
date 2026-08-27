@@ -70,16 +70,29 @@ _CORPUS = _ROOT / ".agent-yield" / "calls.jsonl"
 pytestmark = pytest.mark.skipif(not _PAGE.exists(), reason="prototype deleted (see design.md's falsifier)")
 
 
-def _machine_attribution_available() -> bool:
-    """Can this clone still say which commits it wrote?
+def _machine_covers_the_captured_window() -> bool:
+    """Can this clone still say which commits it wrote ON THE DAYS THE PAGE HOLDS?
 
     `--machine` reads `.git/logs/HEAD`, so the answer is no in a clone whose
     reflog has been expired -- which is what a history rewrite does on its way
     out. The numbers the page froze are not wrong when that happens; they are
     merely no longer re-derivable HERE, and a guard that cannot re-derive must
     say so rather than read the resulting zeros as drift.
+
+    Presence is not enough, which is the trap this walked into once already.
+    The first commit after a rewrite gives the clone a reflog again, so
+    `Machine.available` flips back to True while every commit the page
+    actually covers still predates `begins` and comes back `unknown`. The
+    question is coverage, not existence.
     """
-    return Machine(_ROOT).available
+    machine = Machine(_ROOT)
+    if not machine.available:
+        return False
+    try:
+        first = min(dt.date.fromisoformat(day["day"]) for day in _real_days())
+    except (AssertionError, ValueError, KeyError):  # no readable page; pytestmark handles it
+        return False
+    return machine.begins.date() <= first
 
 
 def _page() -> str:
@@ -336,7 +349,7 @@ def test_the_check_tells_a_foreign_clone_from_a_vanished_day(
 
 
 @pytest.mark.skipif(not _CORPUS.exists(), reason=".agent-yield/calls.jsonl is gitignored; no corpus on this machine")
-@pytest.mark.skipif(not _machine_attribution_available(), reason="this clone has no reflog, so --machine cannot re-derive the denominator")
+@pytest.mark.skipif(not _machine_covers_the_captured_window(), reason="this clone's reflog does not reach the captured days, so --machine cannot re-derive the denominator")
 def test_no_closed_day_has_moved_since_the_capture() -> None:
     """#73's acceptance criterion, run as a test.
 

@@ -7,9 +7,20 @@ have told you. A page whose numbers are typed cannot be re-derived, and a
 number that cannot be re-derived goes stale silently -- which is the failure
 this repo keeps filing (#44, #46, #67, #72).
 
-So the numbers come from here now. `--check` re-derives them and reports what
-disagrees with the page without touching it; `--write` rewrites the two data
-blocks and every measured figure in the prose.
+So the numbers come from here now. `--check` re-derives them and compares BOTH
+halves of the page -- the two `const` data blocks and the figures typed into
+the prose -- reporting what disagrees without touching the file and exiting
+non-zero if anything does. `--write` rewrites the data blocks and only those.
+
+The prose is hand-written and stays that way, which is exactly why `--check`
+reads it. `--write` on a moved corpus updates `D` and `CURVE` underneath two
+dozen typed figures that nothing then re-derives, which is the two-snapshots
+state above, reassembled by the tool built to prevent it. A figure a generator
+cannot rewrite is a figure it has to watch instead.
+
+An anchor that no longer matches is reported as a disagreement rather than
+skipped. A reworded sentence that quietly stops being checked is the same
+defect as a wrong number, and harder to see.
 
 Definitions, and they are the page's own:
 
@@ -21,13 +32,17 @@ Definitions, and they are the page's own:
   not an arm comparison -- but see `docs/burn-ledger.md`, which prices the same
   corpus and shows how far the two units diverge.
 * **Main and subagent** are split by `CallRecord.is_subagent`, from the calls
-  themselves rather than from any aggregate. They are 2.6x apart at the
-  median; blending them describes neither.
+  themselves rather than from any aggregate. Their medians are far enough
+  apart that blending them describes neither. The ratio itself is on the page,
+  where `--check` guards it, and is deliberately not repeated here: this
+  docstring said 2.6x while the corpus said 2.3x, which is the same rot one
+  level up from the page.
 """
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 import sys
@@ -58,6 +73,11 @@ MAIN_RULES = [
 SUB_BRIEF = 150_000
 # The leverage series the closing section quotes, in ascending limit order.
 LEVERAGE_LIMITS = [150_000, 200_000, 250_000, 300_000, 400_000, 500_000]
+# The context sizes the fig-3 caption reads its decay series off. Named here so
+# the check derives the percentages and the sentence's own list of edges from
+# one place: a caption that moved its edges but kept its percentages would
+# otherwise pass.
+FIG3_EDGES = [200_000, 250_000, 300_000, 400_000, 500_000]
 
 
 def population(records, subagent: bool) -> dict:
@@ -201,8 +221,163 @@ def write(data: dict) -> list[str]:
     return changed
 
 
+def _pct0(value: float) -> str:
+    """A percentage as the page writes it: whole, and rounded half UP.
+
+    `f"{58.5:.0f}"` is `58` -- Python rounds halves to even, the page's author
+    did not, and the fig-3 series has a 58.5 in it. Getting this wrong makes
+    the guard fail on a page that is correct, which is the way a guard gets
+    switched off.
+    """
+    return str(math.floor(value + 0.5))
+
+
+def _anchors(d: dict) -> list[tuple[str, re.Pattern, tuple[str, ...]]]:
+    """Every measured figure typed into the prose, with where to find it.
+
+    Each entry is (what it is, a pattern whose groups ARE the figures, what
+    those groups should read). The pattern doubles as the assertion that the
+    sentence still exists: `check` reports a pattern that finds nothing as a
+    disagreement, because a caption reworded past its anchor stops being
+    guarded without ever going red.
+    """
+    main, sub = d["D"]["main"], d["D"]["sub"]
+    marks = d["CURVE"]["main"]["marks"]
+    rules = {r["rule"]: r for r in d["rules"]}
+    grand, avoid = d["grand_total"], d["avoidable"]
+    billions, millions = f"{grand / 1e9:.2f}", f"{avoid / 1e6:.0f}"
+
+    out: list[tuple[str, str, tuple[str, ...]]] = [
+        ("headline",
+         r"<h1>We spent ([\d.]+) billion tokens\. (\d+) million of them bought nothing\.</h1>",
+         (billions, millions)),
+        ("tile: spent",
+         r'<span class="k">Spent</span>\s*<span class="v">([^<]+)</span>\s*'
+         r'<span class="n">tokens of context, (\d+) days</span>',
+         (f"{billions}B", str(d["days"]))),
+        ("tile: avoidable",
+         r'<span class="k">Avoidable</span>\s*<span class="v">([^<]+)</span>',
+         (f"{millions}M",)),
+        ("tile: share of the bill",
+         r'<span class="k">Share of the bill</span>\s*<span class="v">([^<]+)</span>',
+         (f"{_pct0(d['avoidable_share'])}%",)),
+        ("finding 1: main median",
+         r"main-session calls carry more than ([\d,]+) tokens\.",
+         (f"{main['median']:,}",)),
+        ("finding 2: subagent median",
+         r"median subagent call carries ([\d,]+) tokens\.",
+         (f"{sub['median']:,}",)),
+        ("median ratio",
+         r"median main call carries ([\d.]+) times the median subagent",
+         (f"{main['median'] / sub['median']:.1f}",)),
+        ("fig-1 aria-label",
+         r"at ([\d,]+) tokens, sits at ([\d.]+)% of calls and ([\d.]+)% of spending",
+         ("600,000", f"{marks['600000'][0]:.1f}", f"{marks['600000'][1]:.1f}")),
+        ("fig-1 caption",
+         r"catches ([\d.]+)% of calls and ([\d.]+)% of the money",
+         (f"{marks['600000'][0]:.1f}", f"{marks['600000'][1]:.1f}")),
+        ("fig-1 caption: the 300,000 share",
+         r"the largest (\d+)% of their calls, everything above ([\d,]+) tokens",
+         (_pct0(marks["300000"][0]), "300,000")),
+        ("fig-2 legend",
+         r"Main session, ([\d,]+) calls.*?Subagent, ([\d,]+) calls",
+         (f"{main['n']:,}", f"{sub['n']:,}")),
+        ("fig-3 caption: decay series",
+         r"slides through ((?:\d+%, )+\d+%) without a break.*?"
+         r"at ([\d,]+(?:, [\d,]+)* and [\d,]+) tokens",
+         (", ".join(f"{_pct0(main['cum'][e // STEP])}%" for e in FIG3_EDGES),
+          ", ".join(f"{e:,}" for e in FIG3_EDGES[:-1]) + f" and {FIG3_EDGES[-1]:,}")),
+        ("so-what heading",
+         r"<h2>(\d+) million tokens, and what to take off it</h2>",
+         (millions,)),
+        ("so-what: share",
+         r"in the table below: (\d+)% of everything",
+         (_pct0(d["avoidable_share"]),)),
+        ("so-what: halved",
+         r"It is still (\d+) million tokens",
+         (f"{avoid / 2 / 1e6:.0f}",)),
+        ("leverage series",
+         r"share of calls disturbed, goes ((?:\d+\.\d+, )+\d+\.\d+)\.",
+         (", ".join(str(v) for v in d["leverage"]),)),
+        ("footer: corpus",
+         r"calls\.jsonl</span>: ([\d,]+) calls, deduplicated, "
+         r"(\d{4}-\d\d-\d\d) to (\d{4}-\d\d-\d\d)",
+         (f"{d['calls']:,}", d["span"][0], d["span"][1])),
+    ]
+
+    # The rules table. Each row states its limit once and its worth twice, and
+    # the chip is what ties a row to the rule it came from -- matching on the
+    # worth instead would happily pair `restart`'s row with `stop`'s numbers.
+    for name in ("dispatch", "restart", "stop", "brief failed"):
+        rule = rules[name]
+        chip = rf'<span class="chip [ms]">{re.escape(name)}</span>'
+        out.append((f"rules table: {name} limit",
+                    chip + r'<br><span class="mono">([\d,]+)</span>',
+                    (f"{rule['limit']:,}",)))
+        out.append((f"rules table: {name} worth",
+                    chip + r'.*?<td class="n">([\d.]+M)(?: of it)?<br>'
+                           r'<span class="dim">([\d.]+)%</span>',
+                    (_fmt_m(rule["saved"]), str(rule["share"]))))
+
+    return [(label, re.compile(pattern, re.S), expected)
+            for label, pattern, expected in out]
+
+
+class Unreadable(Exception):
+    """A `const` block cannot be read back, so nothing can be checked.
+
+    Either the page predates this generator and still carries the pasted
+    literals, or somebody hand-edited a generated block into something that is
+    no longer JSON. Both mean the page asserts numbers no reader can
+    re-derive, which is the condition `--check` exists to fail on, so it is
+    reported as a stale result rather than raised as a crash.
+    """
+
+
+def page_blocks(text: str) -> dict:
+    """The two `const` blocks, parsed back out of the page."""
+    out = {}
+    for name in ("D", "CURVE"):
+        block = re.search(rf"^const {name} = (\{{.*?\}});$", text, re.M)
+        if not block:
+            raise Unreadable(f"no `const {name}` block on the page at all")
+        try:
+            out[name] = json.loads(block.group(1))
+        except json.JSONDecodeError as exc:
+            raise Unreadable(f"`const {name}` is not JSON: {exc}") from None
+    return out
+
+
+def diff(data: dict, text: str) -> list[str]:
+    """Everything on the page that disagrees with the corpus, both halves."""
+    out: list[str] = []
+    try:
+        blocks = page_blocks(text)
+    except Unreadable as exc:
+        return [f"the data blocks cannot be checked ({exc}); run --write once"]
+
+    for name in ("D", "CURVE"):
+        if blocks[name] != json.loads(json.dumps(data[name])):
+            out.append(f"const {name}: the block on the page differs from the corpus")
+
+    for label, pattern, expected in _anchors(data):
+        found = pattern.search(text)
+        if not found:
+            out.append(f"{label}: the sentence this figure lives in is gone, so it "
+                       f"is no longer checked (expected {', '.join(expected)})")
+            continue
+        actual = found.groups()
+        if actual != expected:
+            moved = [f"{a!r} -> {e!r}" for a, e in zip(actual, expected) if a != e]
+            out.append(f"{label}: " + "; ".join(moved))
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--check", action="store_true",
+                    help="compare the page's data blocks AND prose against the "
+                         "corpus without touching it; exit 1 on any disagreement")
     ap.add_argument("--write", action="store_true", help="rewrite the page's data blocks")
     ap.add_argument("--json", action="store_true", help="dump the whole computation")
     args = ap.parse_args(argv)
@@ -214,7 +389,20 @@ def main(argv: list[str] | None = None) -> int:
     print(report(data))
     if args.write:
         print("\nrewrote: " + ", ".join(write(data)))
-        print("prose figures are NOT rewritten -- check them against the report above")
+        # Still true, and now it is only half the story: --check reads them.
+        print("prose figures are NOT rewritten -- run --check to compare them")
+        return 0
+
+    if args.check:
+        stale = diff(data, PAGE.read_text(encoding="utf-8"))
+        if stale:
+            print("\nSTALE -- the page disagrees with the corpus:")
+            for line in stale:
+                print(f"  {line}")
+            print("\n--write fixes the data blocks. The prose is hand-written: "
+                  "edit it against the report above.")
+            return 1
+        print("\nevery measured figure on the page matches the corpus")
     return 0
 
 
