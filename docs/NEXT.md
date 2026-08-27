@@ -2853,3 +2853,51 @@ scoped to one machine, published to a repo two machines share, needs to carry
 which machine it came from, or the other one will eventually check it and be
 told a lie in whichever direction it happens to point.** The page had that
 information the whole time. It was in prose.
+
+## [macOS 2026-08-27 01:10] #100: the control's own fallback was already dead, and the fix is the file, not the reader
+
+**One byte.** `results/baton1v-r2/turn-1-result.txt` held `0xA7` at position
+363 -- a `§` typed on Windows at cp1252 -- inside a file every scorer opens
+`encoding="utf-8"`. So #33's **control arm crashed its own scorer**, and that
+file exists for exactly one reason: `defects.py:36` says it is what lets the
+bar be re-scored once the volatile transcripts are gone. The one fallback
+meant to outlive the run had been dead since it was written, and nothing
+noticed because nobody had needed it yet.
+
+Repaired by decoding cp1252 and re-encoding UTF-8, with the round trip
+asserted exact **before** the write: `fixed.decode("utf-8").encode("cp1252")
+== raw`. One byte changed, `§` preserved, no line endings touched (the file
+has a single bare LF and no CRLF).
+
+**The recorded figures reproduce exactly** from the repaired file -- 12
+mismatches, 109 claims, `discovery-two-locations` and `resume-five-silences`
+both found, coverage clean. Nothing published needed retracting, and now the
+thing that proves it can be run again.
+
+### Why `errors="replace"` was the wrong fix and the tempting one
+
+It turns `0xA7` into U+FFFD and then everything downstream scores **cleanly**.
+That is the flattering direction, it is silent, and it is how this root cause
+reached three instances: #70, #85 and #100 are one defect wearing three hats --
+something written in whatever encoding the platform happened to be using, read
+back later with a fixed one.
+
+### The guard, and it is the data half of a rule the repo already had
+
+`test_portability_guard.py` reads `src/` and `tests/` as text and fails on the
+raw primitive. Every rule in it is about SOURCE. #100's specimen was not in any
+source file: it was a committed artifact. So the file now carries
+`test_every_committed_file_decodes_as_utf8`, which reads the repo's own bytes.
+
+- **`git ls-files`, not `rglob`.** `.venv/`, `.agent-yield/` and a local run's
+  output are all in this tree and none of them travel to the other machine.
+  The index is the list of things that do.
+- **Binary is skipped by looking for a NUL, not by an extension list**, because
+  an extension list goes stale quietly -- the same property the rule defends.
+  All 217 tracked files are text today.
+- **It was verified to FAIL.** The specimen was put back byte-for-byte, the
+  rule fired and named the file and the offset, and the file was restored. A
+  guard nobody has watched fail is a guard nobody has tested; #66's dead ASCII
+  fallback is the entry that made that a rule here.
+
+642 passed, 4 skipped.

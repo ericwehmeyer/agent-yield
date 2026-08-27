@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import ast
 import re
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -250,4 +251,85 @@ def test_every_text_file_this_tool_writes_names_its_line_ending(path):
         f"{_rel(path)}:{offenders} writes text with no newline= -- that is "
         r"\r\n on Windows and \n everywhere else, in a file this tool writes "
         r'to compare two machines (audit N11). Pass newline="\n".'
+    )
+
+
+# --- the data half of the same rule (#100) ---------------------------------
+#
+# Every rule above reads SOURCE and fails on a primitive. This one reads the
+# repo's own BYTES, because the third instance of this root cause was not in
+# any source file: it was a committed artifact.
+#
+# #70, #85 and #100 are one defect wearing three hats -- something written in
+# whatever encoding the platform happened to be using, read back later with a
+# fixed one. #100's specimen was a single 0xA7 (a `§`, typed on Windows at
+# cp1252) inside `results/baton1v-r2/turn-1-result.txt`, which exists
+# specifically so #33's CONTROL arm can be re-scored after its volatile
+# transcripts are gone (`defects.py:36`). Every scorer opens `encoding="utf-8"`,
+# so the control crashed its own scorer and the one fallback that was supposed
+# to outlive the run was already dead.
+
+
+def _committed_files() -> list[Path]:
+    """What git tracks -- not `rglob`.
+
+    `.venv/`, `.agent-yield/` and a local experiment's output all sit in this
+    tree and none of them are what the repo publishes. The rule is about files
+    that travel to the other machine, so the index is the right list.
+    """
+    try:
+        done = subprocess.run(
+            ["git", "ls-files", "-z"], cwd=_ROOT, capture_output=True,
+            # encoding= named, and the irony is the point: this rule's own
+            # subprocess call is exactly the primitive rule one bans (#41).
+            text=True, encoding="utf-8", errors="replace", timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if done.returncode != 0:
+        return []
+    return [_ROOT / name for name in done.stdout.split("\0") if name]
+
+
+def test_every_committed_file_decodes_as_utf8():
+    r"""#100, and #70 and #85 before it: one root cause, three instances.
+
+    One test rather than a parametrize over 217 files: the offender list is
+    the finding here, and a sweep that reports "these three files" is more use
+    than three separate red ids. The failure message names every one.
+
+    Binary is skipped by looking for a NUL rather than by an extension list,
+    because an extension list is a thing that goes stale quietly -- the same
+    property this rule exists to defend. Today the repo tracks 217 files and
+    not one of them contains a NUL.
+
+    **Do not fix a failure here by loosening the reader to
+    `errors="replace"`.** That turns the offending byte into U+FFFD and then
+    everything downstream scores cleanly, which is the flattering direction
+    and how this cause got to three instances. Fix the FILE: decode it in the
+    encoding it was really written in, re-encode UTF-8, and check the round
+    trip is exact before writing.
+    """
+    files = _committed_files()
+    if not files:
+        pytest.skip("git ls-files unavailable; nothing to enumerate")
+
+    offenders = []
+    for path in files:
+        try:
+            raw = path.read_bytes()
+        except OSError:
+            continue          # a tracked file this checkout does not have
+        if b"\0" in raw:
+            continue          # binary; not this rule's business
+        try:
+            raw.decode("utf-8")
+        except UnicodeDecodeError as exc:
+            offenders.append(f"{_rel(path)}: {exc}")
+
+    assert not offenders, (
+        "committed files are not UTF-8:\n  " + "\n  ".join(offenders)
+        + "\n\nEvery reader in this repo opens encoding=\"utf-8\", so a file "
+        "written in the platform's own code page reads back as a crash on one "
+        "machine and nowhere else (#70, #85, #100). Re-encode the file; do NOT "
+        "loosen the reader."
     )
