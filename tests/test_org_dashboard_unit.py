@@ -49,6 +49,7 @@ from pathlib import Path
 import pytest
 
 from agent_yield import pricing
+from agent_yield.attribution import Machine
 from agent_yield.ingest import load_ingested
 from agent_yield.report import scope_to_repo
 
@@ -59,6 +60,18 @@ _GENERATOR = _DIR / "dashboard-data.py"
 _CORPUS = _ROOT / ".agent-yield" / "calls.jsonl"
 
 pytestmark = pytest.mark.skipif(not _PAGE.exists(), reason="prototype deleted (see design.md's falsifier)")
+
+
+def _machine_attribution_available() -> bool:
+    """Can this clone still say which commits it wrote?
+
+    `--machine` reads `.git/logs/HEAD`, so the answer is no in a clone whose
+    reflog has been expired -- which is what a history rewrite does on its way
+    out. The numbers the page froze are not wrong when that happens; they are
+    merely no longer re-derivable HERE, and a guard that cannot re-derive must
+    say so rather than read the resulting zeros as drift.
+    """
+    return Machine(_ROOT).available
 
 
 def _page() -> str:
@@ -205,6 +218,7 @@ def test_every_day_declares_whether_it_had_ended() -> None:
 
 
 @pytest.mark.skipif(not _CORPUS.exists(), reason=".agent-yield/calls.jsonl is gitignored; no corpus on this machine")
+@pytest.mark.skipif(not _machine_attribution_available(), reason="this clone has no reflog, so --machine cannot re-derive the denominator")
 def test_no_closed_day_has_moved_since_the_capture() -> None:
     """#73's acceptance criterion, run as a test.
 

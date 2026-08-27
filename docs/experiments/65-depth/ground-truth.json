@@ -1,5 +1,5 @@
 {
-  "pinned_src": "e5d9d094c4bbf36caa3bea75ccaa65aac67a2919",
+  "pinned_src": "89bccbfc69879c3cfa1fd3cb2d6d0310f1181da6",
   "note": "#65's ground truth is SEEDED, not natural, and that is a deliberate departure from #47. #47's bar rested on two hand-verified defects, which is too thin to separate two arms on quality: one arm finding one more is a 50% swing. So the corpus is built by `seed.py`, which rewrites exactly one sentence of fourteen module docstrings so that each asserts something the code IN THAT SAME MODULE contradicts, usually a named constant. Every seed is docstring-only: the suite still passes on the seeded corpus, verified before either arm runs, so the per-slice test command measures depth and not the seed. The limit this buys and must be reported: a seeded defect is not drawn from the distribution of real docstring drift, and 14 seeds across 23 slices is a denser field than any real audit. It supports a WITHIN-EXPERIMENT comparison of two arms on identical text; it does not support a claim about how many real defects an audit finds.",
   "seeds": [
     {

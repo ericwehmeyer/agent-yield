@@ -229,6 +229,9 @@ _SLUG_SHAPES = [
     (r"C:\Users\ewehm\AppData\Local\Temp", "C--Users-ewehm-AppData-Local-Temp"),
     # measured, and the only real evidence for the `.` rule on either machine:
     # `\.claude\` becomes `--claude-`, the doubled dash being separator-then-dot.
+    # Two segments are renamed from what was measured -- the project and the
+    # worktree named an unrelated private project, and this repo is public. The
+    # rename is segment-for-segment, so the separator shape it pins is intact.
     (
         r"C:\Users\ewehm\Documents\SampleProject\.claude\worktrees\summary-wt",
         "C--Users-ewehm-Documents-SampleProject--claude-worktrees-summary-wt",
