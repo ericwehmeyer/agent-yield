@@ -1,0 +1,7 @@
+Commit-signing probe.
+
+Written 2026-08-28 to check that commit.gpgsign=true actually produces a
+signature. The five commits before this one report G? = N while the config
+says signing is on, so the config and the history disagree.
+
+Delete this file and the signing-probe branch once the question is answered.
