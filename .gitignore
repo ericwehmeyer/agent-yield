@@ -6,5 +6,12 @@ build/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
-.claude/
+# The hooks are the instrument this repo measures with, so they ship. Machine
+# state does not: settings.local.json, worktrees and the probe's own log stay
+# ignored. `.claude/*` rather than `.claude/`, because git will not descend
+# into an excluded directory and the negations below would never be read.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
+.claude/hooks/probe-log.jsonl
 .agent-yield/

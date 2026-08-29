@@ -1,0 +1,50 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|clear",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe resume --hook --probe",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Agent",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe gate --enforce-brief",
+            "timeout": 15,
+            "statusMessage": "Pricing the dispatch"
+          }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe guard",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe boundary --enforce",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}
