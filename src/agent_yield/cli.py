@@ -634,7 +634,17 @@ def main(argv: list[str] | None = None) -> int:
     ))
 
     p = subs.add_parser("gate", help="PreToolUse hook entry point")
-    p.set_defaults(func=lambda _args: gate_module.main())
+    # Declared here even though `gate.main` parses it itself: `parse_args`
+    # rejects an undeclared flag before `main` is ever called, and this parser
+    # turns that usage error into exit 2 -- the SAME code a deliberate refusal
+    # uses. A PreToolUse hook reads exit 2 as "block", so the settings.json
+    # invocation `gate --enforce-brief` refused every dispatch in the repo
+    # while looking exactly like a gate that was working.
+    p.add_argument("--enforce-brief", dest="enforce_brief", action="store_true",
+                   help="refuse a dispatch whose brief is missing S12's "
+                        "markers, rather than warning (off by default)")
+    p.set_defaults(func=lambda args: gate_module.main(
+        ["--enforce-brief"] if args.enforce_brief else []))
 
     p = subs.add_parser(
         "boundary",

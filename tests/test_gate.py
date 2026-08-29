@@ -258,3 +258,78 @@ def test_an_exploratory_dispatch_still_carries_no_markers():
     )
     request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
     assert missing_markers(request) == ("line ranges", "output path", "return contract")
+
+
+# --- the wiring, which is where it actually broke ---------------------------
+#
+# EXIT 2 IS AMBIGUOUS HERE AND THAT IS THE POINT. `cli.main` catches argparse's
+# SystemExit and returns its code, which for a usage error is 2 -- exactly the
+# code a deliberate refusal uses, and exactly what a PreToolUse hook reads as
+# "block". So `assert main([...]) == 2` PASSES against a broken CLI and proves
+# nothing. Every test below asserts on the MESSAGE, which is the only thing
+# that separates "the gate refused this dispatch" from "argparse refused this
+# flag".
+
+
+def test_the_cli_passes_enforce_brief_through_to_the_hook(monkeypatch, capsys):
+    """The exact invocation `.claude/settings.json` makes as a PreToolUse hook.
+
+    `gate.main()` has parsed the flag since it was written and the tests above
+    prove it. The `gate` SUBPARSER declared no arguments, so `parse_args`
+    rejected it first, and on 2026-08-28 every Agent dispatch in this repo died
+    on `unrecognized arguments: --enforce-brief`. Module-level tests could not
+    see it: the whole defect was in the wiring between the two.
+    """
+    import sys
+
+    from agent_yield.cli import main as cli_main
+
+    monkeypatch.delenv(OVERRIDE_ENV, raising=False)
+    payload = {**DISPATCH, "_day_total": 0}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+
+    code = cli_main(["gate", "--enforce-brief"])
+    err = capsys.readouterr().err
+
+    assert code == 2
+    assert "unrecognized arguments" not in err
+    assert "line ranges" in err
+
+
+def test_the_cli_gate_without_the_flag_warns_rather_than_refuses(monkeypatch, capsys):
+    """The default has to survive the fix: eager refusal is opt-in (#27).
+
+    A warning goes to stdout as `additionalContext`, never to stderr, because
+    stderr plus exit 2 is the only pair the harness reads as a block.
+    """
+    import sys
+
+    from agent_yield.cli import main as cli_main
+
+    payload = {**DISPATCH, "_day_total": 0}
+    monkeypatch.setattr(sys, "stdin", io.StringIO(json.dumps(payload)))
+
+    code = cli_main(["gate"])
+    captured = capsys.readouterr()
+
+    assert code == 0
+    assert "line ranges" in captured.out
+    assert captured.err == ""
+
+
+def test_a_mistyped_gate_flag_is_a_usage_error_and_not_a_silent_block(capsys):
+    """The failure mode that hid the defect for a whole session.
+
+    An undeclared flag returns 2 with an argparse usage message. This test does
+    not assert that it returns 0 -- it cannot, given `cli.main`'s contract --
+    it pins the DISTINGUISHING evidence, so a future reader knows the exit code
+    alone never told them which of the two happened.
+    """
+    from agent_yield.cli import main as cli_main
+
+    code = cli_main(["gate", "--no-such-flag"])
+    err = capsys.readouterr().err
+
+    assert code == 2
+    assert "unrecognized arguments" in err
+    assert "line ranges" not in err
