@@ -1,6 +1,8 @@
 import datetime as dt
 from pathlib import Path
 
+import pytest
+
 from agent_yield.interventions import Intervention
 from agent_yield.outcomes import DailyOutcome
 from agent_yield.records import CallRecord
@@ -12,6 +14,7 @@ from agent_yield.thresholds import (
     COST_STOP,
 )
 from agent_yield.report import (
+    YieldRow,
     build_model_rows,
     build_rows,
     cost_band_cells,
@@ -693,3 +696,34 @@ def test_the_whole_v1_table_fits_in_ten_lines_for_two_days():
     outcomes = _areas("2026-08-25") + _areas("2026-08-26")
     rendered = render_table(build_rows(records, outcomes, {"s1": "build"}))
     assert len(rendered.splitlines()) < 10
+
+
+def test_tokens_per_surviving_insertion_divides_by_what_lasted():
+    """Hand-counted: 1,000,000 tokens over 6 surviving of 10 written.
+
+    Against insertions the day reads 100,000 per line. Against survival it
+    reads 166,666.67, and the gap between them is the thrash.
+    """
+    row = YieldRow(
+        day=dt.date(2026, 1, 1), mode="build",
+        usage=Usage(input_tokens=1_000_000), calls=1,
+        merges=0, commits=1, lines=10, surviving_lines=6,
+    )
+    assert row.tokens_per_insertion == pytest.approx(100_000.0)
+    assert row.tokens_per_surviving_insertion == pytest.approx(1_000_000 / 6)
+
+
+def test_tokens_per_surviving_insertion_is_none_before_the_horizon():
+    row = YieldRow(
+        day=dt.date(2026, 1, 1), mode="build",
+        usage=Usage(input_tokens=1_000_000), calls=1,
+        merges=0, commits=1, lines=10, surviving_lines=None,
+    )
+    assert row.tokens_per_surviving_insertion is None
+
+
+def test_the_surviving_metric_is_scorable():
+    """A prediction may name it, so the metric list and the row must not drift."""
+    from agent_yield.interventions import SCORABLE_METRICS
+    assert "tokens_per_surviving_insertion" in SCORABLE_METRICS
+    assert hasattr(YieldRow, "tokens_per_surviving_insertion")

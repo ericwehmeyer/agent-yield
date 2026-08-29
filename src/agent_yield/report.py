@@ -178,6 +178,7 @@ class YieldRow:
     code_lines: int = 0
     docs_lines: int = 0
     other_lines: int = 0
+    surviving_lines: int | None = None
     main_contexts: tuple[int, ...] = ()
     """Every main call's context, kept rather than summed, because a share
     above a threshold cannot be recovered from a mean."""
@@ -223,6 +224,19 @@ class YieldRow:
         legitimately be registered against the undecomposed figure.
         """
         return self.per_insertion.all
+
+    @property
+    def tokens_per_surviving_insertion(self) -> float | None:
+        """Tokens per inserted line that was still there at the horizon.
+
+        The headline denominator. `tokens_per_insertion` counts a line written
+        three times as three lines shipped, so a thrash day and a clean day of
+        the same size read alike; this one does not. None, never zero, when
+        survival is unmeasured or nothing survived.
+        """
+        if self.surviving_lines is None or self.surviving_lines <= 0:
+            return None
+        return self.usage.total / self.surviving_lines
 
     @property
     def cost_bands(self) -> tuple[CostBand, ...]:
@@ -361,6 +375,7 @@ def build_rows(
             main_usage=main_usage, subagent_usage=subagent_usage,
             code_lines=outcome.code_lines, docs_lines=outcome.docs_lines,
             other_lines=outcome.other_lines,
+            surviving_lines=outcome.surviving_lines,
             main_contexts=tuple(main_contexts),
             main_session_peaks=tuple(peaks.values()),
         ))
@@ -528,12 +543,15 @@ def render_table(rows: Iterable[YieldRow]) -> str:
     S3's pinning rule: numbers baked into a header go stale the day the module
     is retuned.
 
-    108 columns now, down from 120, which is the width the bands were paying
-    for. The blended `context_per_call` is off the table but stays on the row.
+    118 columns now. Moving the bands off bought the grid down from 120 to
+    108, and `tok/surv` spends ten of that back: the pair is the thrash
+    reading, and a table carrying only the insertion half is the reading this
+    work exists to replace. The blended `context_per_call` is off the table
+    but stays on the row.
     """
     header = (
         f"{'day':<11}{'mode':<9}{'tokens':>13}{'calls':>7}{'commits':>8}"
-        f"{'code':>8}{'docs':>8}{'other':>8}{'tok/ins':>9}"
+        f"{'code':>8}{'docs':>8}{'other':>8}{'tok/ins':>9}{'tok/surv':>10}"
         f"{'main ctx/call':>14}{'sub ctx/call':>13}"
     )
     lines = [header, "-" * len(header)]
@@ -543,6 +561,7 @@ def render_table(rows: Iterable[YieldRow]) -> str:
             f"{row.usage.total:>13,}{row.calls:>7,}{row.commits:>8,}"
             f"{row.code_lines:>8,}{row.docs_lines:>8,}{row.other_lines:>8,}"
             f"{_fmt(row.tokens_per_insertion):>9}"
+            f"{_fmt(row.tokens_per_surviving_insertion):>10}"
             f"{_fmt(row.main_context_per_call):>14}"
             f"{_fmt(row.subagent_context_per_call):>13}"
         )

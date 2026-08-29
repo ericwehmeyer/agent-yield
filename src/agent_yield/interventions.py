@@ -26,6 +26,10 @@ SCORABLE_METRICS = (
     # so a threshold prediction against it reads PASS on a day nothing
     # improved (#46 review, finding 2). See `report.PerInsertion`.
     "tokens_per_insertion",
+    # Divides by what lasted. `tokens_per_insertion` stays, because the pair is
+    # the thrash measurement: naming both is how a prediction claims it reduced
+    # rewriting rather than typing.
+    "tokens_per_surviving_insertion",
     "context_per_call",
     "main_context_per_call",
     "subagent_context_per_call",
