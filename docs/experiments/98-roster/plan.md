@@ -1,7 +1,22 @@
-# The preamble is 61.9% of the tokens and 24.7% of the dollars, so measure before cutting again
+# The 61.9% is the preamble; the roster is a fraction of it, and that fraction is still unmeasured
 
-Written 2026-08-29 12:35 EDT (Windows), before a deliberate restart, for the
-session that picks this up.
+Written 2026-08-29 12:35 EDT (Windows), before a deliberate restart. Rewritten
+13:25 EDT after the grill, which had already run when the first version was
+committed and whose findings were not in it.
+
+## The error this document was making
+
+The heading used to read *the preamble is 61.9% of the tokens and 24.7% of the
+dollars, so measure before cutting again*, and the experiment underneath it cuts
+plugins. Those are two different quantities. The preamble is everything that
+arrives before the first user turn: `CLAUDE.md`, memory, hook injections, the
+harness's own system prompt and tool schema, and the plugin listings. Only the
+last of those is what a roster cut removes.
+
+So the plan sized its lever with its container's number. The grill put the
+roster's own share near 9.2%, and a re-measurement on 2026-08-29 at 13:24 EDT
+did not reproduce that figure. Both numbers stay marked unconfirmed until one
+method produces the same answer twice.
 
 ## What is already settled, and must not be re-litigated
 
@@ -20,13 +35,11 @@ line above which a fall must be checked against a lost capability. The check
 fails: `playwright` was one of the six, and `#98`'s own text measures 26
 playwright calls and concludes it earns its slot. Nine plugins were disabled
 rather than the six pre-registered, so 12,138 is the effect of nine and the
-six-plugin figure is unmeasured. It is now unmeasurable as written, because
-`playwright` is being re-enabled.
+six-plugin figure is unmeasured.
 
-**Do not re-read the old prediction as if it covered the current roster.** The
-configuration that remains needs a new one.
+**Do not re-read the old prediction as if it covered the current roster.**
 
-## The number that decides whether this is worth doing at all
+## The session's cost, which is the container and not the lever
 
 Measured over session `76a3725b`, 49 calls:
 
@@ -39,67 +52,109 @@ Measured over session `76a3725b`, 49 calls:
 The preamble is 2,774,522 tokens, 61.9% of everything the session consumed and
 66.1% of every cache read, and **$1.39 of $5.62**. Cache reads price at
 $0.50/Mtok against a write's $10.00/Mtok, so the largest token line is the
-smallest dollar line but one.
+smallest dollar line but one. `#63` measured 14,992 cache read and 7,124 write
+of the opening as the harness's own system prompt and tool schema, which is not
+ours to remove.
 
-That sets the honest ceiling on this work. Cutting the entire remaining plugin
-roster cannot recover more than about a dollar per session at this length, and
-`#63` measured 14,992 cache read + 7,124 write of the opening as the harness's
-own system prompt and tool schema, which is not ours to remove. The case for
-proceeding is skill-selection quality, not spend.
+$1.39 is the ceiling on cutting the *whole* preamble. The roster is a slice of
+that slice, and pricing the roster at $1.39 is the error named above.
+
+## The roster's own share is the blocker, and three methods disagree
+
+On 2026-08-29 at 13:24 EDT, counting the `description:` frontmatter of every
+skill and agent shipped by the six enabled plugins (the text that lands in the
+resident listings, which do not lazy-load) returned:
+
+| method | `pr-review-toolkit` share |
+|---|---|
+| all cached versions | 63.7% |
+| newest version per plugin | 42.7% |
+| grill, 2026-08-29 12:50 EDT | 59% |
+
+The spread is version selection. Several plugins carry more than one cached
+version and one is directory-named by sha rather than semver, so "the installed
+version" is not recoverable by sorting directory names. The newest-version pass
+also counted 35 `mattpocock-skills` skills against roughly 11 that appear in a
+live session's listing, so it is reading skills the harness does not surface.
+
+Its total, 14,718 characters of listing description across 51 skills and 6
+agents, is about 3,680 tokens against a 56,623-token opening: **6.5%**. That is
+the same neighbourhood as the grill's 9.2%, produced by a method that is
+provably counting the wrong set. Agreement between two wrong methods is not
+evidence.
+
+**Nothing downstream of this number runs until one method is reproducible.** A
+pre-registered bar computed from an unstable denominator is `#111` again.
+
+## What the grill found wrong in fact, not in method
+
+1. **`playwright` is not being re-enabled.** The first version wrote "once
+   re-enabled" into the method. The setting is still `false` at line 21 of
+   `~/.claude/settings.json`; re-enabling was auto-denied and needs a manual
+   edit. Any count that includes it is projecting.
+2. **`agent-yield` has tool limits the plan did not account for.**
+3. **`CLAUDE.md` and `CONTEXT.md` disagree.** `CLAUDE.md` says `CONTEXT.md` and
+   `docs/adr/` are "neither created yet". `CONTEXT.md` now exists, at
+   `d951652`. `docs/adr/` still does not. The `CLAUDE.md` line needs correcting.
+
+Roster verified against `~/.claude/settings.json` on 2026-08-29: six enabled
+(`claude-code-setup`, `code-review`, `mattpocock-skills`, `pr-review-toolkit`,
+`remember`, `superpowers@superpowers-marketplace`), nine disabled. `superpowers`
+is installed twice from two marketplaces and the `claude-plugins-official` copy
+is the disabled one.
 
 ## What is measured and what is chosen
 
-MEASURED: every token figure above, by `agent-yield status` over the session's
-own transcript at `--baseline-calls 10`, the same estimator that produced the
-68,761. Growth 2.06x, 56,623 to 116,895 over 49 calls.
+MEASURED: every token and dollar figure in the cost table, by `agent-yield
+status` over the session's own transcript at `--baseline-calls 10`, the same
+estimator that produced the 68,761. Growth 2.06x, 56,623 to 116,895 over 49
+calls. The enabled and disabled roster, read from settings.
 
-CHOSEN, and not yet defended: that the remaining roster is worth measuring at
-all, and which plugins would be cut. Both are questions for the grill below,
-not assumptions to carry in.
+UNCONFIRMED, and treated as neither measured nor chosen: 9.2%, 59%, 6.5%,
+42.7%, 63.7%.
 
-## The method, which is not new
+CHOSEN, and defended in the answers below: that the remaining roster is worth
+measuring at all.
 
-`#98` counted tool calls per plugin over the probe log and found zero postman,
-zero vpai and zero chrome-devtools against 26 playwright. Apply the same count
-to the currently enabled roster: `code-review`, `pr-review-toolkit`,
-`superpowers`, `claude-code-setup`, `remember`, `mattpocock-skills`, plus
-`playwright` once re-enabled.
+## The grill's questions, answered
 
-Two contributors have never been checked the way postman was.
-`mattpocock-skills` adds roughly 11 skills to the resident skill listing and
-`pr-review-toolkit` roughly 6 agents to the agent listing. Listings do not
-lazy-load; skill *bodies* and MCP tool *schemas* already do, so the listing is
-the whole remaining lever.
+Round 1 ran 2026-08-29 12:50 EDT. These are its answers, not its
+recommendations.
+
+1. **Is spend the metric?** No, secondary. The ceiling on the whole preamble is
+   $1.39 a session and the roster is a fraction of it. The primary bar is
+   skill-selection quality: whether the agent picks the right skill when the
+   listing is smaller. Score both and report spend second.
+2. **What counts as "used"?** Invocations, with cost-per-use reported, not a
+   use/no-use verdict. `#98` counted tool calls, and that is how `playwright`
+   was cut with 26 calls to its name.
+3. **What is the capability check?** Written into the prediction before the cut,
+   naming per candidate what it costs us if it turns out to be needed. `#98`
+   failed this twice, which is why its suspect clause fired.
+4. **n=1 against n=1?** State the confounds in the prediction. The two sessions
+   compared so far differed in a handoff injection and three unregistered
+   plugins, so the difference was never attributable to the roster alone.
+5. **Does this repo need `CONTEXT.md` and `docs/adr/` first?** Answered by
+   events: `CONTEXT.md` was written at `d951652`. `docs/adr/` remains absent and
+   is a separate session's work.
+6. **What is the goal above this experiment?** Meta-efficiency: whether agentic
+   AI raises throughput in a quality and release role by orders of magnitude.
+   That is the operator's own throughput, not the agent's cost per commit. The
+   two have different denominators, and this experiment moves only the second.
+
+Open: Q10, unrecorded. It was posed at 13:03 EDT and its text did not survive.
 
 ## Now what
 
-1. Run the count. It is a measurement, not an opinion, and it belongs before
-   any prediction.
-2. Pre-register with `agent-yield prereg` before changing a setting. State the
-   bar in tokens, name the plugins, and write the capability check into the
-   prediction rather than discovering it afterwards, which is what `#98` had to
-   do.
-3. Cut, restart, score.
+1. **Fix the denominator.** Read the installed plugin version from the harness's
+   own resolution rather than from cache directory names, and count only the
+   entries that reach a listing. The test is that the method returns the same
+   share twice.
+2. Correct the `CLAUDE.md` line that says `CONTEXT.md` does not exist.
+3. Run the invocation count against the six enabled plugins, `playwright`
+   excluded until it is actually re-enabled.
+4. Pre-register with `agent-yield prereg` before changing a setting: bar in
+   tokens, plugins named, capability check written in, confounds stated.
+5. Cut, restart, score.
 
-## The grill has not happened yet, and these are its open questions
-
-The operator asked for this to be stress-tested after the restart. Round 1 of
-the frontier, with a recommended answer on each:
-
-1. **Is spend the metric at all?** The ceiling is about $1 a session. If the
-   real objective is skill-selection quality, the bar cannot be written in
-   tokens. Recommendation: score both, and make the token bar secondary.
-2. **What counts as "used"?** `#98` counted tool calls. A skill that fires once
-   and saves an hour is not waste, and a listing entry consumed on every call
-   is not free. Recommendation: count invocations, and report cost-per-use
-   rather than a use/no-use verdict.
-3. **What is the capability check, written in advance?** `#98` failed this
-   twice. Recommendation: name, before cutting, what each candidate would cost
-   us if it turns out to be needed.
-4. **n=1 against n=1 again?** Every opening-context comparison so far compares
-   one session to one session, and the two differed in a handoff injection and
-   three unregistered plugins. Recommendation: state the confounds in the
-   prediction, or raise the bar to cover them.
-5. **Does this repo need `CONTEXT.md` and `docs/adr/` first?** `CLAUDE.md`
-   names both and neither exists. Recommendation: no, keep them separate, but
-   the domain-modeling pass is worth its own session.
+Steps 3 through 5 are blocked on step 1.
