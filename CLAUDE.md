@@ -6,12 +6,15 @@ purpose. Add a line here only when an agent gets something wrong without one.
 
 ## The interpreter with pytest is `.venv/Scripts/python.exe`
 
-Bare `python` has none.
+Bare `python` has none. Pass `-rs`, never `-q`: `pyproject.toml` already sets
+`addopts = "-q"`, so a second one is `-q -q` and double quiet drops the
+`716 passed` line entirely. A run that prints dots and exits 0 cannot be told
+from one that collected nothing.
 
 ```
-.venv/Scripts/python.exe -m pytest -q                    # whole suite
-.venv/Scripts/python.exe -m pytest tests/test_gate.py -q  # one file
-.venv/Scripts/agent-yield.exe --help                      # the CLI
+.venv/Scripts/python.exe -m pytest -rs                    # whole suite
+.venv/Scripts/python.exe -m pytest tests/test_gate.py -rs  # one file
+.venv/Scripts/agent-yield.exe --help                       # the CLI
 ```
 
 CI runs `python -m pytest -rs` across windows/macos/ubuntu and Python 3.11 and
