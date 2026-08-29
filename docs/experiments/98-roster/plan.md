@@ -13,10 +13,9 @@ arrives before the first user turn: `CLAUDE.md`, memory, hook injections, the
 harness's own system prompt and tool schema, and the plugin listings. Only the
 last of those is what a roster cut removes.
 
-So the plan sized its lever with its container's number. The grill put the
-roster's own share near 9.2%, and a re-measurement on 2026-08-29 at 13:24 EDT
-did not reproduce that figure. Both numbers stay marked unconfirmed until one
-method produces the same answer twice.
+So the plan sized its lever with its container's number. Measured on its own at
+13:33 EDT, the roster is **5.2% of the opening**, not 61.9% and not the grill's
+9.2%.
 
 ## What is already settled, and must not be re-litigated
 
@@ -59,32 +58,44 @@ ours to remove.
 $1.39 is the ceiling on cutting the *whole* preamble. The roster is a slice of
 that slice, and pricing the roster at $1.39 is the error named above.
 
-## The roster's own share is the blocker, and three methods disagree
+## The roster is 5.2% of the opening, and the number now repeats
 
-On 2026-08-29 at 13:24 EDT, counting the `description:` frontmatter of every
-skill and agent shipped by the six enabled plugins (the text that lands in the
-resident listings, which do not lazy-load) returned:
+Resolved 2026-08-29 13:33 EDT. `listing-share.py` beside this file returns the
+same table twice, which was the bar:
 
-| method | `pr-review-toolkit` share |
-|---|---|
-| all cached versions | 63.7% |
-| newest version per plugin | 42.7% |
-| grill, 2026-08-29 12:50 EDT | 59% |
+| plugin | listed | hidden | chars | share |
+|---|---|---|---|---|
+| `pr-review-toolkit` | 7 | 0 | 6,264 | 53.4% |
+| `mattpocock-skills` | 15 | 20 | 3,051 | 26.0% |
+| `superpowers` | 14 | 0 | 1,863 | 15.9% |
+| `claude-code-setup` | 1 | 0 | 354 | 3.0% |
+| `remember` | 2 | 0 | 178 | 1.5% |
+| `code-review` | 1 | 0 | 26 | 0.2% |
+| `playwright` | 0 | 0 | 0 | 0.0% |
+| **total** | **40** | **20** | **11,736** | |
 
-The spread is version selection. Several plugins carry more than one cached
-version and one is directory-named by sha rather than semver, so "the installed
-version" is not recoverable by sorting directory names. The newest-version pass
-also counted 35 `mattpocock-skills` skills against roughly 11 that appear in a
-live session's listing, so it is reading skills the harness does not surface.
+11,736 characters is about 2,934 tokens, **5.2% of the 56,623-token opening**.
+Against the $1.39 preamble that is roughly 7 cents a session.
 
-Its total, 14,718 characters of listing description across 51 skills and 6
-agents, is about 3,680 tokens against a 56,623-token opening: **6.5%**. That is
-the same neighbourhood as the grill's 9.2%, produced by a method that is
-provably counting the wrong set. Agreement between two wrong methods is not
-evidence.
+Three earlier attempts gave 63.7%, 42.7% and the grill's 59% because all three
+read the plugin version from cache directory names. That does not work. Several
+plugins carry more than one cached version and some are named by git sha rather
+than semver, so "newest" is not recoverable by sorting: the enabled
+`superpowers` is 6.2.0 from `superpowers-marketplace` and sorting picked 6.3.0,
+the disabled copy. `installed_plugins.json` states the installed path outright.
 
-**Nothing downstream of this number runs until one method is reproducible.** A
-pre-registered bar computed from an unstable denominator is `#111` again.
+The second correction is `disable-model-invocation: true`. A skill carrying it
+is reachable by `/name` and is not in the listing the model reads, so it costs
+no resident tokens. 20 of 60 entries here are in that class, including
+`mattpocock-skills`'s `grill-with-docs` and `wayfinder`.
+
+Remaining slack, and it is stated rather than smoothed: the script counts 15
+listed `mattpocock-skills` entries where a live session's listing shows 11. The
+4-entry gap is unexplained and biases that plugin's share upward. It does not
+move `pr-review-toolkit` off the top.
+
+`4` chars per token is CHOSEN. The 5.2% moves with it, so a bar written from
+this number states the divisor beside it.
 
 ## What the grill found wrong in fact, not in method
 
@@ -113,8 +124,11 @@ status` over the session's own transcript at `--baseline-calls 10`, the same
 estimator that produced the 68,761. Growth 2.06x, 56,623 to 116,895 over 49
 calls. The enabled and disabled roster, read from settings.
 
-UNCONFIRMED, and treated as neither measured nor chosen: 9.2%, 59%, 6.5%,
-42.7%, 63.7%.
+MEASURED as of 13:33 EDT: the listing table above, by `listing-share.py`,
+reproducible across runs.
+
+RETIRED, all produced by version-by-directory-name and none reproducible:
+9.2%, 59%, 6.5%, 42.7%, 63.7%.
 
 CHOSEN, and defended in the answers below: that the remaining roster is worth
 measuring at all.
@@ -149,10 +163,7 @@ Open: Q10, unrecorded. It was posed at 13:03 EDT and its text did not survive.
 
 ## Now what
 
-1. **Fix the denominator.** Read the installed plugin version from the harness's
-   own resolution rather than from cache directory names, and count only the
-   entries that reach a listing. The test is that the method returns the same
-   share twice.
+1. ~~Fix the denominator.~~ Done 13:33 EDT: `listing-share.py`, 5.2%.
 2. Correct the `CLAUDE.md` line that says `CONTEXT.md` does not exist.
 3. Run the invocation count against all seven enabled plugins. `playwright`
    is back as of 13:26 EDT, so the count and the cost table now disagree on
@@ -161,4 +172,6 @@ Open: Q10, unrecorded. It was posed at 13:03 EDT and its text did not survive.
    tokens, plugins named, capability check written in, confounds stated.
 5. Cut, restart, score.
 
-Steps 3 through 5 are blocked on step 1.
+Step 1 is done, so nothing is blocked. But 5.2% of the opening and about 7
+cents a session is a small enough prize that step 4's bar should be written on
+skill-selection quality first and spend second, exactly as answer 1 says.
