@@ -11,9 +11,13 @@ imports this module and the other direction would be a cycle.
 """
 from __future__ import annotations
 
+import datetime as dt
 import re
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
+
+from .thresholds import SURVIVAL_HORIZON_DAYS
 
 # A porcelain blame emits one header per source line: `<sha> <orig> <final>`,
 # with a trailing group size on the first line of each group. Matching the
@@ -46,3 +50,59 @@ def blame_counts(repo: Path, sha: str) -> dict[str, int]:
             if match:
                 counts[match.group(1)] = counts.get(match.group(1), 0) + 1
     return counts
+
+
+def _day_of(iso: str) -> dt.date | None:
+    try:
+        return dt.datetime.fromisoformat(iso).astimezone(dt.timezone.utc).date()
+    except ValueError:
+        return None
+
+
+def surviving_by_day(
+    repo: Path,
+    branch: str,
+    since: dt.date,
+    until: dt.date,
+    *,
+    horizon_days: int = SURVIVAL_HORIZON_DAYS,
+    asof: dt.datetime | None = None,
+    is_local: Callable[[str], bool] | None = None,
+) -> dict[dt.date, int | None]:
+    """Lines each day wrote that were still present `horizon_days` later.
+
+    None for a day whose horizon is still in the future: unmeasured, not empty.
+    """
+    asof = asof or dt.datetime.now(dt.timezone.utc)
+    sha_day: dict[str, dt.date] = {}
+    for line in _git(repo, "log", branch, "--pretty=%H %cI").splitlines():
+        sha, _, iso = line.strip().partition(" ")
+        day = _day_of(iso)
+        if day:
+            sha_day[sha] = day
+
+    blame_cache: dict[str, dict[str, int]] = {}
+    out: dict[dt.date, int | None] = {}
+    day = since
+    while day <= until:
+        horizon = dt.datetime.combine(
+            day + dt.timedelta(days=horizon_days), dt.time.min, dt.timezone.utc)
+        if horizon > asof:
+            out[day] = None
+            day += dt.timedelta(days=1)
+            continue
+        sha = _git(repo, "log", branch, "--first-parent", "-1", "--pretty=%H",
+                   "--until", horizon.strftime("%Y-%m-%dT%H:%M:%S+00:00")).strip()
+        if not sha:
+            out[day] = None
+            day += dt.timedelta(days=1)
+            continue
+        if sha not in blame_cache:
+            blame_cache[sha] = blame_counts(repo, sha)
+        out[day] = sum(
+            count for origin, count in blame_cache[sha].items()
+            if sha_day.get(origin) == day
+            and (is_local is None or is_local(origin))
+        )
+        day += dt.timedelta(days=1)
+    return out

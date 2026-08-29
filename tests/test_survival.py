@@ -63,3 +63,44 @@ def test_blame_counts_credits_each_line_to_the_commit_that_wrote_it(repo):
 
     assert counts[first] == 6
     assert counts[second] == 4
+
+
+from agent_yield.survival import surviving_by_day
+
+
+def test_a_day_is_scored_at_its_own_horizon_not_at_today(repo):
+    """Hand-counted: 2026-01-01 writes 10 lines, 2026-01-05 replaces 4.
+
+    2026-01-01's horizon is 2026-01-08, and the newest commit by then is the
+    one on the 5th, whose tree holds 6 of the 10. So 6, and it stays 6 however
+    much later the report is run.
+    """
+    _commit(repo, "a.txt", "".join(f"line {i}\n" for i in range(10)),
+            "2026-01-01T12:00:00+00:00")
+    kept = "".join(f"line {i}\n" for i in range(6))
+    replaced = "".join(f"new {i}\n" for i in range(4))
+    _commit(repo, "a.txt", kept + replaced, "2026-01-05T12:00:00+00:00")
+
+    got = surviving_by_day(
+        repo, "main", dt.date(2026, 1, 1), dt.date(2026, 1, 5),
+        asof=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+    )
+
+    assert got[dt.date(2026, 1, 1)] == 6
+    assert got[dt.date(2026, 1, 5)] == 4
+
+
+def test_a_day_younger_than_the_horizon_is_none_rather_than_zero(repo):
+    """A day whose horizon has not arrived is unmeasured, not empty.
+
+    Zero would read as "nothing survived", which is a finding. There is no
+    finding here yet.
+    """
+    _commit(repo, "a.txt", "one\n", "2026-01-01T12:00:00+00:00")
+
+    got = surviving_by_day(
+        repo, "main", dt.date(2026, 1, 1), dt.date(2026, 1, 1),
+        asof=dt.datetime(2026, 1, 3, tzinfo=dt.timezone.utc),
+    )
+
+    assert got[dt.date(2026, 1, 1)] is None
