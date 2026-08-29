@@ -15,6 +15,13 @@ Never a quantity. Every computed figure runs in the cost direction, tokens per
 unit shipped.
 _Avoid_: efficiency, productivity, throughput
 
+**Speedup**:
+The ratio of a baseline way of working's cost to a treated one's, at fixed
+output. Yield asks whether a way of working shipped more for less; Speedup is
+the factor by which it did, and it is defined only when both arms shipped the
+same thing.
+_Avoid_: efficiency, gain, improvement, faster
+
 ### What is spent
 
 **Call**:
