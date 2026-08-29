@@ -16,7 +16,8 @@ from . import session as session_module
 from . import statusline as statusline_module
 from .discovery import default_roots
 from .ingest import ingest, load_ingested
-from .interventions import load_interventions
+from .interventions import SCORABLE_METRICS, load_interventions
+from .prereg import PreregError, append_intervention, render_intervention
 from .modes import (
     VALID_MODES,
     ModeError,
@@ -146,6 +147,32 @@ def _cmd_report(args) -> int:
     if interventions:
         print()
         print(render_interventions(compare_interventions(rows, interventions)))
+    return 0
+
+
+def _cmd_prereg(args) -> int:
+    """Append a prediction, or show what would be appended.
+
+    `--expect` takes a file as well as a string, because a real bar runs to a
+    paragraph and a shell that has to quote one is a shell that mangles it.
+    """
+    path = Path(args.repo) / "interventions.toml"
+    expect = args.expect
+    if args.expect_file:
+        expect = Path(args.expect_file).read_text(encoding="utf-8").strip()
+    try:
+        if args.dry_run:
+            print(render_intervention(
+                date=args.date, name=args.name, expect=expect,
+                metric=args.metric))
+            return 0
+        count = append_intervention(
+            path, date=args.date, name=args.name, expect=expect,
+            metric=args.metric)
+    except PreregError as exc:
+        print(str(exc))
+        return 2
+    print(f"recorded in {path}  ({count} interventions)")
     return 0
 
 
@@ -450,6 +477,24 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--repo", default=".")
     p.add_argument("--calls", default=str(DEFAULT_CALLS_PATH))
     p.set_defaults(func=_cmd_tag)
+
+    p = subs.add_parser(
+        "prereg",
+        help="write a prediction down BEFORE the result, safely")
+    p.add_argument("name", help="what the intervention IS")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--expect", default="",
+                   help="what you predict changes, and the bar that falsifies it")
+    p.add_argument("--expect-file", dest="expect_file",
+                   help="read --expect from a file; a real bar is a paragraph")
+    p.add_argument("--metric", choices=SCORABLE_METRICS,
+                   help="the metric to score it on; omit and the report says "
+                        "UNSCORABLE")
+    p.add_argument("--date", default=dt.date.today().isoformat(),
+                   help="YYYY-MM-DD (default: today)")
+    p.add_argument("--dry-run", dest="dry_run", action="store_true",
+                   help="print the entry instead of appending it")
+    p.set_defaults(func=_cmd_prereg)
 
     p = subs.add_parser("status", help="measure the session you are in")
     p.add_argument("--session-id", dest="session_id",
