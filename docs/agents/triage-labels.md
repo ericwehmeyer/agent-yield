@@ -1,15 +1,28 @@
-# Triage Labels
+# Four of the five triage roles have no label in this tracker
 
-The skills speak in terms of five canonical triage roles. This file maps those roles to the actual label strings used in this repo's issue tracker.
+The tracker carries 13 labels: accessibility, bug, documentation, duplicate,
+enhancement, good first issue, help wanted, invalid, question, task, blocked,
+windows and wontfix. Of the five canonical triage roles the skills speak in,
+only `wontfix` exists under its own name. This file maps each role to a label
+that is really there, or records that none is.
 
-| Label in mattpocock/skills | Label in our tracker | Meaning                                  |
-| -------------------------- | -------------------- | ---------------------------------------- |
-| `needs-triage`             | `needs-triage`       | Maintainer needs to evaluate this issue  |
-| `needs-info`               | `needs-info`         | Waiting on reporter for more information |
-| `ready-for-agent`          | `ready-for-agent`    | Fully specified, ready for an AFK agent  |
-| `ready-for-human`          | `ready-for-human`    | Requires human implementation            |
-| `wontfix`                  | `wontfix`            | Will not be actioned                     |
+| Label in mattpocock/skills | Label in our tracker | Meaning                                                       |
+| -------------------------- | -------------------- | ------------------------------------------------------------- |
+| `needs-triage`             | none                 | An issue carrying no role label is the untriaged state         |
+| `needs-info`               | `blocked`            | Waiting on someone else, the reporter included; an approximate fit |
+| `ready-for-agent`          | none                 | Fully specified, ready for an AFK agent                        |
+| `ready-for-human`          | none                 | Requires human implementation                                  |
+| `wontfix`                  | `wontfix`            | Will not be actioned                                           |
 
-When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the corresponding label string from this table.
+`ready-for-agent` and `ready-for-human` have no equivalent, so triage cannot
+currently express "fully specified, ready for an agent" at all, and an issue
+that is ready reads exactly like one that has never been looked at.
 
-Edit the right-hand column to match whatever vocabulary you actually use.
+When a skill mentions a role (e.g. "apply the AFK-ready triage label"), use the
+corresponding label string from this table, and where the row says none, apply
+no label and say in a comment what the state is.
+
+Labels that exist were preferred over labels that would have to be created:
+more than 40 open issues already carry `task`, `bug` or `blocked`, which is the
+vocabulary in observed use. Closing the two gaps above means creating labels,
+not editing this file.
