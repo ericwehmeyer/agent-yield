@@ -19,7 +19,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .discovery import find_transcripts, main_transcript_dir
-from .ingest import load_records, total_usage
+from .ingest import incomplete_calls, load_records, total_usage
+from .pricing import Priced, price_records
 from .thresholds import COST_LADDER, RESTART_FACTOR, cost_band
 from .usage import Usage
 
@@ -53,6 +54,13 @@ class SessionStats:
     ``started`` is the timestamp of the session's first main-thread call.
     A handoff needs it to ask git what landed *during this session* rather
     than listing the whole branch as if the session had done it.
+
+    ``priced`` is list dollars for the main thread, and ``subagent_priced``
+    for this transcript's sidechain calls. They are kept APART for the reason
+    ``cost_band`` keeps the two populations apart: the main figure answers
+    "what does continuing this thread cost", and folding an agent's spend into
+    it answers a different question with the same number. Both are ``None``
+    when nothing could be priced -- 0.0 would read as "it was free".
     """
 
     path: Path
@@ -64,6 +72,11 @@ class SessionStats:
     total: Usage
     started: dt.datetime | None = None
     contexts: tuple[int, ...] = ()
+    priced: Priced | None = None
+    subagent_priced: Priced | None = None
+    incomplete_calls: int = 0
+    """Main-thread calls whose group held no terminal record. Their
+    `output_tokens` is a lower bound, so `priced` is one too."""
 
 
 def project_slug(cwd: Path | None = None) -> str:
@@ -251,6 +264,9 @@ def session_stats(path: Path, baseline_calls: int = 10) -> SessionStats:
         else:
             opening = None
 
+    # Priced from the same `main` walk the tokens come from, so the dollars and
+    # the token line are two readings of one population rather than two
+    # measurements. The sidechain walk is the records `main` filtered OUT.
     return SessionStats(
         path=path,
         calls=calls,
@@ -261,6 +277,9 @@ def session_stats(path: Path, baseline_calls: int = 10) -> SessionStats:
         total=total_usage(main),
         started=main[0].timestamp,
         contexts=tuple(contexts),
+        priced=price_records(main),
+        subagent_priced=price_records([r for r in records if r.is_subagent]),
+        incomplete_calls=incomplete_calls(main),
     )
 
 

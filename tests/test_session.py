@@ -26,6 +26,7 @@ def _line(
     cache_creation: int = 0,
     cache_read: int = 0,
     sidechain: bool = False,
+    model: str | None = None,
 ) -> str:
     record = {
         "timestamp": f"2026-08-26T12:{index // 60:02d}:{index % 60:02d}.000Z",
@@ -33,6 +34,7 @@ def _line(
         "requestId": f"req-{session_id}-{index}",
         "message": {
             "id": f"msg-{session_id}-{index}",
+            "model": model,
             "usage": {
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
@@ -437,3 +439,74 @@ def test_project_slug_is_only_ever_called_where_its_output_is_pinned():
         "value is computed by the code under test, so the test cannot fail "
         "(audit N10). Type the directory name out."
     )
+
+
+# --- dollars ---------------------------------------------------------------
+#
+# `status` reported tokens and not dollars, while #52 measured the two
+# DISAGREEING IN SIGN across three arms: the one-agent baton is the most
+# expensive in raw tokens and the cheapest in dollars. So the command that
+# tells an operator where they are was reporting the unit this repo had
+# already shown could mislead. These are hand-computed from pricing.py's
+# published multipliers, never by calling the code under test.
+
+
+def test_session_dollars_are_the_list_price_of_the_main_thread(tmp_path):
+    """Hand-computed at $5.00/MTok base, opus-5.
+
+    weighted = 1,000 input + 0.10 x 50,000 read + 1.25 x 4,000 write
+             + 5.00 x 200 output
+             = 1,000 + 5,000 + 5,000 + 1,000 = 12,000
+    dollars  = 5.00 x 12,000 / 1,000,000 = $0.06
+
+    The write has no TTL in the record, so it prices at the 5m default and is
+    reported as unattributed rather than assumed.
+    """
+    path = _write(tmp_path / "s.jsonl", [
+        _line(session_id="s", index=0, model="claude-opus-5",
+              input_tokens=1_000, output_tokens=200,
+              cache_creation=4_000, cache_read=50_000),
+    ])
+
+    stats = session_stats(path)
+
+    assert stats.priced is not None
+    assert stats.priced.dollars == pytest.approx(0.06)
+    assert stats.priced.unattributed_cache_creation == 4_000
+
+
+def test_an_unpriced_model_reports_none_rather_than_zero(tmp_path):
+    """0.0 would read as "it was free", which is the error this repo exists to
+    prevent. `price` returns None when nothing could be priced at all."""
+    path = _write(tmp_path / "s.jsonl", [
+        _line(session_id="s", index=0, model="some-model-nobody-priced",
+              input_tokens=1_000, output_tokens=200),
+    ])
+
+    stats = session_stats(path)
+
+    assert stats.priced is None
+
+
+def test_subagent_dollars_are_counted_apart_from_the_parent(tmp_path):
+    """Hand-computed: the sidechain call is 0.10 x 10,000 + 5.00 x 100 = 1,500
+    weighted, so $0.0075 at $5.00/MTok.
+
+    Kept apart rather than pooled, for the reason `cost_band` keeps the two
+    populations apart: the parent figure is what THIS thread costs to continue,
+    and folding an agent's spend into it answers a different question with the
+    same number. The parent line must not move when an agent runs.
+    """
+    path = _write(tmp_path / "s.jsonl", [
+        _line(session_id="s", index=0, model="claude-opus-5",
+              input_tokens=1_000, output_tokens=200,
+              cache_creation=4_000, cache_read=50_000),
+        _line(session_id="s", index=1, model="claude-opus-5", sidechain=True,
+              output_tokens=100, cache_read=10_000),
+    ])
+
+    stats = session_stats(path)
+
+    assert stats.priced.dollars == pytest.approx(0.06)
+    assert stats.subagent_priced is not None
+    assert stats.subagent_priced.dollars == pytest.approx(0.0075)

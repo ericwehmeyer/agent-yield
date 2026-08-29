@@ -176,6 +176,34 @@ def _cmd_prereg(args) -> int:
     return 0
 
 
+def _dollars(stats) -> str:
+    """The dollar line of `status`, with everything it cannot see said out loud.
+
+    List price, not billed price: it is what this usage WOULD cost at published
+    rates, and a plan or a discount is not visible from a transcript. Every
+    qualification `Priced` knows about is appended rather than dropped, because
+    a dollar figure is the number people quote and an unqualified one gets
+    quoted too.
+    """
+    if stats.priced is None:
+        return "unpriced -- no call carried a model this tool has a rate for"
+
+    line = f"main ${stats.priced.dollars:,.4f}"
+    if stats.subagent_priced is not None:
+        line += (f"  subagents ${stats.subagent_priced.dollars:,.4f}"
+                 f"  (total ${stats.priced.dollars + stats.subagent_priced.dollars:,.4f})")
+
+    notes = [note for note in (stats.priced.caveat(),) if note]
+    if stats.incomplete_calls:
+        # A lower bound reported as a total is the same defect as a `None`
+        # reported as 0: the number looks finished when it is not.
+        notes.append(f"{stats.incomplete_calls:,} incomplete call"
+                     f"{'s' if stats.incomplete_calls > 1 else ''}, so a lower bound")
+    if notes:
+        line += f"  [{'; '.join(notes)}]"
+    return line + "  (list price)"
+
+
 def _cmd_status(args) -> int:
     """One measurement of the session you are in, and what it costs to stay.
 
@@ -211,6 +239,14 @@ def _cmd_status(args) -> int:
           f"cache write {usage.cache_creation_tokens:,}  "
           f"cache read {usage.cache_read_tokens:,}  "
           f"(total {usage.total:,})")
+    # Dollars, because the token line alone can point the wrong way. #52
+    # measured the two DISAGREEING IN SIGN across three arms -- the one-agent
+    # baton is dearest in raw tokens and cheapest in dollars -- since a raw sum
+    # prices a cache read like an output token and cache reads are 97.4% of
+    # what is consumed (usage.py). Main and subagent totals stay apart, as
+    # `cost_bands` keeps them apart: what this thread costs to continue is not
+    # what the session spent.
+    print(f"  dollars         {_dollars(stats)}")
     # Two families, printed apart, because they answer different questions
     # in different units (issue #23): the band is absolute tokens -- what the
     # next call bills -- and the window fraction is capacity, how much room
