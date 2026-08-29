@@ -9,6 +9,7 @@ from pathlib import Path
 from . import allowance as allowance_module
 from . import boundary as boundary_module
 from . import gate as gate_module
+from . import guard as guard_module
 from . import handoff as handoff_module
 from . import agents as agents_module
 from . import resume as resume_module
@@ -640,6 +641,11 @@ def main(argv: list[str] | None = None) -> int:
         + ([] if args.with_timeout is None
            else ["--with-timeout", str(args.with_timeout)])
     ))
+
+    p = subs.add_parser(
+        "guard",
+        help="PreToolUse hook entry point: refuse a tree-wide `git add`")
+    p.set_defaults(func=lambda _args: guard_module.main())
 
     p = subs.add_parser("gate", help="PreToolUse hook entry point")
     # Declared here even though `gate.main` parses it itself: `parse_args`
