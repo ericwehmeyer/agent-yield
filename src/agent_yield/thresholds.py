@@ -244,3 +244,10 @@ def cost_advice(context: int) -> str | None:
         COST_RESTART=COST_RESTART,
         COST_STOP=COST_STOP,
     )
+
+
+# CHOSEN, not measured. Seven days is long enough that a same-week rewrite
+# lands inside it and short enough to score a day within the week it happened.
+# Re-derive it once there is enough history to measure where survival actually
+# flattens; until then it is a convention and is labelled one.
+SURVIVAL_HORIZON_DAYS = 7
