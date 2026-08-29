@@ -88,20 +88,23 @@ pre-registered bar computed from an unstable denominator is `#111` again.
 
 ## What the grill found wrong in fact, not in method
 
-1. **`playwright` is not being re-enabled.** The first version wrote "once
-   re-enabled" into the method. The setting is still `false` at line 21 of
-   `~/.claude/settings.json`; re-enabling was auto-denied and needs a manual
-   edit. Any count that includes it is projecting.
+1. **`playwright` was disabled while the method assumed otherwise.** The
+   first version wrote "once re-enabled" into a method that then counted it.
+   It was re-enabled by hand at 13:26 EDT on 2026-08-29, line 21 of
+   `~/.claude/settings.json`, and takes effect at the next session start. So
+   the roster is seven plugins from that point, and every figure in this
+   document was measured against six.
 2. **`agent-yield` has tool limits the plan did not account for.**
 3. **`CLAUDE.md` and `CONTEXT.md` disagree.** `CLAUDE.md` says `CONTEXT.md` and
    `docs/adr/` are "neither created yet". `CONTEXT.md` now exists, at
    `d951652`. `docs/adr/` still does not. The `CLAUDE.md` line needs correcting.
 
-Roster verified against `~/.claude/settings.json` on 2026-08-29: six enabled
+Roster verified against `~/.claude/settings.json` on 2026-08-29: seven enabled
 (`claude-code-setup`, `code-review`, `mattpocock-skills`, `pr-review-toolkit`,
-`remember`, `superpowers@superpowers-marketplace`), nine disabled. `superpowers`
-is installed twice from two marketplaces and the `claude-plugins-official` copy
-is the disabled one.
+`playwright`, `remember`, `superpowers@superpowers-marketplace`), eight
+disabled. The measurements above predate `playwright`'s return and cover six.
+`superpowers` is installed twice from two marketplaces and the
+`claude-plugins-official` copy is the disabled one.
 
 ## What is measured and what is chosen
 
@@ -151,8 +154,9 @@ Open: Q10, unrecorded. It was posed at 13:03 EDT and its text did not survive.
    entries that reach a listing. The test is that the method returns the same
    share twice.
 2. Correct the `CLAUDE.md` line that says `CONTEXT.md` does not exist.
-3. Run the invocation count against the six enabled plugins, `playwright`
-   excluded until it is actually re-enabled.
+3. Run the invocation count against all seven enabled plugins. `playwright`
+   is back as of 13:26 EDT, so the count and the cost table now disagree on
+   the roster and the table is the older of the two.
 4. Pre-register with `agent-yield prereg` before changing a setting: bar in
    tokens, plugins named, capability check written in, confounds stated.
 5. Cut, restart, score.
