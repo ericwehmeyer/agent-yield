@@ -468,8 +468,16 @@ def main(argv: list[str] | None = None) -> int:
     # how the process was launched: hooks invoke this, and their environment
     # is not ours. `hasattr` because a caller may have replaced the stream
     # with something that is not a TextIOWrapper -- pytest's capture does.
+    #
+    # BOTH streams, not just stdout (#116). `gate` prints its refusal to
+    # stderr, and a PreToolUse hook's stderr IS the reason the harness shows
+    # the operator -- so the one message whose only job is to be read at the
+    # moment someone is blocked was the one arriving as
+    # "docs/working-method.md ?12".
     if hasattr(sys.stdout, "reconfigure"):
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    if hasattr(sys.stderr, "reconfigure"):
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
     parser = argparse.ArgumentParser(prog="agent-yield")
     subs = parser.add_subparsers(dest="command", required=True)
 

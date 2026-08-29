@@ -333,3 +333,39 @@ def test_every_committed_file_decodes_as_utf8():
         "machine and nowhere else (#70, #85, #100). Re-encode the file; do NOT "
         "loosen the reader."
     )
+
+
+def test_a_module_that_reconfigures_stdout_reconfigures_stderr_too():
+    r"""#116: the refusal an operator reads is the one that arrived corrupted.
+
+    `cli.main` reconfigured stdout to UTF-8 and said why -- a section mark on a
+    cp1252 stream leaves a bare 0xA7, which is not valid UTF-8, so a consumer
+    decoding the stream fails on the WHOLE read rather than losing one glyph
+    (#43). `gate.main` prints its refusal to STDERR, which was never
+    reconfigured, and on 2026-08-28 the dispatch gate blocked a dispatch with
+
+        this dispatch is missing output path (docs/working-method.md ?12)
+
+    A PreToolUse hook's stderr IS the refusal reason the harness surfaces, so
+    this is the one message in the system whose only job is to be read by a
+    human at the moment they are blocked.
+
+    The rule is a pair, not a stream: reconfiguring one and not the other is
+    the defect, and either both or neither is defensible.
+    """
+    for path in sorted((_ROOT / "src").rglob("*.py")):
+        tree = ast.parse(_read(path), filename=str(path))
+        streams = {
+            node.func.value.attr
+            for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "reconfigure"
+            and isinstance(node.func.value, ast.Attribute)
+            and node.func.value.attr in {"stdout", "stderr"}
+        }
+        assert streams in ({"stdout", "stderr"}, set()), (
+            f"{_rel(path)} reconfigures {sorted(streams)} and not the other. "
+            r"A section mark on a cp1252 stream leaves a bare 0xA7; the stream "
+            "left alone is the one that corrupts (#116)."
+        )
