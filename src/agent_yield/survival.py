@@ -72,6 +72,17 @@ def surviving_by_day(
     """Lines each day wrote that were still present `horizon_days` later.
 
     None for a day whose horizon is still in the future: unmeasured, not empty.
+
+    `is_local` scopes the count to one machine's commits. It must be passed
+    whenever the numerator is one machine's tokens: dividing this machine's
+    spend by both machines' surviving lines is #44's error on a new
+    denominator, measured there at 25x on one day.
+
+    Blame attributes a line to the commit that introduced it, which on a merged
+    side branch is not a first-parent commit, while `outcomes.lines` counts
+    first-parent only. On a linear history the two agree exactly. On a branchy
+    one, survival can exceed insertions for a day, and that is a real limit of
+    this measurement rather than a bug in it.
     """
     asof = asof or dt.datetime.now(dt.timezone.utc)
     sha_day: dict[str, dt.date] = {}

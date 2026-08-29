@@ -104,3 +104,28 @@ def test_a_day_younger_than_the_horizon_is_none_rather_than_zero(repo):
     )
 
     assert got[dt.date(2026, 1, 1)] is None
+
+
+def test_a_foreign_commits_surviving_lines_are_not_this_machines(repo):
+    """Hand-counted: two commits on the same day, one of them foreign.
+
+    Ten lines survive to the horizon and each commit wrote five. Scoped to the
+    local one, the day scores 5, not 10.
+    """
+    local = _commit(repo, "a.txt", "".join(f"a{i}\n" for i in range(5)),
+                    "2026-01-01T10:00:00+00:00")
+    _commit(repo, "b.txt", "".join(f"b{i}\n" for i in range(5)),
+            "2026-01-01T11:00:00+00:00")
+
+    scoped = surviving_by_day(
+        repo, "main", dt.date(2026, 1, 1), dt.date(2026, 1, 1),
+        asof=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+        is_local=lambda sha: sha == local,
+    )
+    unscoped = surviving_by_day(
+        repo, "main", dt.date(2026, 1, 1), dt.date(2026, 1, 1),
+        asof=dt.datetime(2026, 3, 1, tzinfo=dt.timezone.utc),
+    )
+
+    assert scoped[dt.date(2026, 1, 1)] == 5
+    assert unscoped[dt.date(2026, 1, 1)] == 10
