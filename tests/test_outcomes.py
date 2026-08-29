@@ -256,3 +256,17 @@ def test_the_area_split_walks_the_same_commits_as_the_total(areas):
     day = dt.date(2026, 8, 24)
     outcome = {o.day: o for o in daily_outcomes(areas, day, day)}[day]
     assert outcome.code_lines == 5
+
+
+def test_thrash_is_what_a_day_wrote_and_did_not_keep():
+    """Hand-counted: 10 lines written, 6 of them still there at the horizon."""
+    outcome = DailyOutcome(
+        day=dt.date(2026, 1, 1), lines=10, surviving_lines=6)
+    assert outcome.thrash == 4
+
+
+def test_thrash_is_none_while_survival_is_unmeasured():
+    """A day inside the horizon has no thrash figure, and 0 would claim it had."""
+    outcome = DailyOutcome(
+        day=dt.date(2026, 1, 1), lines=10, surviving_lines=None)
+    assert outcome.thrash is None

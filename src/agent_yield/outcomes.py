@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .attribution import LOCAL, UNKNOWN, Machine
+from .survival import surviving_by_day
 
 
 @dataclass(frozen=True)
@@ -35,6 +36,17 @@ class DailyOutcome:
     reflog. Counted and reported, never folded into `commits`, because a commit
     that is not attributable is not thereby somebody else's (`attribution.py`).
     Always 0 when the caller did not ask for machine scoping."""
+
+    surviving_lines: int | None = None
+    """`lines` that were still present at this day's horizon. None until the
+    horizon arrives: a day measured too early has not survived nothing."""
+
+    @property
+    def thrash(self) -> int | None:
+        """Shipped code this day did not keep. None while survival is unmeasured."""
+        if self.surviving_lines is None:
+            return None
+        return self.lines - self.surviving_lines
 
 
 CODE_SUFFIXES = frozenset({
@@ -143,6 +155,8 @@ def daily_outcomes(
     until: dt.date,
     test_command: list[str] | None = None,
     machine: "Machine | None" = None,
+    *,
+    asof: dt.datetime | None = None,
 ) -> list[DailyOutcome]:
     """One row per day in range.
 
@@ -232,6 +246,23 @@ def daily_outcomes(
             if sha:
                 tests[day] = test_count_at(repo, sha, test_command)
 
+    # Blame hands back bare shas, while `Machine.label` needs the commit time to
+    # tell FOREIGN from UNKNOWN, so the shas have to be dated before they can be
+    # scoped. Whole history rather than `window`: a line surviving into this
+    # range may well have been written before it, and dating only the range
+    # would label every such origin UNKNOWN and drop it.
+    sha_when: dict[str, dt.datetime | None] = {}
+    if machine is not None:
+        for line in _git(repo, "log", branch, "--pretty=%H %cI").splitlines():
+            sha, iso = _split(line)
+            sha_when[sha] = _when(iso)
+
+    surviving = surviving_by_day(
+        repo, branch, since, until, asof=asof,
+        is_local=(None if machine is None
+                  else lambda sha: machine.label(sha, sha_when.get(sha)) == LOCAL),
+    )
+
     out: list[DailyOutcome] = []
     day = since
     while day <= until:
@@ -245,6 +276,7 @@ def daily_outcomes(
             other_lines=areas.get((day, "other"), 0),
             tests=tests.get(day),
             unattributable=unattributable.get(day, 0),
+            surviving_lines=surviving.get(day),
         ))
         day += dt.timedelta(days=1)
     return out
