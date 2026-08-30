@@ -70,6 +70,7 @@ from .allowance import (
     load as load_allowance,
 )
 from .hookio import read_payload
+from .state import anchored
 from .predict import Projection, project
 from .thresholds import (
     REFERENCE_CONTEXT,
@@ -327,7 +328,7 @@ def _decide(
     # `_day_total` in the payload is a test seam; real runs read the ingest.
     day_total = payload.get("_day_total")
     if not isinstance(day_total, int):
-        day_total = _day_total(DEFAULT_CALLS_PATH)
+        day_total = _day_total(anchored(DEFAULT_CALLS_PATH))
 
     day_message = gate_message(day_total, project(REFERENCE_CONTEXT))
     over_ceiling = (

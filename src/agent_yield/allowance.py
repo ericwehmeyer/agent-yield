@@ -51,7 +51,14 @@ from pathlib import Path
 from typing import Iterable
 
 from .records import json_lines
+from .state import anchored
 
+# Relative, and anchored to the project root by `load` and `append` rather
+# than to the cwd (#154). Anchoring inside the two I/O functions rather than at
+# each call site is deliberate: the status line, the gate and the CLI all reach
+# this log, and one of them writing beside a subdirectory is how six side logs
+# appeared on one checkout. `anchored` passes absolute paths through, so a test
+# pointing this at `tmp_path` is unaffected.
 SNAPSHOT_PATH = Path(".agent-yield") / "allowance.jsonl"
 
 # Below this the quantization error dominates: at 1-point resolution, a 4-point
@@ -161,8 +168,9 @@ def append(path: Path, snapshot: Snapshot, previous: Snapshot | None = None) -> 
     ):
         return False
     try:
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
-        with Path(path).open("a", encoding="utf-8", newline="\n") as handle:
+        target = anchored(path)
+        target.parent.mkdir(parents=True, exist_ok=True)
+        with target.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(asdict(snapshot), sort_keys=True) + "\n")
     except OSError:
         return False
@@ -171,7 +179,7 @@ def append(path: Path, snapshot: Snapshot, previous: Snapshot | None = None) -> 
 
 def load(path: Path) -> list[Snapshot]:
     try:
-        text = Path(path).read_text(encoding="utf-8")
+        text = anchored(path).read_text(encoding="utf-8")
     except OSError:
         return []
     out: list[Snapshot] = []
