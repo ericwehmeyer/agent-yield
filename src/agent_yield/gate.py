@@ -42,14 +42,22 @@ Three constraints on it, all from the data rather than from taste:
   - Its override is its own. Silencing the allowance must not also silence the
     daily ceiling, for the same reason boundary.py keeps a separate one.
 
-Brief quality is checked here too, and warns rather than refuses.
-`--enforce-brief` exists and is OFF: it is the EAGER form, refusing any
-non-exempt dispatch whose prompt lacks a marker. The recommended form refuses
-only on a compound condition -- markers missing AND this session has already
-produced a dispatch measured in the un-briefed population -- so that a
-refusal redirects the dispatch path instead of blocking a first offence. That
-condition needs per-dispatch call counts, which are exactly what issue #18
-Part C builds, so it is not implemented and the flag stays off until it is.
+Brief quality is checked here too. `--enforce-brief` is the EAGER form,
+refusing any non-exempt dispatch whose prompt lacks a marker, and
+`.claude/settings.template.json` has passed it since `c32721f`. This docstring
+claimed for five days that the flag was off; the template is tracked, so it
+was on for every machine that pulled (#163).
+
+The recommended form refuses only on a compound condition -- markers missing
+AND this session has already produced a dispatch measured in the un-briefed
+population -- so that a refusal redirects the dispatch path instead of
+blocking a first offence. That needs per-dispatch call counts, which issue #18
+Part C builds, and it is still not implemented.
+
+What makes the eager form safe to leave on is narrowing what it demands. A
+line range is asked only of a brief that names a repo file, and an output path
+only of a child that can write one. Both narrowings are refusals this gate
+actually issued on 2026-08-30 against dispatches that could not have complied.
 """
 from __future__ import annotations
 
@@ -104,6 +112,12 @@ ALLOWANCE_OVERRIDE_ENV = "AGENT_YIELD_ALLOWANCE_OVERRIDE"
 # to enforce. Kept as data, not a hardcoded branch, so the list can grow.
 BRIEF_EXEMPT_TYPES = frozenset({"explore", "plan"})
 
+# #164: an agent type whose tools cannot write a file is asked, by "output
+# path", for something it structurally cannot produce. One dispatch spent
+# 55,927 tokens discovering that. §12.3 says the return contract IS the
+# artifact for these, so the marker is not scored against them.
+READ_ONLY_TYPES = frozenset({"claude-code-guide"})
+
 
 @dataclass(frozen=True)
 class DispatchRequest:
@@ -140,6 +154,27 @@ def read_dispatch(payload: dict) -> DispatchRequest | None:
 # sat at a median 85,195.
 _LINE_RANGE_RE = re.compile(
     r"(sed -n '\d+,\d+p')|(lines?\s+\d+\s*[-\u2013]\s*\d+)|(:\d+-\d+\b)", re.IGNORECASE
+)
+
+# #163: a range is a claim about a file, so it cannot honestly be demanded of a
+# brief that names none. A dispatch reading vendor documentation has no lines
+# to cite, which is the class \u00a712.2 exempts in as many words -- "an
+# exploratory dispatch is SUPPOSED to carry none of these markers" -- and which
+# the type-name exemption above cannot see, because a name is a proxy for the
+# work and the two part company exactly here.
+#
+# Naming no file is NOT sufficient on its own, and the first draft of this got
+# that wrong: an empty prompt names no file either, and so does every dispatch
+# in the un-briefed population \u00a712 was built to catch. The prohibition is what
+# separates them. A brief that says "do not explore" and cites nothing has
+# bounded itself and has nothing to cite; one that says neither has simply not
+# been written. So the demand is dropped only when both hold.
+_REPO_PATH_RE = re.compile(
+    r"""(?xi)
+    (?: \b(?:src|tests?|docs|scripts)[/\\][\w./\\-]+
+      | \.(?:claude|github)[/\\][\w./\\-]+
+      | \b[\w-]+\.(?:py|md|json|toml|ya?ml|cfg|ini|sh|ps1)\b
+    )"""
 )
 
 # #32: every one of these three used to test for particular *wording*, and all
@@ -210,10 +245,16 @@ _BRIEF_REMEDY = {
 def missing_markers(request: DispatchRequest) -> tuple[str, ...]:
     """Which rubric markers a dispatch prompt does not carry."""
     prompt = request.prompt or ""
+    subagent_type = (request.subagent_type or "").lower()
     missing = []
-    if not (_LINE_RANGE_RE.search(prompt) and _NO_EXPLORE_RE.search(prompt)):
+    bounded_and_fileless = _NO_EXPLORE_RE.search(prompt) and not _REPO_PATH_RE.search(
+        prompt
+    )
+    if not bounded_and_fileless and not (
+        _LINE_RANGE_RE.search(prompt) and _NO_EXPLORE_RE.search(prompt)
+    ):
         missing.append("line ranges")
-    if not _OUTPUT_PATH_RE.search(prompt):
+    if subagent_type not in READ_ONLY_TYPES and not _OUTPUT_PATH_RE.search(prompt):
         missing.append("output path")
     if not _RETURN_CONTRACT_RE.search(prompt):
         missing.append("return contract")

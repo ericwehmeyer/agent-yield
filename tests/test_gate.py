@@ -509,3 +509,73 @@ def test_a_non_dispatch_tool_is_never_refused_on_the_allowance():
         readings={"five_hour": reading("five_hour", 99)},
     )
     assert (code, message) == (0, None)
+
+
+# --- #163: what a marker may be demanded of --------------------------------
+
+
+RANGED_NO_OUTPUT = (
+    "Read src/agent_yield/gate.py lines 22-58 via sed -n. Do not explore; if "
+    "you need a file not listed, say so and stop. Return only the verdict, "
+    "nothing else."
+)
+
+
+def test_a_brief_that_names_no_file_is_not_asked_for_line_ranges():
+    # A range is a claim about a file. A dispatch reading vendor docs has no
+    # lines to cite, so demanding the marker asks for a lie. This is the
+    # refusal that produced #163, and it is the class 12.2 exempts.
+    prompt = (
+        "Answer from the vendor documentation only. Do not explore this "
+        "repository. Return at most 350 words: one line per question."
+    )
+    request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
+    assert "line ranges" not in missing_markers(request)
+
+
+def test_a_brief_that_names_a_file_is_still_asked_for_ranges():
+    prompt = (
+        "Read src/agent_yield/gate.py and summarise it. Write your findings "
+        "to docs/experiments/out.md. Return only the verdict, nothing else."
+    )
+    request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
+    assert missing_markers(request) == ("line ranges",)
+
+
+def test_a_read_only_type_is_not_asked_for_an_output_path():
+    # #164: claude-code-guide has no Write tool. One dispatch spent 55,927
+    # tokens finding that out, and the path it was given was unproduceable.
+    request = DispatchRequest(
+        subagent_type="claude-code-guide", prompt=RANGED_NO_OUTPUT
+    )
+    assert missing_markers(request) == ()
+
+
+def test_a_type_that_can_write_is_still_asked_for_an_output_path():
+    request = DispatchRequest(
+        subagent_type="general-purpose", prompt=RANGED_NO_OUTPUT
+    )
+    assert missing_markers(request) == ("output path",)
+
+
+def test_the_narrowing_does_not_reach_a_brief_whose_only_path_is_its_output():
+    # Known limitation, recorded rather than fixed: a dispatch that reads
+    # nothing but writes a document still trips the file test on its own
+    # output path, so it is asked for ranges it has no use for. The type-name
+    # exemption is what covers that case today.
+    prompt = (
+        "Answer from vendor documentation. Do not explore. Write to "
+        "docs/experiments/out.md. Return at most 350 words."
+    )
+    request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
+    assert missing_markers(request) == ("line ranges",)
+
+
+def test_naming_no_file_without_the_prohibition_is_still_missing_ranges():
+    # The distinction the first draft of #163's fix got wrong. An un-briefed
+    # dispatch names no file either. Only a brief that bounds itself AND cites
+    # nothing has earned the exemption; one that does neither has simply not
+    # been written, and that is the population 12 exists to catch.
+    prompt = "Look into the caching thing and tell me what you find."
+    request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
+    assert "line ranges" in missing_markers(request)
