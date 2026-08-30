@@ -332,7 +332,7 @@ def test_check_names_an_interpreter_from_another_checkout(tmp_path):
     """#113 as filed: this repo's script, the neighbouring repo's virtualenv.
 
     The rendered file is clean here, so this is the case a template-only check
-    calls a pass -- and did, for the five days the wiring stood.
+    calls a pass -- and did, for as long as the wiring stood.
     """
     make_project(tmp_path)
     harness.install(tmp_path)
@@ -438,7 +438,7 @@ def test_this_clone_is_running_the_template_it_ships():
 def test_this_clones_local_hooks_run_on_this_clones_interpreter():
     """The assertion #113 was open against, pointed at the real file.
 
-    It failed for five days: `.claude/hooks/probe.py` ran under
+    It failed for as long as #113 was open: `.claude/hooks/probe.py` ran under
     `migration-kit/.venv`, so deleting an unrelated repo's virtualenv would
     have broken every dispatch in this one.
     """

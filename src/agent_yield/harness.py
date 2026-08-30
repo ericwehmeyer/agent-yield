@@ -47,7 +47,7 @@ committing it again has fixed nothing.
 `settings.local.json` is unrendered, and is checked anyway
 ----------------------------------------------------------
 It is machine state by design and this tool never writes it, but it wires hooks
-onto the same tool calls the rendered file does. For five days it ran
+onto the same tool calls the rendered file does. It ran
 `.claude/hooks/probe.py` -- this repo's script -- under
 `C:/Users/ewehm/repos/migration-kit/.venv/Scripts/python.exe`, another
 checkout's virtualenv (#113). Rebuilding that unrelated venv would have broken
@@ -353,7 +353,8 @@ def check(root: Path) -> tuple[int, str]:
     Two independent faults, reported together and both exiting 1. Drift is
     about the rendered file; a foreign interpreter is about the local one. A
     clone can easily have the second without the first, which is how #113 ran
-    for five days under a `--check` that said everything matched.
+    under a `--check` that said everything matched, until it was filed by hand
+    on 2026-08-28.
     """
     root = root.resolve()
     expected = _expected(root)
