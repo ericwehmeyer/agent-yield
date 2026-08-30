@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import subprocess
 from datetime import timedelta
 from pathlib import Path
 
@@ -43,8 +44,10 @@ def stubs(monkeypatch):
     def fake_pick(python):
         return calls.get("pick", (0, PICKED_LINE))
 
-    def fake_claude(brief, cwd, permission_mode, timeout, claude):
-        calls["claude"].append({"brief": brief, "mode": permission_mode})
+    def fake_claude(brief, cwd, permission_mode, timeout, claude,
+                    denied=None, env=None):
+        calls["claude"].append({"brief": brief, "mode": permission_mode,
+                                "denied": denied, "env": env})
         return {"session_id": "s1", "num_turns": 4, "duration_ms": 1234,
                 "total_cost_usd": 0.4212, "is_error": False,
                 "usage": {"input_tokens": 12, "output_tokens": 3400,
@@ -157,14 +160,28 @@ def test_the_lock_is_released_even_when_the_run_raises(repo, stubs, monkeypatch)
 
 # --- the brief -----------------------------------------------------------
 
-def test_the_brief_forbids_committing_by_default(repo, stubs):
-    runner.main([])
+def test_the_brief_forbids_committing_when_there_is_no_key(repo, stubs, monkeypatch):
+    """No signing identity, no commit -- whatever the flag says.
+
+    The gate moved with #171. It is no longer `--commit` but whether the loop
+    has a key of its own to sign with, because committing without one means
+    signing as the operator, which is the whole defect.
+    """
+    monkeypatch.delenv(runner.SIGNING_KEY_ENV, raising=False)
+    runner.main(["--commit"])
     brief = stubs["claude"][0]["brief"]
     assert "Do NOT commit" in brief and "#171" in brief
+    assert rows(repo)[0]["committed"] is False
 
 
-def test_commit_names_a_branch_and_never_main(repo, stubs):
-    runner.main(["--commit"])
+def test_no_commit_is_still_available_by_hand(repo, stubs):
+    runner.main(["--no-commit", "--signing-key", "DEADBEEF"])
+    assert "Do NOT commit" in stubs["claude"][0]["brief"]
+
+
+def test_commit_names_a_branch_and_never_main(repo, stubs, monkeypatch):
+    monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    runner.main(["--commit", "--signing-key", "DEADBEEF", "--signing-email", "a@b"])
     brief = stubs["claude"][0]["brief"]
     assert "unattended/113" in brief and "Closes #113" in brief
     assert "Do not touch `main`" in brief
@@ -353,3 +370,142 @@ def test_the_brief_forbids_a_number_that_no_command_produced(repo, stubs):
     brief = stubs["claude"][0]["brief"]
     assert "come from a command you ran" in brief
     assert "has failed even" in brief
+
+
+# --- #171: the loop signs as itself, and a commit resolves to a run --------
+
+@pytest.fixture
+def git_repo(repo):
+    """A real repository, because the audit reads commits rather than a stub.
+
+    `commit.gpgsign` is pinned off locally: it is true in this operator's global
+    config, and a fixture that inherits it makes four tests depend on a YubiKey
+    being plugged in (#127).
+    """
+    subprocess.run(["git", "init", "-q", "-b", "main", "."], cwd=repo, check=True)
+    for key, value in (("user.name", "T"), ("user.email", "t@t"),
+                       ("commit.gpgsign", "false")):
+        subprocess.run(["git", "config", key, value], cwd=repo, check=True)
+    (repo / "seed.txt").write_text("seed", encoding="utf-8")
+    subprocess.run(["git", "add", "seed.txt"], cwd=repo, check=True)
+    subprocess.run(["git", "commit", "-qm", "seed"], cwd=repo, check=True,
+                   capture_output=True)
+    return repo
+
+
+@pytest.fixture(autouse=True)
+def no_inherited_key(monkeypatch):
+    """The scheduled task sets these. A test that reads them measures the box.
+
+    Without this the suite passes on a laptop and fails on the machine that
+    actually runs the loop, which is the direction that hides a defect rather
+    than showing one.
+    """
+    for name in (runner.SIGNING_KEY_ENV, runner.SIGNING_EMAIL_ENV):
+        monkeypatch.delenv(name, raising=False)
+
+
+def test_no_key_is_not_an_error_it_is_a_run_that_does_not_commit():
+    identity, note = runner.signing_identity(None, None)
+    assert identity is None
+    assert runner.SIGNING_KEY_ENV in note and "#171" in note
+
+
+def test_an_expired_key_refuses_rather_than_signing_with_it(monkeypatch):
+    """A key that lapsed at 03:00 must not degrade into signing as the operator."""
+    monkeypatch.setattr(runner, "key_expiry",
+                        lambda *a, **k: runner.now() - timedelta(days=1))
+    identity, note = runner.signing_identity("DEADBEEF", "a@b")
+    assert identity is None
+    assert "expired" in note
+
+
+def test_a_key_expiring_soon_still_signs_but_says_so(monkeypatch):
+    monkeypatch.setattr(runner, "key_expiry",
+                        lambda *a, **k: runner.now() + timedelta(days=3))
+    identity, note = runner.signing_identity("DEADBEEF", "a@b")
+    assert identity is not None
+    assert "3 day(s)" in note
+
+
+def test_signing_env_overrides_the_child_and_writes_no_config(git_repo):
+    """`GIT_CONFIG_*` reaches one process. `.git/config` reaches the operator.
+
+    Writing user.signingkey into the clone would re-sign Eric's own commits in
+    this repo with the machine key, which is a worse bug than #171.
+    """
+    before = (git_repo / ".git" / "config").read_text(encoding="utf-8")
+    env = runner.signing_env({"key": "FPR", "email": "a@b"}, base={})
+    pairs = {env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"]
+             for i in range(int(env["GIT_CONFIG_COUNT"]))}
+    assert pairs == {"user.signingkey": "FPR", "commit.gpgsign": "true"}
+    assert env["GIT_AUTHOR_EMAIL"] == env["GIT_COMMITTER_EMAIL"] == "a@b"
+    assert env["GIT_COMMITTER_NAME"] == runner.SIGNING_NAME
+    assert (git_repo / ".git" / "config").read_text(encoding="utf-8") == before
+
+
+def test_committing_is_allowed_out_of_the_denylist_only_when_signing_works():
+    assert "Bash(git commit*)" in runner.disallowed_tools(False)
+    assert "Bash(git commit*)" not in runner.disallowed_tools(True)
+    # The entries that never come out, whatever else is true.
+    for always in ("Bash(git push*)", "Bash(git tag*)", "Write(.agent-yield/STOP)"):
+        assert always in runner.disallowed_tools(True)
+
+
+def test_the_runner_passes_the_widened_denylist_and_the_env(repo, stubs, monkeypatch):
+    monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    runner.main(["--signing-key", "FPR", "--signing-email", "a@b"])
+    call = stubs["claude"][0]
+    assert "Bash(git commit*)" not in call["denied"]
+    assert call["env"]["GIT_CONFIG_VALUE_0"] == "FPR"
+
+
+def test_a_commit_missing_its_trailer_is_reported_not_assumed(git_repo):
+    """The audit reads commits; it does not take the brief's word for them."""
+    before = runner.refs_now(git_repo)
+    (git_repo / "a.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "a.txt"], cwd=git_repo, check=True)
+    subprocess.run(["git", "-c", "commit.gpgsign=false", "commit", "-m", "no trailer"],
+                   cwd=git_repo, check=True, capture_output=True)
+
+    added, problems = runner.audit_commits(git_repo, before, {"key": "FPR"}, "run123")
+
+    assert len(added) == 1
+    assert any("not signed" in p for p in problems)
+    assert any("Unattended-Run: run123" in p for p in problems)
+
+
+def test_a_run_that_committed_with_the_trailer_is_clean(git_repo):
+    before = runner.refs_now(git_repo)
+    (git_repo / "a.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "a.txt"], cwd=git_repo, check=True)
+    subprocess.run(["git", "-c", "commit.gpgsign=false", "commit",
+                    "-m", "fix\n\nUnattended-Run: run123"],
+                   cwd=git_repo, check=True, capture_output=True)
+
+    added, problems = runner.audit_commits(git_repo, before, None, "run123")
+
+    # identity None means the run was told not to commit, so committing at all
+    # is the complaint -- and the trailer is not a second one.
+    assert len(added) == 1
+    assert problems == [f"{added[0][:7]} was committed by a run that had no "
+                        "signing identity and was told not to commit"]
+
+
+def test_the_brief_names_the_exact_trailer_the_audit_looks_for(repo, stubs, monkeypatch):
+    """One string, two readers. A brief that asks for a different trailer than
+    the audit checks makes every run fail its own audit."""
+    monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    runner.main(["--signing-key", "FPR", "--signing-email", "a@b"])
+    run_id = rows(repo)[0]["run_id"]
+    assert f"{runner.TRAILER}: {run_id}" in stubs["claude"][0]["brief"]
+
+
+def test_the_row_carries_the_join_from_commit_back_to_cost(repo, stubs, monkeypatch):
+    monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    runner.main(["--signing-key", "FPR", "--signing-email", "a@b"])
+    row = rows(repo)[0]
+    assert row["committed"] is True
+    assert row["signing_key"] == "FPR"
+    assert len(row["run_id"]) == 12
+    assert row["commits"] == [] and row["commit_problems"] == []

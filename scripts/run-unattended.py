@@ -29,14 +29,28 @@ the loop degrades when nobody is watching:
     `.agent-yield/unattended.jsonl`. A loop this repo cannot price is the
     defect this repo is about.
 
-WHAT IT DELIBERATELY DOES NOT DO. It does not commit. This box signs with a
-YubiKey configured UIF Sign=off behind an 8-hour PIN cache, so a commit from an
-unattended run carries the operator's signature with no physical act -- the
-signature stops asserting the one thing a signature asserts. #171 holds that
-decision. Until it is made, a run leaves its work in the tree and the next run
-refuses on the dirty-tree guard until a human has looked, which is the loop
-running at the speed of review on purpose. `--commit` flips it, and reading
-#171 before passing it is the point of the flag being off.
+WHO A COMMIT FROM THIS LOOP IS SIGNED BY. It is signed by a key that is not the
+operator's (#171). The operator's key lives on a YubiKey; while its touch policy
+reads `UIF Sign=off`, anything on the box that reaches `git commit` signs as a
+person with no physical act, so the signature asserts nothing about presence.
+The loop therefore carries its own on-disk key with its own uid, forced through
+`GIT_CONFIG_*` on this process only -- the operator's interactive git is never
+reconfigured. Two things follow, and the second is the point:
+
+  - A reader can tell the two actors apart in `git log --show-signature`, by
+    key and by author, without trusting anything the loop says about itself.
+  - The operator's key is now free to require a touch. Once `UIF Sign=on`, that
+    signature means a human was physically there, which is the only claim a
+    signature was ever making.
+
+Every commit also carries an `Unattended-Run:` trailer holding the run id that
+`.agent-yield/unattended.jsonl` is keyed by, so a commit resolves to the run
+that made it, its cost and its brief. Trailers sit inside the commit object, so
+the signature covers them. After the run, the commits it made are checked for
+both the key and the trailer, and a commit missing either is reported.
+
+No key configured means no commits. The runner says so and leaves the work in
+the tree rather than signing as whoever the box's git config names.
 """
 
 from __future__ import annotations
@@ -49,6 +63,7 @@ import re
 import subprocess
 import sys
 import time
+import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -61,6 +76,22 @@ LOCK_FILE = Path(".agent-yield/unattended.lock")
 LOG_FILE = Path(".agent-yield/unattended.jsonl")
 
 PICKER = Path(__file__).resolve().parent / "pick-issue.py"
+
+# #171. The fingerprint is machine state -- a key on this disk, named nowhere in
+# the repository -- so it arrives by environment, set on the scheduled task and
+# rendered per machine like the hooks are. A clone that sets neither still runs;
+# it just does not commit.
+SIGNING_KEY_ENV = "AGENT_YIELD_SIGNING_KEY"
+SIGNING_EMAIL_ENV = "AGENT_YIELD_SIGNING_EMAIL"
+SIGNING_NAME = "agent-yield unattended"
+
+# The join between a commit and the row that priced the run that made it.
+TRAILER = "Unattended-Run"
+
+# A key that expires mid-loop fails at 03:00 into a log nobody reads, so the
+# refusal happens early and by name. Two weeks is enough notice to renew a key
+# by hand on a machine the operator visits daily.
+EXPIRY_WARNING_DAYS = 14
 
 # Keyed the same way `pick-issue.py` keys it, and imported from nowhere because
 # duplicating two entries is cheaper than a scripts package. A platform that is
@@ -99,7 +130,7 @@ DISALLOWED_TOOLS = ",".join((
     "WebFetch", "WebSearch",
     # Signing as the operator with no physical act. #171 holds the decision;
     # until it is made the runner's own brief forbids this and so does this.
-    "Bash(git commit*)", "Bash(git tag*)",
+    "Bash(git commit*)", "Bash(git tag*)",   # see disallowed_tools()
     # Changing what the next run is, or what it runs on.
     "Bash(pip install*)", "Bash(npm install*)", "Bash(schtasks*)",
     "Bash(Register-ScheduledTask*)",
@@ -109,6 +140,143 @@ DISALLOWED_TOOLS = ",".join((
     "Bash(git reset --hard*)", "Bash(git checkout --*)", "Bash(git clean*)",
     "Write(.agent-yield/STOP)", "Edit(.agent-yield/STOP)",
 ))
+
+def disallowed_tools(may_commit: bool) -> str:
+    """The denylist for one run. `git commit` leaves it only when signing works.
+
+    Dropping an entry from a denylist is the dangerous direction, so it is done
+    in one named place against one condition: a resolved signing identity. With
+    no key the loop cannot commit as itself, and committing as whoever the box's
+    git config names is the thing #171 is about -- so the entry stays and the
+    brief tells the run to leave its work in the tree.
+
+    `git tag` never comes out. Nothing in the loop's remit tags a release.
+    """
+    if not may_commit:
+        return DISALLOWED_TOOLS
+    return ",".join(t for t in DISALLOWED_TOOLS.split(",")
+                    if t != "Bash(git commit*)")
+
+
+# --- signing: who the loop is, and how a commit resolves to a run (#171) ---
+
+def _gpg() -> str:
+    """The gpg git itself would use, so the expiry check reads the same keyring."""
+    out = subprocess.run(["git", "config", "--get", "gpg.program"],
+                         capture_output=True, text=True)
+    return out.stdout.strip() or "gpg"
+
+
+def key_expiry(fingerprint: str, gpg: str | None = None) -> datetime | None:
+    """When this key expires, or None for no expiry and for no such key.
+
+    Colon format because the human-readable listing is localised and the field
+    order is not promised. On a `pub` record field 7 is the expiry as a unix
+    timestamp, empty when the key does not expire.
+    """
+    out = subprocess.run([gpg or _gpg(), "--with-colons", "--list-keys", fingerprint],
+                         capture_output=True, text=True)
+    if out.returncode != 0:
+        return None
+    for line in out.stdout.splitlines():
+        parts = line.split(":")
+        if parts and parts[0] == "pub":
+            stamp = parts[6] if len(parts) > 6 else ""
+            if stamp.isdigit():
+                return datetime.fromtimestamp(int(stamp), tz=timezone.utc)
+            return None
+    return None
+
+
+def signing_identity(key: str | None, email: str | None) -> tuple[dict | None, str]:
+    """Resolve the loop's identity, or explain in one line why there is none.
+
+    Returns (identity, note). A None identity is not an error: the run proceeds
+    without committing, which is the pre-#171 behaviour and is what any clone
+    that has not been given a key should do.
+    """
+    if not key:
+        return None, (f"not committing: no {SIGNING_KEY_ENV}. Commits from this "
+                      "loop are signed by their own key, never the operator's (#171).")
+    expires = key_expiry(key)
+    if expires is not None:
+        # Rounded up, not truncated. `timedelta.days` floors, so a key with
+        # 23 hours left reports 0 and reads as expiring today when it expires
+        # tomorrow. Erring long on the notice is the harmless direction.
+        seconds = (expires - now()).total_seconds()
+        left = -int(-seconds // 86400)
+        if left < 0:
+            return None, (f"not committing: signing key {key[-16:]} expired "
+                          f"{expires:%Y-%m-%d}. Renew it, or the loop signs nothing.")
+        if left <= EXPIRY_WARNING_DAYS:
+            return ({"key": key, "email": email, "expires": expires.isoformat()},
+                    f"signing key {key[-16:]} expires in {left} day(s), "
+                    f"{expires:%Y-%m-%d}. Renew it before it stops the loop.")
+    return {"key": key, "email": email,
+            "expires": expires.isoformat() if expires else None}, ""
+
+
+def signing_env(identity: dict, base: dict | None = None) -> dict:
+    """`GIT_CONFIG_*` for the child only, so no config file is touched.
+
+    Numbered git config overrides apply to every git invocation in the process
+    tree and nowhere else. Writing `user.signingkey` into `.git/config` instead
+    would reconfigure the operator's own commits in this clone, which is a
+    worse bug than the one being fixed.
+    """
+    env = dict(os.environ if base is None else base)
+    pairs = [("user.signingkey", identity["key"]), ("commit.gpgsign", "true")]
+    env["GIT_CONFIG_COUNT"] = str(len(pairs))
+    for i, (k, v) in enumerate(pairs):
+        env[f"GIT_CONFIG_KEY_{i}"], env[f"GIT_CONFIG_VALUE_{i}"] = k, v
+    if identity.get("email"):
+        for role in ("AUTHOR", "COMMITTER"):
+            env[f"GIT_{role}_NAME"] = SIGNING_NAME
+            env[f"GIT_{role}_EMAIL"] = identity["email"]
+    return env
+
+
+def refs_now(root: Path) -> set[str]:
+    """Every commit reachable from any ref, as the before-picture of a run."""
+    out = subprocess.run(["git", "rev-list", "--all"], cwd=root,
+                         capture_output=True, text=True)
+    return set(out.stdout.split()) if out.returncode == 0 else set()
+
+
+def audit_commits(root: Path, before: set[str], identity: dict | None,
+                  run_id: str) -> tuple[list[str], list[str]]:
+    """(shas the run added, complaints about each).
+
+    Checked after the fact rather than trusted. Everything that enforces this
+    -- the environment, the denylist, the brief -- is something a run could
+    step around without meaning to, and a commit is only evidence of who made
+    it if somebody looks. `%G?` is `G` for a good signature and `U` for good
+    but untrusted, which is what an unattended key with no ownertrust returns.
+    """
+    added = sorted(refs_now(root) - before)
+    fmt = "%G?%x09%GK%x09%(trailers:key=" + TRAILER + ",valueonly)"
+    problems: list[str] = []
+    for sha in added:
+        out = subprocess.run(["git", "show", "--no-patch", "--format=" + fmt, sha],
+                             cwd=root, capture_output=True, text=True)
+        fields = out.stdout.strip().split("\t")
+        status = fields[0].strip() if fields else ""
+        key = fields[1].strip() if len(fields) > 1 else ""
+        trailer = fields[2].strip() if len(fields) > 2 else ""
+        if identity is None:
+            problems.append(f"{sha[:7]} was committed by a run that had no "
+                            "signing identity and was told not to commit")
+            continue
+        if status not in ("G", "U"):
+            problems.append(f"{sha[:7]} is not signed ({status or 'no signature'})")
+        elif key and not identity["key"].endswith(key):
+            problems.append(f"{sha[:7]} is signed by {key}, which is not the "
+                            "loop's key -- read it before trusting the author")
+        if run_id not in trailer:
+            problems.append(f"{sha[:7]} carries no `{TRAILER}: {run_id}` trailer, "
+                            "so it does not resolve to a priced run")
+    return added, problems
+
 
 # Numbers that appear in prose the run added, which #175 exists because of.
 # No trailing \b: the figures that went wrong were written `62.1ms` and
@@ -238,11 +406,17 @@ def claim(number: int, label: str | None) -> str | None:
     return None if out.returncode == 0 else f"claim failed: {out.stderr.strip()}"
 
 
-def build_brief(number: int, title: str, body: str, may_commit: bool) -> str:
+def build_brief(number: int, title: str, body: str, may_commit: bool,
+                run_id: str = "") -> str:
     """The dispatch brief, carrying section 3's contract in as many words."""
     ending = (
         f"Commit on a branch named `unattended/{number}`, one commit, message "
-        f"ending `Closes #{number}`. Do not push. Do not touch `main`."
+        f"ending `Closes #{number}`, and a last line reading exactly "
+        f"`{TRAILER}: {run_id}` -- it is what resolves this commit to the run "
+        f"that priced it, and a commit without it is reported as unattributed. "
+        f"Do not push. Do not touch `main`. The signing key is already set for "
+        f"you and is not the operator's; do not pass `-S`, `--no-gpg-sign` or "
+        f"any `-c user.*` of your own (#171)."
         if may_commit else
         "Do NOT commit and do NOT push. Leave the change in the working tree; "
         "a human reviews it before anything is committed (#171)."
@@ -283,16 +457,17 @@ say so in one line rather than guessing.
 
 
 def run_claude(brief: str, cwd: Path, permission_mode: str, timeout: int,
-               claude: str) -> dict:
+               claude: str, denied: str = DISALLOWED_TOOLS,
+               env: dict | None = None) -> dict:
     """Invoke `claude -p` and return its JSON result, or a shaped failure."""
     cmd = [claude, "-p", brief, "--output-format", "json",
            "--permission-mode", permission_mode,
-           "--disallowed-tools", DISALLOWED_TOOLS]
+           "--disallowed-tools", denied]
     started = time.monotonic()
     elapsed = lambda: int((time.monotonic() - started) * 1000)  # noqa: E731
     try:
         out = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True,
-                             timeout=timeout)
+                             timeout=timeout, env=env)
     except subprocess.TimeoutExpired:
         return {"is_error": True, "error": f"timed out after {timeout}s",
                 "duration_ms": elapsed()}
@@ -375,8 +550,15 @@ def main(argv: list[str] | None = None) -> int:
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true",
                     help="pick and print the brief; claim nothing, run nothing")
-    ap.add_argument("--commit", action="store_true",
-                    help="let the run commit on a branch. Read #171 first")
+    ap.add_argument("--no-commit", dest="commit", action="store_false",
+                    help="leave the work in the tree for a human to commit")
+    ap.add_argument("--commit", dest="commit", action="store_true",
+                    help="commit on a branch, signed by the loop's own key (default)")
+    ap.set_defaults(commit=True)
+    ap.add_argument("--signing-key", default=os.environ.get(SIGNING_KEY_ENV),
+                    help=f"fingerprint of the loop's own key (default: ${SIGNING_KEY_ENV})")
+    ap.add_argument("--signing-email", default=os.environ.get(SIGNING_EMAIL_ENV),
+                    help=f"author/committer address for the loop (default: ${SIGNING_EMAIL_ENV})")
     ap.add_argument("--allow-dirty", action="store_true",
                     help="start on top of uncommitted work anyway")
     ap.add_argument("--permission-mode", default="acceptEdits",
@@ -414,7 +596,13 @@ def main(argv: list[str] | None = None) -> int:
               f"{dirty}\nReview and commit it, or pass --allow-dirty.")
         return 1
 
-    brief = build_brief(number, title, issue_body(number), args.commit)
+    identity, note = (signing_identity(args.signing_key, args.signing_email)
+                      if args.commit else (None, ""))
+    if note:
+        print(note)
+    may_commit = args.commit and identity is not None
+    run_id = uuid.uuid4().hex[:12]
+    brief = build_brief(number, title, issue_body(number), may_commit, run_id)
 
     if args.dry_run:
         print(f"#{number} {title}\n--- brief, {len(brief)} chars ---\n{brief}")
@@ -433,14 +621,23 @@ def main(argv: list[str] | None = None) -> int:
         print(claim_note)
     print(f"#{number} {title}")
     print(f"running claude -p, timeout {args.timeout}s, mode {args.permission_mode}")
+    if may_commit:
+        print(f"run {run_id}, committing as {SIGNING_NAME} "
+              f"<{identity['email']}> signed by {identity['key'][-16:]}")
+    before = refs_now(root)
     try:
-        result = run_claude(brief, root, args.permission_mode, args.timeout, args.claude)
+        result = run_claude(brief, root, args.permission_mode, args.timeout,
+                            args.claude, disallowed_tools(may_commit),
+                            signing_env(identity) if may_commit else None)
     finally:
         lock.unlink(missing_ok=True)
 
+    committed, complaints = audit_commits(root, before, identity, run_id)
     figures = figures_added_to_prose(root)
     row = {"started_at": started_at, "finished_at": now().isoformat(),
-           "issue": number, "title": title, "committed": args.commit,
+           "issue": number, "title": title, "committed": may_commit,
+           "run_id": run_id, "signing_key": identity["key"] if identity else None,
+           "commits": committed, "commit_problems": complaints,
            "permission_mode": args.permission_mode, "claim_note": claim_note,
            "brief_chars": len(brief), "figures_added": figures,
            **summarise(result)}
@@ -453,6 +650,10 @@ def main(argv: list[str] | None = None) -> int:
     cost = row["total_cost_usd"]
     priced = f", ${cost:.4f}" if isinstance(cost, (int, float)) else ""
     print(f"done in {row['num_turns']} turns{priced}")
+    if committed:
+        print(f"{len(committed)} commit(s): {', '.join(s[:7] for s in committed)}")
+    for complaint in complaints:
+        print(f"COMMIT PROBLEM: {complaint}")
     if row["permission_denials"]:
         print(f"denied: {', '.join(row['permission_denials'])} -- "
               "the brief led it somewhere the guard refused")

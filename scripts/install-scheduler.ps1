@@ -27,11 +27,21 @@
 .PARAMETER TaskName
     Default 'agent-yield unattended'.
 
-.PARAMETER Commit
-    Pass -Commit to register the task with run-unattended.py's --commit flag.
-    OFF by default and read #171 before turning it on: this box signs with
-    UIF Sign=off behind an 8-hour PIN cache, so an unattended commit carries
-    the operator's signature with no physical act.
+.PARAMETER SigningKey
+    Fingerprint of the key the loop signs its own commits with -- never the
+    operator's (#171). A scheduled task cannot carry environment variables, so
+    this goes on the argument line, where -Status shows it. It is a public
+    fingerprint, not a secret. Without one the loop still runs and simply does
+    not commit, which is the correct behaviour for a clone that has no identity
+    of its own.
+
+.PARAMETER SigningEmail
+    Author and committer address for those commits, so `git log` separates the
+    two actors without anybody reading a signature.
+
+.PARAMETER NoCommit
+    Register the task with --no-commit: the run leaves its work in the tree for
+    a human. Committing is otherwise the default, gated on -SigningKey.
 
 .PARAMETER Status
     Print the registered task and its last result, change nothing.
@@ -53,7 +63,9 @@
 param(
     [int]$IntervalMinutes = 60,
     [string]$TaskName = 'agent-yield unattended',
-    [switch]$Commit,
+    [switch]$NoCommit,
+    [string]$SigningKey = $env:AGENT_YIELD_SIGNING_KEY,
+    [string]$SigningEmail = $env:AGENT_YIELD_SIGNING_EMAIL,
     [switch]$Status,
     [switch]$Uninstall
 )
@@ -102,7 +114,15 @@ if (-not $claude) {
 }
 
 $arguments = "`"$runner`""
-if ($Commit) { $arguments += ' --commit' }
+if ($NoCommit) { $arguments += ' --no-commit' }
+if ($SigningKey)   { $arguments += " --signing-key $SigningKey" }
+if ($SigningEmail) { $arguments += " --signing-email $SigningEmail" }
+
+if (-not $NoCommit -and -not $SigningKey) {
+    Write-Host "warning: no -SigningKey, so this task will not commit. Its runs will"
+    Write-Host "         leave work in the tree and the next one refuses on the"
+    Write-Host "         dirty-tree guard. See #171."
+}
 
 $action = New-ScheduledTaskAction -Execute $python -Argument $arguments -WorkingDirectory $repo
 $trigger = New-ScheduledTaskTrigger -Once -At (Get-Date).AddMinutes(2) `
@@ -123,7 +143,7 @@ if ($PSCmdlet.ShouldProcess($TaskName, "$verb, every $IntervalMinutes min")) {
             "Guards live in that script; stop the loop with .agent-yield/STOP.") | Out-Null
     Write-Host "${verb}ed '$TaskName': $python $arguments"
     Write-Host "every $IntervalMinutes minutes, first run in ~2 minutes"
-    Write-Host "commit mode: $(if ($Commit) { 'ON -- see #171' } else { 'off' })"
+    Write-Host "commit mode: $(if ($NoCommit) { 'off' } elseif ($SigningKey) { "ON, signed by $SigningKey" } else { 'off -- no signing key' })"
     Write-Host ""
     Write-Host "stop it any time:  New-Item -ItemType File '$repo\.agent-yield\STOP'"
     Write-Host "check on it:       pwsh scripts/install-scheduler.ps1 -Status"
