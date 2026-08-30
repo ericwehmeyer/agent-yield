@@ -50,3 +50,5 @@ def _refusal_sentinel_stays_in_tmp(tmp_path, monkeypatch):
     """
     monkeypatch.setattr(boundary, "REFUSAL_SPENT_PATH",
                         tmp_path / "boundary-refusal-spent")
+    monkeypatch.setattr(boundary, "REFUSAL_LOG_PATH",
+                        tmp_path / "boundary-refusals.jsonl")

@@ -361,3 +361,29 @@ def test_the_refusal_names_every_way_out(tmp_path):
     assert "spent" in message
     assert "agent-yield handoff" in message
     assert "`!`" in message
+
+
+def test_an_enforced_refusal_records_itself_without_the_probe(tmp_path, monkeypatch):
+    """`--probe` forces advisory mode, so the probe log can never hold one."""
+    log = tmp_path / "refusals.jsonl"
+    monkeypatch.setattr(boundary, "REFUSAL_LOG_PATH", log)
+    monkeypatch.setattr(boundary, "_stats_for", lambda payload: _grown(tmp_path))
+    monkeypatch.setattr(boundary, "DEFAULT_HANDOFF_PATH", tmp_path / "none.md")
+    payload = json.dumps({"hook_event_name": "UserPromptSubmit",
+                          "session_id": "s", "prompt": "secret text"})
+    assert main(["--enforce"], stdin=io.StringIO(payload)) == 2
+    row = json.loads(log.read_text(encoding="utf-8"))
+    assert row["exit_code"] == 2
+    assert row["session_id"] == "s"
+    # Same rule as the probe: the mechanism is recorded, the content is not.
+    assert "secret text" not in json.dumps(row)
+
+
+def test_an_advisory_run_records_no_refusal(tmp_path, monkeypatch):
+    log = tmp_path / "refusals.jsonl"
+    monkeypatch.setattr(boundary, "REFUSAL_LOG_PATH", log)
+    monkeypatch.setattr(boundary, "_stats_for", lambda payload: _grown(tmp_path))
+    monkeypatch.setattr(boundary, "DEFAULT_HANDOFF_PATH", tmp_path / "none.md")
+    assert main([], stdin=io.StringIO(json.dumps(
+        {"hook_event_name": "UserPromptSubmit", "session_id": "s"}))) == 0
+    assert not log.exists()
