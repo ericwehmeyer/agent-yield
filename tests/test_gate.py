@@ -184,7 +184,10 @@ def test_missing_prompt_key_is_treated_as_empty_and_does_not_crash():
     payload = {"tool_name": "Agent", "tool_input": {"subagent_type": "general-purpose"}, "_day_total": 0}
     code, message = _decide(payload)
     assert code == 0
-    assert "line ranges" in message
+    # "BRIEF:" rather than a marker name: this test is about an absent prompt
+    # key not crashing the hook, and it should not also pin which of the three
+    # markers the message happens to name first.
+    assert "BRIEF:" in message
 
 
 def test_brief_warning_is_exit_0_by_default():
@@ -219,7 +222,7 @@ def test_day_ceiling_and_brief_messages_both_reach_the_caller():
     code, message = _decide(payload)
     assert code == 0
     assert "WARN" in message
-    assert "line ranges" in message
+    assert "BRIEF:" in message
 
 
 def test_garbage_input_still_exits_0_even_with_enforce_brief():
@@ -331,7 +334,7 @@ def test_the_cli_passes_enforce_brief_through_to_the_hook(monkeypatch, capsys):
 
     assert code == 2
     assert "unrecognized arguments" not in err
-    assert "line ranges" in err
+    assert "BRIEF:" in err
 
 
 def test_the_cli_gate_without_the_flag_warns_rather_than_refuses(monkeypatch, capsys):
@@ -351,7 +354,7 @@ def test_the_cli_gate_without_the_flag_warns_rather_than_refuses(monkeypatch, ca
     captured = capsys.readouterr()
 
     assert code == 0
-    assert "line ranges" in captured.out
+    assert "BRIEF:" in captured.out
     assert captured.err == ""
 
 
@@ -370,7 +373,7 @@ def test_a_mistyped_gate_flag_is_a_usage_error_and_not_a_silent_block(capsys):
 
     assert code == 2
     assert "unrecognized arguments" in err
-    assert "line ranges" not in err
+    assert "BRIEF:" not in err
 
 
 # --- The plan allowance, the one band nobody can spend past (#129) ---------
@@ -579,3 +582,68 @@ def test_naming_no_file_without_the_prohibition_is_still_missing_ranges():
     prompt = "Look into the caching thing and tell me what you find."
     request = DispatchRequest(subagent_type="general-purpose", prompt=prompt)
     assert "line ranges" in missing_markers(request)
+
+
+# --- #163's second half: the marker is right, the remedy was not ------------
+
+
+def test_a_fileless_brief_is_not_told_to_add_line_ranges():
+    """The refusal that produced #163, reduced to its message.
+
+    The rule is unchanged and the marker is still missing: a dispatch that
+    neither cites a file nor bounds itself has simply not been written. What
+    changes is that half the remedy used to be unsatisfiable -- there are no
+    lines to cite in vendor documentation, and `sed -n` cannot be run against
+    a thing that is not in this tree. Measured over the 457 dispatches on this
+    box: 9 name no repo file and all 9 were told to add ranges into files they
+    never read.
+    """
+    request = DispatchRequest(
+        subagent_type="general-purpose",
+        prompt="Answer the compaction question from the vendor documentation.",
+    )
+    missing = missing_markers(request)
+    assert "line ranges" in missing, "the marker is still missing; only the wording moved"
+
+    message = brief_message(missing, fileless=True)
+    assert "sed -n" not in message
+    assert "bounded discovery" in message
+    assert "do not explore" in message
+    assert "nothing to range" in message
+
+
+def test_a_brief_that_names_a_file_still_gets_the_range_remedy():
+    message = brief_message(("line ranges",), fileless=False)
+    assert "sed -n" in message
+    assert "bounded discovery" not in message
+
+
+def test_the_marker_vocabulary_the_counts_are_stated_in_does_not_move():
+    """§12.1's rows are counted in these strings, so renaming one retires them.
+
+    The fileless wording lives in the MESSAGE only. `missing_markers` returns
+    the same three names it always has, whether or not a file is named.
+    """
+    fileless = DispatchRequest(subagent_type="general-purpose", prompt="Look into it.")
+    assert missing_markers(fileless) == ("line ranges", "output path", "return contract")
+
+
+def test_the_hook_decides_filelessness_from_the_prompt_it_was_given():
+    """End to end: the message the caller actually receives.
+
+    A fixture that called `brief_message` directly could pass while the hook
+    never passed the flag -- the defect shape #51 survived.
+    """
+    payload = {
+        "hook_event_name": "PreToolUse",
+        "tool_name": "Agent",
+        "tool_input": {
+            "subagent_type": "general-purpose",
+            "prompt": "Answer from the vendor documentation.",
+        },
+        "_day_total": 0,
+    }
+    code, message = _decide(payload)
+    assert code == 0
+    assert "bounded discovery" in message
+    assert "sed -n" not in message

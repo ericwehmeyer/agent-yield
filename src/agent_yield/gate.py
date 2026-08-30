@@ -110,6 +110,19 @@ ALLOWANCE_OVERRIDE_ENV = "AGENT_YIELD_ALLOWANCE_OVERRIDE"
 # docs/working-method.md §12: an exploratory dispatch is SUPPOSED to lack the
 # brief markers below -- exempting it is the whole reason the rubric is safe
 # to enforce. Kept as data, not a hardcoded branch, so the list can grow.
+#
+# Matching on the type NAME is a proxy for the class §12 exempts, and #163's
+# second half asked whether the proxy is the right one. Measured 2026-08-30
+# over all 457 dispatches on this box rather than argued: retiring it and
+# grading `Explore` like anything else refuses 7 of its 7 dispatches, because
+# all 7 name a repo file and none carries a line range. That is precisely the
+# "refusing a different kind of task" failure §12 warns the mechanism has to
+# avoid, so the proxy stays -- and it stays because of that number.
+#
+# `plan` is the chosen half of this set, not the measured half: it has never
+# matched a dispatch here, 0 of 457. It is kept because the harness ships a
+# Plan agent and the argument for exempting it is the one the measurement
+# confirmed for Explore, not because anything has tested it.
 BRIEF_EXEMPT_TYPES = frozenset({"explore", "plan"})
 
 # #164: an agent type whose tools cannot write a file is asked, by "output
@@ -241,6 +254,20 @@ _BRIEF_REMEDY = {
     "return contract": "a stated return contract -- what to return, and nothing else",
 }
 
+# The same marker, said to a brief that names no file in this tree. #163 was
+# refused for "line ranges" on a dispatch reading vendor documentation, and
+# half that remedy was unsatisfiable: there were no lines to cite. The rule is
+# right and stays -- a dispatch that neither cites a file nor bounds itself has
+# simply not been written -- but the marker is reachable through the
+# prohibition alone, and the message never said so. Measured over the same 457
+# dispatches: 9 name no repo file, and all 9 were told to add ranges into files
+# they never read.
+_FILELESS_MARKER = "bounded discovery"
+_FILELESS_REMEDY = (
+    'an explicit "do not explore" -- this brief names no file in this tree, '
+    "so there is nothing to range"
+)
+
 
 def missing_markers(request: DispatchRequest) -> tuple[str, ...]:
     """Which rubric markers a dispatch prompt does not carry."""
@@ -261,14 +288,27 @@ def missing_markers(request: DispatchRequest) -> tuple[str, ...]:
     return tuple(missing)
 
 
-def brief_message(missing: tuple[str, ...]) -> str | None:
-    """One line naming what is missing and the remedy, or None."""
+def brief_message(missing: tuple[str, ...], fileless: bool = False) -> str | None:
+    """One line naming what is missing and the remedy, or None.
+
+    `fileless` says the brief names no repo path, which changes what the
+    reader can do about the line-range marker but not whether it is missing.
+    The marker vocabulary `missing_markers` returns is left alone: §12.1's
+    counts are stated in it, and renaming it here would retire them.
+    """
     if not missing:
         return None
-    remedies = "; ".join(_BRIEF_REMEDY[marker] for marker in missing)
+    labels, remedies = [], []
+    for marker in missing:
+        if marker == "line ranges" and fileless:
+            labels.append(_FILELESS_MARKER)
+            remedies.append(_FILELESS_REMEDY)
+        else:
+            labels.append(marker)
+            remedies.append(_BRIEF_REMEDY[marker])
     return (
-        f"[agent-yield] BRIEF: this dispatch is missing {', '.join(missing)} "
-        f"(docs/working-method.md §12). Add {remedies}."
+        f"[agent-yield] BRIEF: this dispatch is missing {', '.join(labels)} "
+        f"(docs/working-method.md §12). Add {'; '.join(remedies)}."
     )
 
 
@@ -385,7 +425,10 @@ def _decide(
     brief_msg = None
     subagent_type = (request.subagent_type or "").lower()
     if subagent_type not in BRIEF_EXEMPT_TYPES:
-        brief_msg = brief_message(missing_markers(request))
+        brief_msg = brief_message(
+            missing_markers(request),
+            fileless=not _REPO_PATH_RE.search(request.prompt or ""),
+        )
 
     # The allowance leads: it is the only one of the three that the operator
     # cannot decide to spend past.

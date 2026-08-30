@@ -1532,6 +1532,50 @@ working tree.** Where it is not, §3 stands as written.
 
 ---
 
+### 12.4 The exemption is a name, and the name was measured (issue #163, 2026-08-30)
+
+**Grading `Explore` dispatches like any other refuses 7 of 7.** The gate
+exempts a dispatch whose `subagent_type` is `explore` or `plan`, which is a
+proxy: §12 exempts a *kind of task*, and the gate can only see a type name.
+#163 asked whether the proxy earns its place. Measured against all **457
+dispatches** on this box rather than argued:
+
+| | count |
+|---|---|
+| dispatches read from parent transcripts | 457 |
+| to `general-purpose` | 365 |
+| to `Explore` | 7 |
+| to `plan` | 0 |
+| `Explore` dispatches naming a repo file | 7 of 7 |
+
+Every `Explore` dispatch cites a file and none carries a line range, so
+retiring the name exemption moves refusals from 427 to 434 and every one of the
+7 new refusals lands on a search agent doing search. That is the failure §12
+names in advance -- "any mechanism built on it has to tell a bad brief apart
+from a different kind of task before it refuses anything" -- so **the proxy
+stays, and it stays because of that number rather than because it was there.**
+
+`plan` is the chosen half of the pair. It has matched nothing, 0 of 457, and is
+kept on the argument the measurement confirmed for `Explore` rather than on
+evidence of its own.
+
+**What did move is the remedy, not the rule.** 9 of the 457 name no repo file,
+and all 9 were told to add "line ranges (e.g. via `sed -n`) plus an explicit
+*do not explore*". The first half of that cannot be done: there is no file to
+range. The marker is still missing and still should be -- a dispatch that
+neither cites a file nor bounds itself has simply not been written, which is
+the population §12 exists to catch -- but it is reachable through the
+prohibition alone, and the message never said so. A fileless brief is now told
+it is missing **bounded discovery** and asked for the prohibition. Refusal
+counts are unchanged, since those 9 are also short an output path and a return
+contract, and a sweep can state both.
+
+This is the third instance of one pattern, after #143 and #145: **a refusal
+that prescribes a remedy the refused party cannot perform.** The first two were
+unreachable overrides. This one was an unsatisfiable instruction, which is the
+same defect wearing different clothes.
+
+
 ## What would falsify this
 
 - **If a fresh agent's context is not much smaller than the parent's**, §1
