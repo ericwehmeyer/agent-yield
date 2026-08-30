@@ -6,12 +6,16 @@ build/
 *.egg-info/
 .pytest_cache/
 .ruff_cache/
-# The hooks are the instrument this repo measures with, so they ship. Machine
-# state does not: settings.local.json, worktrees and the probe's own log stay
-# ignored. `.claude/*` rather than `.claude/`, because git will not descend
-# into an excluded directory and the negations below would never be read.
+# The hooks are the instrument this repo measures with, so they ship -- as the
+# TEMPLATE, which names no machine. The rendered `settings.json` carries this
+# checkout's own venv path and is machine state, alongside settings.local.json,
+# worktrees and the probe's own log. Tracking the rendered file is what deleted
+# the Mac's four hooks on a pull (#125), because git overwrites an ignored file
+# without a word. `.claude/*` rather than `.claude/`, because git will not
+# descend into an excluded directory and the negations below would never be
+# read.
 .claude/*
-!.claude/settings.json
+!.claude/settings.template.json
 !.claude/hooks/
 .claude/hooks/probe-log.jsonl
 .agent-yield/

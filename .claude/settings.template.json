@@ -6,7 +6,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe resume --hook --probe",
+            "command": "{{AGENT_YIELD}} resume --hook --probe",
             "timeout": 10
           }
         ]
@@ -18,7 +18,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe gate --enforce-brief",
+            "command": "{{AGENT_YIELD}} gate --enforce-brief",
             "timeout": 15,
             "statusMessage": "Pricing the dispatch"
           }
@@ -29,7 +29,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe guard",
+            "command": "{{AGENT_YIELD}} guard",
             "timeout": 10
           }
         ]
@@ -40,7 +40,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe boundary --enforce",
+            "command": "{{AGENT_YIELD}} boundary --enforce",
             "timeout": 10
           }
         ]

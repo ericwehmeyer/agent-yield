@@ -1,6 +1,9 @@
 # The four hooks ship and the 553,001 bytes they wrote do not
 
 Decided 2026-08-29, committed at `6d35b47`. Supersedes nothing.
+**Amended the same day by ADR-0002**, which corrects the last section
+below: the committed file did not merely fail to run on the Mac, it deleted
+that machine's four working hooks (#125).
 
 ## A repo that measures agent sessions was not versioning the thing doing the measuring
 
@@ -38,12 +41,20 @@ the main thread's dispatch call. The log grows on every tool call and would
 have made the repo's history unreadable, so the finding was written into issue
 #122 instead and the log left where it fell.
 
-## The committed file does not run on the Mac, and that was accepted
+## The committed file does not run on the Mac, and that was accepted -- wrongly
 
 `settings.json` hard-codes `C:/Users/ewehm/repos/agent-yield/.venv/Scripts/`.
 The Mac cannot execute it as written. Shipping a file that needs a path edit
 beats shipping nothing, because a wrong path is visible and an absent hook is
 not. Making the paths portable belongs to #119.
+
+**This paragraph was wrong, and it was wrong within the hour.** A wrong path in
+an *ignored* file is neither visible nor absent: git overwrites ignored files
+on checkout without a word, so the pull replaced the Mac's four working hooks
+and left no copy of them anywhere. The edit that was supposed to be obvious was
+a deletion nobody saw. ADR-0002 records what replaced this: the template is
+tracked, the rendered `settings.json` is machine state again, and
+`agent-yield harness --check` is what makes a wrong path visible.
 
 ## What would reopen this
 

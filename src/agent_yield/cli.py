@@ -10,6 +10,7 @@ from . import allowance as allowance_module
 from . import boundary as boundary_module
 from . import gate as gate_module
 from . import guard as guard_module
+from . import harness as harness_module
 from . import handoff as handoff_module
 from . import agents as agents_module
 from . import resume as resume_module
@@ -646,6 +647,27 @@ def main(argv: list[str] | None = None) -> int:
         "guard",
         help="PreToolUse hook entry point: refuse a tree-wide `git add`")
     p.set_defaults(func=lambda _args: guard_module.main())
+
+    p = subs.add_parser(
+        "harness",
+        help="render this machine's .claude/settings.json from the template")
+    # Declared here for the same reason `gate`'s flags are: an undeclared flag
+    # is a usage error, and a usage error from a subcommand people run after a
+    # pull should say which flag, not exit 2 with argparse's own wording.
+    p.add_argument("--root", default=".", help="project root (default: .)")
+    p.add_argument("--install", action="store_true",
+                   help="render the live settings for this machine")
+    p.add_argument("--check", action="store_true",
+                   help="report drift; exit 1 on a difference (default)")
+    p.add_argument("--force", action="store_true",
+                   help="with --install, replace a live file this tool did "
+                        "not write")
+    p.set_defaults(func=lambda args: harness_module.main(
+        ["--root", args.root]
+        + (["--install"] if args.install else [])
+        + (["--check"] if args.check else [])
+        + (["--force"] if args.force else [])
+    ))
 
     p = subs.add_parser("gate", help="PreToolUse hook entry point")
     # Declared here even though `gate.main` parses it itself: `parse_args`

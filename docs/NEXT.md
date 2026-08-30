@@ -2901,3 +2901,81 @@ source file: it was a committed artifact. So the file now carries
   fallback is the entry that made that a rule here.
 
 642 passed, 4 skipped.
+
+## [macOS 2026-08-29 21:40] The commit that shipped the hooks deleted them, and the Mac's copy is not recoverable
+
+**Four hooks, 98 seconds.** `6d35b47` tracked `.claude/settings.json` so the
+instrument would be reviewable in a diff. The file it tracked hard-codes
+`C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe`. Pulling it
+here at `d4cbb0c` replaced this machine's four working hooks with four that
+cannot run, and left no copy of the originals anywhere.
+
+Git did it without a word because the file was **ignored**. Checkout refuses to
+clobber an untracked file and overwrites an ignored one on purpose. The same
+commit rewrote `.gitignore` from `.claude/` to `.claude/*` with a negation, but
+checkout decides using the rules in force before the merge, so the file was
+expendable at the instant it was replaced and precious one instant later.
+
+### This settles #119's first question, and the answer is the reassuring one
+
+That issue asked whether the Mac had been running with no gate, no guard and no
+boundary hook, and said that if so it belonged in this file said out loud. It
+was not. All four were live, and the probes they wrote are the proof:
+
+| record | UTC | what it shows |
+|---|---|---|
+| `resume-probe.jsonl` | `01:23:47.484183` | `SessionStart`, `source: startup`, `decision: no_handoff` |
+| `boundary-probe.jsonl` | `01:24:21.420518` | `UserPromptSubmit`, `route: session_id_unknown` |
+| `boundary-probe.jsonl` | `01:25:35.495108` | `UserPromptSubmit`, `route: transcript_path`, `resolved_calls: 7` |
+
+Those carry stdin payload keys nothing but the harness produces. The pull landed
+at `01:25`.
+
+### What cannot be recovered, and what that costs
+
+`~/.claude/settings.json` has no `hooks` key. `~/.claude.json` has none under
+this project. Neither `settings.local.json` exists. The five `.claude.json`
+snapshots in `~/.claude/backups/` contain no hooks block. All 24 session
+transcripts were searched for a `Write` or `Edit` whose `file_path` ends
+`.claude/settings.json`: **zero**. The file was authored outside a session.
+
+So the four commands were reconstructed from `6d35b47`'s template, not restored
+from this machine's own. They are almost certainly identical -- the same four
+subcommands with the same flags -- but *almost certainly* is the honest word.
+**A Mac measurement taken before `d4cbb0c` cannot be reproduced exactly**, and
+any cross-machine comparison that predates it is comparing two harnesses only
+one of which is now known.
+
+### The fix, and the one property that is not cosmetic
+
+`.claude/settings.template.json` is tracked and names no machine.
+`agent-yield harness --install` renders the live file; `--check` reports drift
+and exits 1. ADR-0002 has the argument, including the three alternatives that
+were rejected.
+
+The rendered command is **absolute, derived from the project root at render
+time** rather than left relative. A relative command depends on a working
+directory the harness chooses, and when it is wrong the hook fails on every call
+and reports it nowhere -- which is the failure mode this whole entry is about.
+
+The executable is found by **probing four candidate layouts on disk**, this
+platform's first, rather than branching on `os.name`. A branch would declare an
+msys-style `bin/` venv on Windows absent.
+
+### It lands on the other machine as a deletion too, and that is accepted
+
+`git rm --cached .claude/settings.json` means the Windows box's next pull
+removes its live hook file. The recovery is `agent-yield harness --install`,
+once, and `tests/test_harness.py` pins the four command strings so that render
+is byte-identical to what that machine has been measuring under. The deletion is
+accepted because it is **loud**: a tracked file disappearing shows in
+`git status`, and an overwritten ignored one shows nowhere.
+
+### Four tests were already red when this arrived, and they are not this
+
+`test_context_cost_data.py` fails three (`test_check_agrees_with_the_committed_page`,
+`test_check_passes_on_the_unmodified_text`,
+`test_page_figures_reproduce_without_the_generator`) and `test_outcomes.py`
+fails `test_days_with_no_activity_are_present_and_zero` on
+`surviving_lines: 0 != None`. Both files came with the pull and neither touches
+the harness. Filed as #126 rather than folded into this commit.
