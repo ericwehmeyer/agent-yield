@@ -7,12 +7,12 @@
 Exit 0 and print the issue number and a one-line reason. Exit 1 when nothing
 is eligible. Exit 2 when the plan allowance says stop.
 
-WHY THE PREDICATE IS AN OPT-IN AND NOT A HEURISTIC. `docs/agents/triage-labels.md`
-records that `ready-for-agent` has no label in this tracker, so a fully
-specified issue reads exactly like one nobody has looked at. Today 0 of 62
-open issues carry any marker a human applied to mean "an agent may take this",
-and 34 carry `task` and 11 carry `bug`, which say what an issue IS and nothing
-about whether it is ready.
+WHY THE PREDICATE IS AN OPT-IN AND NOT A HEURISTIC. A fully specified issue
+reads exactly like one nobody has looked at, so readiness has to be asserted
+and cannot be inferred. When this script was written, 0 of 62 open issues
+carried any marker a human had applied to mean "an agent may take this", while
+34 carried `task` and 11 carried `bug` -- which say what an issue IS and
+nothing about whether it is ready.
 
 That is not a gap to paper over with a proxy. Every proxy available here --
 body length, a "Now what" heading, an issue that cites file:line -- measures
@@ -22,14 +22,11 @@ grilling ticket at 3am and produces prose nobody asked for. So:
 
     exclusion is well served by the labels that exist; inclusion is not.
 
-`blocked`, `wontfix`, `question`, `wayfinder:grilling` (documented HITL) and
-`windows` (documented as claimed by the other machine) are all real, checkable
-statements a human made. Nothing in the tracker says the opposite. So this
-refuses by default and picks only what a human has marked, and today that is
-nothing -- which is the correct answer, cheaply.
-
-WHAT WOULD HAVE TO BE TRUE for a `ready-for-agent` label to stay accurate,
-if one is created:
+`ready-for-agent` was created on 2026-08-30 to close that gap, carrying the
+label description "root cause is stated, the fix has a named file, and no
+operator judgment remains". Those are the three conditions, and they are strict
+on purpose: an issue failing any of them is one this refuses rather than
+guesses at. The rules that keep the label honest, which nothing enforces:
 
   - It is applied at triage by whoever writes the issue down, not in a sweep.
     A label applied in bulk records the sweep, not the issue.
@@ -41,10 +38,13 @@ if one is created:
     something else; one label carrying both is how readiness stops being
     checkable.
 
-Until it exists, `wayfinder:research` is honoured as an opt-in, because
-`docs/agents/issue-tracker.md` documents it as the AFK ticket type in as many
-words. That is the one place this tracker already says "an agent may take
-this", and it says it about a shape of work rather than about a state.
+`wayfinder:research` is honoured alongside it, because `docs/agents/issue-tracker.md`
+documents it as the AFK ticket type in as many words. It says the same thing
+about a shape of work rather than about a state.
+
+`blocked`, `wontfix`, `question`, `wayfinder:grilling` (documented HITL) and a
+machine claim label are all real, checkable statements a human made, and they
+outrank the marker: one mislabel should not be able to spend a window.
 """
 
 from __future__ import annotations
@@ -82,18 +82,32 @@ REFUSED_LABELS = {
     "wayfinder:prototype": "HITL: an artifact for a human to react to",
 }
 
-# Claimed by the other box. There is no reciprocal `macos` label, so this is
-# one-directional today and the Mac cannot claim anything -- worth a label of
-# its own before two unattended sessions ever run at once.
-OTHER_MACHINE_LABEL = "windows"
+# One label per box, each meaning "this machine has claimed it". The pair is
+# symmetric as of 2026-08-30: before `macos` existed the Mac could not claim
+# anything, so two unattended sessions would both have seen every unclaimed
+# issue and raced for it.
+#
+# Keyed by `platform.system()`. A machine that is neither -- Linux, or a
+# platform.system() this does not know -- gets None and is refused every
+# claimed issue, which is the safe direction: an unrecognised box takes only
+# what nobody has claimed.
+MACHINE_LABELS = {"Windows": "windows", "Darwin": "macos"}
+CLAIM_LABELS = frozenset(MACHINE_LABELS.values())
+
+
+def this_machine() -> str | None:
+    """The claim label belonging to the box this is running on, or None."""
+    return MACHINE_LABELS.get(platform.system())
 
 
 def _labels(issue: dict) -> set[str]:
     return {label.get("name", "") for label in issue.get("labels") or []}
 
 
-def ineligible(issue: dict, on_windows: bool) -> str | None:
+def ineligible(issue: dict, machine: str | None) -> str | None:
     """Why this issue may not be worked unattended, or None if it may.
+
+    `machine` is this box's own claim label, from `this_machine()`.
 
     Order matters only for the message: the first true reason is the one
     reported, and the cheapest, most certain statements come first.
@@ -111,8 +125,9 @@ def ineligible(issue: dict, on_windows: bool) -> str | None:
     open_blockers = [b for b in (nodes or []) if not b.get("closed")]
     if open_blockers:
         return "blocked by " + ", ".join(f"#{b['number']}" for b in open_blockers)
-    if OTHER_MACHINE_LABEL in labels and not on_windows:
-        return "claimed by the other machine"
+    claimed = labels & CLAIM_LABELS
+    if claimed and machine not in claimed:
+        return "claimed by " + ", ".join(sorted(claimed))
     if not labels & set(READY_LABELS):
         return "no human has marked it ready for an agent"
     return None
@@ -169,10 +184,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"nothing picked: the tracker could not be read ({exc})")
         return 1
 
-    on_windows = platform.system() == "Windows"
+    machine = this_machine()
     eligible, passed_over = [], []
     for issue in issues:
-        reason = ineligible(issue, on_windows)
+        reason = ineligible(issue, machine)
         (passed_over if reason else eligible).append((issue, reason))
 
     if args.explain:
@@ -185,8 +200,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"nothing picked: 0 of {len(issues)} open issues carry "
               f"{' or '.join(READY_LABELS)}.")
         print("A picker that refuses is cheap. Label an issue, or read this "
-              "script's docstring\nfor what a `ready-for-agent` label would "
-              "have to be to stay accurate.")
+              "script's docstring\nfor the three conditions "
+              "`ready-for-agent` asserts.")
         return 1
 
     chosen = sorted((issue for issue, _ in eligible), key=rank)[0]
