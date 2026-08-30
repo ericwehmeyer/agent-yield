@@ -137,12 +137,25 @@ def test_counts_net_insertions(repo):
 
 
 def test_days_with_no_activity_are_present_and_zero(repo):
+    """`asof` is pinned because survival is measured against the wall clock.
+
+    `surviving_by_day` returns None while a day's horizon is still in the
+    future and a count once it has passed, so a floating `asof` makes this
+    assertion flip from None to 0 the moment the horizon elapses -- which it
+    did at 2026-08-30T00:00Z, on every branch at once, seven days after the
+    2026-08-23 the dates below pin. The horizon guard is covered in
+    `test_survival.py`; what this test claims is that a day nobody committed
+    on is present with zeros, and that claim needs a settled clock to state.
+    """
     outcomes = {
-        o.day: o for o in
-        daily_outcomes(repo, dt.date(2026, 8, 23), dt.date(2026, 8, 25))
+        o.day: o for o in daily_outcomes(
+            repo, dt.date(2026, 8, 23), dt.date(2026, 8, 25),
+            asof=dt.datetime(2026, 10, 1, tzinfo=dt.timezone.utc),
+        )
     }
     assert outcomes[dt.date(2026, 8, 23)] == DailyOutcome(
-        day=dt.date(2026, 8, 23), merges=0, commits=0, lines=0, tests=None
+        day=dt.date(2026, 8, 23), merges=0, commits=0, lines=0, tests=None,
+        surviving_lines=0,
     )
 
 
