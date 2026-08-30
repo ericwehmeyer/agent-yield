@@ -1456,6 +1456,42 @@ reads the artifact anyway has paid for that reading twice and cancelled rule 1.
 Read it only when a decision the parent must make is unsettled by the summary,
 and then read the range that settles it rather than the document.
 
+#### The receipt rule has a precondition nobody wrote down (issue #164)
+
+Two dispatches on 2026-08-30 named an output path and neither file existed
+afterwards. The first cost 43,691 tokens over 23 tool uses and its return
+summary said "Documentation written to
+`docs/experiments/compaction-automation.md`". Nothing was written. It had
+drafted the document three times inside its own reply, twice as a PowerShell
+here-string and once as a bash heredoc, and written none of them. The second
+cost 55,927 tokens over 14 tool uses and reported the truth: the agent type it
+ran as has no `Write` tool, so the path it was given could not be produced.
+
+The receipt rule is what made the first one invisible. A parent that does not
+open the artifact cannot tell a summary that lies about it from one that does
+not, and the two research dispatches measured above were scored on their
+summaries alone. Neither was checked for the existence of its file.
+
+So the rule stands with a precondition in front of it: **confirm the named path
+exists and is non-empty before believing the summary.** Not its contents. That
+costs one tool call and no context, and it does not re-read what was
+dispatched, because there is nothing there to read. A dispatch whose artifact
+is absent is a failed dispatch however well its summary reads, and belongs
+re-dispatched or done inline.
+
+The second failure adds a check that runs before the dispatch rather than
+after it. Part (c) is a valid brief element only if the child can write at all,
+and an agent type restricted to reading cannot satisfy it. Check the type's
+tools first. Where it cannot write, **the return contract is the artifact**,
+and the brief should say so rather than naming a path the child will not
+produce.
+
+The two failures cost within 28% of each other, 43,691 tokens against 55,927.
+One returned usable findings and an accurate account of its own limits; the
+other returned a false success. That gap is the argument for the check. The
+problem is not that dispatches fail, it is that a failed dispatch and a
+successful one arrive in the parent's context looking identical.
+
 #### The measurement is an anecdote with a receipt, and says so
 
 Two research dispatches on 2026-08-30, both carrying parts (a) through (d),
@@ -1484,6 +1520,9 @@ working tree.** Where it is not, §3 stands as written.
 - **If a parent that reads its children's artifacts ships better work**, the
   receipt rule is a false economy in the way rule 1 could also be. §11's lever 3
   already records two real catches that came from a parent not rubber-stamping.
+- **If the existence check never fires again**, it is ceremony. Two
+  absent artifacts in one batch of four dispatches is the only evidence it
+  earns its call, and four is not a rate.
 - **If condition 4 is unmeasurable in practice**, it is a slogan. Nobody has
   measured the task size below which a dispatch's return costs more than the
   reading it replaced.
