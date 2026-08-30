@@ -335,9 +335,16 @@ def decide(
 # Appended only when a prompt is actually refused, so the operator learns the
 # refusal is survivable from the refusal itself. Without this the message
 # named a remedy and no way to reach it.
+#
+# The `!` escape was measured on 2026-08-30, not assumed: a `!`-prefixed input
+# produced no UserPromptSubmit hook output at all, where every ordinary prompt
+# in the same session did. It is harness behaviour rather than a promise this
+# repo can keep, which is why it is phrased as what the prefix does and not as
+# a guarantee that it always will.
 REFUSED_SUFFIX = (
-    " This refusal is spent: send your prompt again and it will go through, "
-    "and a prompt running `agent-yield handoff` is never refused."
+    " This refusal is spent: send your prompt again and it will go through. "
+    "A prompt running `agent-yield handoff` is never refused, and a prompt "
+    "prefixed with `!` runs as a shell command without reaching this hook."
 )
 
 

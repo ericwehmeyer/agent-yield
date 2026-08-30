@@ -353,3 +353,11 @@ def test_the_remedy_exemption_does_not_leak_into_advisory_mode(tmp_path):
                            handoff_path=tmp_path / "none.md")
     assert code == 0
     assert message is not None
+
+
+def test_the_refusal_names_every_way_out(tmp_path):
+    """A refusal that names a remedy and no route to it is the #130 deadlock."""
+    _, message = decide(**_refusing(tmp_path, "push the branch"))
+    assert "spent" in message
+    assert "agent-yield handoff" in message
+    assert "`!`" in message
