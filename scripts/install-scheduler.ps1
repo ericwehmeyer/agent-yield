@@ -133,7 +133,7 @@ $settings = New-ScheduledTaskSettingsSet `
     -ExecutionTimeLimit (New-TimeSpan -Hours 2)
 
 $existing = Get-ScheduledTask -TaskName $TaskName -ErrorAction SilentlyContinue
-$verb = if ($existing) { 'replace' } else { 'register' }
+$verb = if ($existing) { 'replaced' } else { 'registered' }
 
 if ($PSCmdlet.ShouldProcess($TaskName, "$verb, every $IntervalMinutes min")) {
     if ($existing) { Unregister-ScheduledTask -TaskName $TaskName -Confirm:$false }
@@ -141,7 +141,7 @@ if ($PSCmdlet.ShouldProcess($TaskName, "$verb, every $IntervalMinutes min")) {
         -Settings $settings -Description (
             "Runs scripts/run-unattended.py every $IntervalMinutes minutes. " +
             "Guards live in that script; stop the loop with .agent-yield/STOP.") | Out-Null
-    Write-Host "${verb}ed '$TaskName': $python $arguments"
+    Write-Host "$verb '$TaskName': $python $arguments"
     Write-Host "every $IntervalMinutes minutes, first run in ~2 minutes"
     Write-Host "commit mode: $(if ($NoCommit) { 'off' } elseif ($SigningKey) { "ON, signed by $SigningKey" } else { 'off -- no signing key' })"
     Write-Host ""
