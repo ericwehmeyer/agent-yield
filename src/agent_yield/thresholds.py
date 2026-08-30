@@ -278,6 +278,21 @@ SURVIVAL_HORIZON_DAYS = 7
 # One stretch of one window on one machine. The seven-day window has no
 # measured rate at all and takes the same two numbers, because inventing a
 # second pair with nothing behind them would look like two measurements.
+#
+# NEITHER BAND HAS EVER FIRED ON REAL DATA, on either machine. Measured
+# 2026-08-30, both boxes reporting their own logs: peaks of 36 five_hour and
+# 54 seven_day on the Mac over 66 snapshots, 17 and 6 on the Windows box over
+# 17. The closest anything has come to the first band is 26 points. Every path
+# past these two numbers -- the exit-2 refusal, the handoff advice, and the
+# `resets_at` downgrade -- has run only against synthetic readings written by
+# the person who wrote the code, and `resets_at` is null in all 83 snapshots
+# across both machines, so that branch cannot have run at all.
+#
+# So a claim that something "stops on the allowance" is a claim about code
+# that has never met its condition. `scripts/pick-issue.py` inherits exactly
+# this, and so would any unattended loop built on it. That is not an argument
+# for lowering the bands to make them fire; it is a reason to say `unexercised`
+# out loud wherever the guard is described, until a real session reaches one.
 ALLOWANCE_HANDOFF = 80
 ALLOWANCE_STOP = 90
 
