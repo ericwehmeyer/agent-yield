@@ -16,6 +16,7 @@ import json
 import os
 import subprocess
 import sys
+import uuid
 from pathlib import Path
 
 import pytest
@@ -68,6 +69,20 @@ def make_project(root: Path, bindir: str = "bin", name: str = "agent-yield") -> 
         encoding="utf-8",
     )
     return make_venv(root, bindir, name)
+
+
+def foreign_executable() -> Path:
+    """An executable path that cannot exist on the machine running the test.
+
+    `6d35b47`'s literal (`C:/Users/ewehm/repos/agent-yield/.venv/Scripts/
+    agent-yield.exe`) is foreign everywhere except its author's own machine
+    (#132) -- both because the file happens to sit at that exact path there,
+    and because pytest's own tmp_path embeds the same username. A path built
+    around a fresh random token can never collide with anything real on
+    whatever box runs the test.
+    """
+    token = uuid.uuid4().hex
+    return Path(f"C:/foreign-{token}/.venv/Scripts/agent-yield.exe")
 
 
 # --- the tracked template names no machine -------------------------------
@@ -183,9 +198,10 @@ def test_the_rendered_command_is_absolute_even_from_a_relative_root(tmp_path, mo
 def test_install_replaces_another_machines_render(tmp_path):
     """Same instrument, different executable -- safe to replace, and replaced."""
     make_project(tmp_path)
+    foreign_path = foreign_executable()
     foreign = harness.render(
         (tmp_path / harness.TEMPLATE_PATH).read_text(encoding="utf-8"),
-        Path("C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe"),
+        foreign_path,
     )
     (tmp_path / harness.LIVE_PATH).write_text(foreign, encoding="utf-8")
 
@@ -194,7 +210,7 @@ def test_install_replaces_another_machines_render(tmp_path):
     assert code == 0
     assert "rendered" in report
     live = (tmp_path / harness.LIVE_PATH).read_text(encoding="utf-8")
-    assert "ewehm" not in live
+    assert foreign_path.as_posix() not in live
     assert arguments_in(live) == PINNED_ARGUMENTS
 
 
@@ -243,17 +259,18 @@ def test_check_names_a_foreign_render(tmp_path):
     have fired. That sentence has to be the first one.
     """
     make_project(tmp_path)
+    foreign_path = foreign_executable()
     (tmp_path / harness.LIVE_PATH).write_text(
         harness.render(
             (tmp_path / harness.TEMPLATE_PATH).read_text(encoding="utf-8"),
-            Path("C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe"),
+            foreign_path,
         ),
         encoding="utf-8",
     )
     code, report = harness.check(tmp_path)
     assert code == 1
     assert report.startswith("FOREIGN RENDER")
-    assert "C:/Users/ewehm/repos/agent-yield/.venv/Scripts/agent-yield.exe" in report
+    assert foreign_path.as_posix() in report
 
 
 def test_check_does_not_cry_foreign_over_a_local_edit(tmp_path):
