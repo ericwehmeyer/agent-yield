@@ -15,6 +15,7 @@ from . import handoff as handoff_module
 from . import agents as agents_module
 from . import resume as resume_module
 from . import session as session_module
+from . import sessions as sessions_module
 from . import statusline as statusline_module
 from .discovery import default_roots
 from .ingest import ingest, load_ingested
@@ -151,6 +152,36 @@ def _cmd_report(args) -> int:
     if interventions:
         print()
         print(render_interventions(compare_interventions(rows, interventions)))
+    return 0
+
+
+def _cmd_sessions(args) -> int:
+    """#161: one row per parent session, ordered by start time, no denominator.
+
+    The corpus window prints first and unconditionally. `ingest` is manual, so
+    the file ends whenever it was last run -- 2026-08-26T22:39:12Z on both
+    machines when this was written -- and a series quoted without its window
+    describes a corpus nobody meant.
+    """
+    path = anchored(args.calls)
+    records = load_ingested(path)
+    print(sessions_module.render_window(records, str(args.calls)))
+    if not records:
+        return 0
+
+    if args.all_projects:
+        print(f"scope: all {len(records):,} records on this machine")
+    else:
+        repo = Path(args.repo)
+        scoped = scope_to_repo(records, repo)
+        print(f"scope: {len(scoped):,} of {len(records):,} records, "
+              f"made in {repo.resolve()}")
+        records = scoped
+    print()
+    print(sessions_module.render(
+        sessions_module.build_sessions(records, args.baseline_calls),
+        sessions_module.ungrouped_calls(records),
+    ))
     return 0
 
 
@@ -516,6 +547,17 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--by-model", action="store_true",
                    help="cost per call per model, instead of the day/mode join")
     p.set_defaults(func=_cmd_report)
+
+    p = subs.add_parser("sessions",
+                        help="one row per parent session, oldest first")
+    p.add_argument("--repo", default=".")
+    p.add_argument("--calls", default=str(DEFAULT_CALLS_PATH))
+    p.add_argument("--all-projects", action="store_true",
+                   help="every session on this machine, not just --repo's")
+    p.add_argument("--baseline-calls", dest="baseline_calls", type=int,
+                   default=sessions_module.DEFAULT_BASELINE_CALLS,
+                   help="calls averaged at each end for the growth factor")
+    p.set_defaults(func=_cmd_sessions)
 
     p = subs.add_parser("tag", help="record a session's work mode")
     p.add_argument("session_id", nargs="?")
