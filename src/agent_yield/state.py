@@ -59,3 +59,59 @@ def anchored(path: Path | str, start: Path | None = None) -> Path:
     if target.is_absolute():
         return target
     return project_root(start) / target
+
+
+# --- Finding the stores that should not exist -------------------------------
+#
+# Anchoring stops new strays. It does nothing about the ones already written,
+# and `.gitignore`'s `.agent-yield/` matches at any depth, so `git status` will
+# never mention them. Six existed on the Mac holding 15 of the 66 allowance
+# snapshots ever taken there. Neither machine could have found them by looking
+# at the repo; each has to look at its own checkout.
+
+STATE_DIR = ".agent-yield"
+
+# Pruned rather than walked. `.venv` alone is tens of thousands of files and
+# holds no state of ours; a scan that takes ten seconds is a scan nobody runs.
+_SKIP = frozenset({".git", ".venv", "node_modules", "__pycache__", ".mypy_cache",
+                   ".pytest_cache", ".ruff_cache", "site-packages"})
+
+
+def stray_dirs(root: Path | None = None) -> list[Path]:
+    """Every `.agent-yield/` under the project root except the root's own.
+
+    Sorted, so two runs on the same tree report in the same order and a
+    difference between them is a real difference.
+    """
+    base = Path(root) if root is not None else project_root()
+    keep = (base / STATE_DIR).resolve()
+    found = []
+    for here, dirs, _files in os.walk(base):
+        dirs[:] = [d for d in dirs if d not in _SKIP]
+        if STATE_DIR in dirs:
+            candidate = (Path(here) / STATE_DIR).resolve()
+            if candidate != keep:
+                found.append(candidate)
+    return sorted(found)
+
+
+def stray_files(root: Path | None = None) -> list[tuple[Path, int]]:
+    """Each file in each stray store, with its line count.
+
+    Lines, not bytes: every state file this package writes is JSONL or a small
+    document, and a row count is the number a reader can act on. A file that
+    cannot be read counts 0 rather than raising -- this is a diagnostic, and
+    one unreadable file must not hide the other five directories.
+    """
+    out = []
+    for directory in stray_dirs(root):
+        for path in sorted(directory.iterdir()):
+            if not path.is_file():
+                continue
+            try:
+                rows = sum(1 for line in path.read_text(
+                    encoding="utf-8", errors="replace").splitlines() if line.strip())
+            except OSError:
+                rows = 0
+            out.append((path, rows))
+    return out

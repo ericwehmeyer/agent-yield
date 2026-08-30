@@ -29,6 +29,7 @@ from .modes import (
     untagged_sessions,
 )
 from .handoff import DEFAULT_HANDOFF_PATH
+from .state import anchored
 from .attribution import Machine
 from .outcomes import daily_outcomes
 from .predict import project
@@ -59,8 +60,9 @@ MODES_FILENAME = "session-modes.toml"
 
 def _cmd_ingest(args) -> int:
     roots = [Path(r) for r in args.root] if args.root else default_roots()
-    held = ingest(Path(args.dest), roots)
-    print(f"{held} calls held in {args.dest}")
+    dest = anchored(args.dest)
+    held = ingest(dest, roots)
+    print(f"{held} calls held in {dest}")
     return 0
 
 
@@ -102,7 +104,7 @@ def _cmd_outcomes(args) -> int:
 
 
 def _cmd_report(args) -> int:
-    records = load_ingested(Path(args.calls))
+    records = load_ingested(anchored(args.calls))
     if not records:
         print(f"no calls recorded in {args.calls} -- run `agent-yield ingest` first")
         return 0
@@ -302,7 +304,7 @@ def _cmd_boundary(args) -> int:
 
 def _cmd_resume(args) -> int:
     """Load a handoff into a fresh session, once -- or read it back by hand."""
-    out = Path(args.out)
+    out = anchored(args.out)
     if getattr(args, "status", False):
         return resume_module.main(["--out", str(out), "--status"])
     if args.hook:
@@ -320,7 +322,7 @@ def _cmd_resume(args) -> int:
 
 def _cmd_allowance(args) -> int:
     """#57: what the plan is really rationing, and what one point of it costs."""
-    snapshots = allowance_module.load(Path(args.log))
+    snapshots = allowance_module.load(anchored(args.log))
     if not snapshots:
         print(f"no allowance snapshots at {args.log}")
         print("the status line records them; nothing has moved yet")
@@ -362,7 +364,7 @@ def _num(value: float | None) -> str:
 
 def _cmd_handoff(args) -> int:
     """Write down what a restart destroys -- or read back what was written."""
-    out = Path(args.out)
+    out = anchored(args.out)
     if args.read_:
         text = handoff_module.read(out)
         if text is None:
@@ -407,7 +409,7 @@ def _cmd_handoff(args) -> int:
 def _cmd_tag(args) -> int:
     path = Path(args.repo) / MODES_FILENAME
     if args.list_:
-        return _list_tags(path, Path(args.calls))
+        return _list_tags(path, anchored(args.calls))
     if not args.session_id or not args.mode:
         print("usage: agent-yield tag <session-id> <mode>   (or: tag --list)")
         return 2

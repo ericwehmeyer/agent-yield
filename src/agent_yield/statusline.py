@@ -85,6 +85,7 @@ from .hookio import read_payload
 from .pricing import window_for
 from .records import dedup, json_lines, parse_line
 from .session import SessionStats, resolve_transcript, session_stats
+from .state import anchored
 from .thresholds import (
     DEFAULT_WINDOW,
     RESTART_FACTOR,
@@ -395,7 +396,7 @@ def line_for(
     read for the opening baseline, because growth is a fact about the whole
     session and no single payload carries it.
     """
-    cache_path = CACHE_PATH if cache_path is None else cache_path
+    cache_path = anchored(CACHE_PATH if cache_path is None else cache_path)
     try:
         size = Path(path).stat().st_size
     except OSError:
@@ -461,8 +462,9 @@ def _probe(payload: dict, line: str) -> None:
 
     try:
         path, route = resolve_transcript(payload)
-        PROBE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with PROBE_PATH.open("a", encoding="utf-8", newline="\n") as handle:
+        probe = anchored(PROBE_PATH)
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        with probe.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps({
                 "keys": sorted(keys(payload)),
                 "route": route,
