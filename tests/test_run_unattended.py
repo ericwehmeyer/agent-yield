@@ -236,3 +236,33 @@ def test_dry_run_claims_nothing_and_runs_nothing(repo, stubs, capsys):
     assert stubs["claimed"] == [] and stubs["claude"] == []
     assert not (repo / ".agent-yield" / "unattended.jsonl").exists()
     assert "Do not explore" in capsys.readouterr().out
+
+
+# --- the body is the body plus its comments ------------------------------
+
+def test_comments_are_part_of_the_task_not_commentary(monkeypatch):
+    """#113's second deliverable and #168's corpus decision are both comments."""
+    payload = json.dumps({
+        "body": "the original root cause",
+        "comments": [{"body": "and clause 3 of #122 folds in here"},
+                     {"body": ""},
+                     {"body": "the machine question is decided"}],
+    })
+
+    class Out:
+        stdout, stderr, returncode = payload, "", 0
+
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: Out())
+    text = runner.issue_body(113)
+    assert "the original root cause" in text
+    assert "clause 3 of #122" in text
+    assert "the machine question is decided" in text
+    assert text.count("added later") == 2, "an empty comment became a section"
+
+
+def test_a_tracker_that_cannot_be_read_yields_an_empty_body_not_a_crash(monkeypatch):
+    class Out:
+        stdout, stderr, returncode = "", "gh: not authenticated", 1
+
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: Out())
+    assert runner.issue_body(113) == ""

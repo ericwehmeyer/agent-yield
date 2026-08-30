@@ -155,9 +155,29 @@ def parse_pick(stdout: str) -> tuple[int, str]:
 
 
 def issue_body(number: int) -> str:
-    out = subprocess.run(["gh", "issue", "view", str(number), "--json", "body",
-                          "--jq", ".body"], capture_output=True, text=True)
-    return out.stdout.strip() if out.returncode == 0 else ""
+    """The issue, followed by its comments in order.
+
+    Comments are not commentary here. Triage lands in them: #113 carries a
+    second deliverable folded in from #122 as a comment, and #168's whole
+    reason for being workable is a decision posted as one. A brief built from
+    the body alone dispatches an agent against a stale reading of the task,
+    and the agent has no way to know that.
+    """
+    out = subprocess.run(
+        ["gh", "issue", "view", str(number), "--json", "body,comments"],
+        capture_output=True, text=True)
+    if out.returncode != 0:
+        return ""
+    try:
+        data = json.loads(out.stdout)
+    except ValueError:
+        return ""
+    parts = [(data.get("body") or "").strip()]
+    for comment in data.get("comments") or []:
+        text = (comment.get("body") or "").strip()
+        if text:
+            parts.append(f"## Comment, added later and part of the task\n\n{text}")
+    return "\n\n".join(part for part in parts if part)
 
 
 def claim(number: int, label: str | None) -> str | None:
