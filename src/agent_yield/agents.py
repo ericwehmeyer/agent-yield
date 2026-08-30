@@ -57,7 +57,7 @@ import json
 from dataclasses import dataclass
 from pathlib import Path
 
-from .discovery import find_transcripts, main_transcript_dir, subagent_transcript_dirs
+from .discovery import agent_transcript_paths, find_transcripts, main_transcript_dir
 from .gate import BRIEF_EXEMPT_TYPES, DispatchRequest, missing_markers
 from .records import dedup, parse_line
 from .usage import Usage
@@ -479,9 +479,14 @@ def audit(
     main_paths: list[Path] | None = None,
     agent_paths: list[Path] | None = None,
 ) -> tuple[list[Audit], list[AgentRun]]:
-    """Read both sides from their default locations and join them."""
+    """Read both sides from their default locations and join them.
+
+    Agent transcripts come from both roots. The scratch root alone saw 12 of
+    24 sessions on this machine, and 11 of those 12 held an empty `.output`
+    beside the populated project-directory file (#84).
+    """
     if main_paths is None:
         main_paths = find_transcripts([main_transcript_dir()])
     if agent_paths is None:
-        agent_paths = find_transcripts(subagent_transcript_dirs())
+        agent_paths = agent_transcript_paths()
     return join(read_dispatches(main_paths), read_agent_runs(agent_paths))

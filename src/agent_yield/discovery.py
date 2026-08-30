@@ -31,8 +31,11 @@ clean run over half the history. Both candidates are searched.
 The scratch location is volatile: on the Windows machine 249 of 352 such files
 were already empty, on the Mac 1 of 112. Read it early and persist what you
 find. **The project-directory copy is not volatile in the same way** -- it lives
-beside the main transcript and survives -- but nothing here depends on that, and
-"read it early" costs nothing if it turns out to be durable.
+beside the main transcript and survives -- so `agent_transcript_paths()` reads
+both roots and dedups on the resolved path, which counts a macOS symlinked pair
+once and keeps the durable half of a Windows pair whose scratch file is empty.
+Reading only the scratch root left 12 of 24 sessions invisible and 408 of 426
+dispatches unlinked (#84).
 
 The scratch tree also holds session `scratchpad/` directories full of unrelated
 `.jsonl` working files -- 5,883 of them on the Mac. Only `tasks/*.output` under
@@ -60,6 +63,48 @@ def subagent_transcript_dirs() -> list[Path]:
         dirs.append(Path("/tmp") / f"claude-{getuid()}")
     seen: set[Path] = set()
     return [d for d in dirs if not (d in seen or seen.add(d))]
+
+
+def session_subagent_dirs(projects_dir: Path | None = None) -> list[Path]:
+    """Every `<project>/<session>/subagents/` directory under the projects root.
+
+    The durable half of the pair. A glob rather than a walk, because the layout
+    is fixed and the projects tree is large.
+    """
+    base = main_transcript_dir() if projects_dir is None else Path(projects_dir)
+    try:
+        found = base.glob("*/*/subagents")
+        return sorted(d for d in found if d.is_dir())
+    except OSError:
+        return []
+
+
+def agent_transcript_paths(
+    scratch_roots: list[Path] | None = None,
+    projects_dir: Path | None = None,
+) -> list[Path]:
+    """Every subagent transcript from both locations, one entry per real file.
+
+    Deduplicated on the resolved path, so the macOS pair -- a scratch
+    `tasks/*.output` symlinked to the project-directory `subagents/*.jsonl` --
+    is one run, not two. The Windows pair is two distinct files, an empty
+    `.output` and a populated `.jsonl`; both are returned and the caller drops
+    the one that yields no records.
+    """
+    roots = (
+        subagent_transcript_dirs() if scratch_roots is None else list(scratch_roots)
+    )
+    roots = [*roots, *session_subagent_dirs(projects_dir)]
+    chosen: dict[str, Path] = {}
+    for path in find_transcripts(roots):
+        try:
+            key = os.path.realpath(path)
+        except OSError:
+            key = str(path)
+        current = chosen.get(key)
+        if current is None or (current.is_symlink() and not path.is_symlink()):
+            chosen[key] = path
+    return sorted(chosen.values())
 
 
 @dataclass(frozen=True)

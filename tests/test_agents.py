@@ -9,16 +9,21 @@ from __future__ import annotations
 
 import datetime as dt
 import json
+import os
 from pathlib import Path
+
+import pytest
 
 from agent_yield.agents import (
     DISPATCH_CALL_CAP,
     MAX_JOIN_LAG_SECONDS,
+    audit,
     join,
     read_agent_runs,
     read_dispatches,
     render,
 )
+from agent_yield.discovery import agent_transcript_paths
 from agent_yield.ingest import load_records
 
 BASE = dt.datetime(2026, 8, 26, 2, 0, tzinfo=dt.timezone.utc)
@@ -403,3 +408,63 @@ def test_a_run_counts_the_calls_that_never_finished(tmp_path):
     (run,) = read_agent_runs([path])
     assert run.incomplete == 1
     assert run.calls == 2
+
+
+def _windows_pair(tmp_path, calls=3):
+    """The layout on this box: an empty `.output` beside a populated `.jsonl`."""
+    scratch = tmp_path / "scratch" / "claude"
+    tasks = scratch / "slug" / "s1" / "tasks"
+    tasks.mkdir(parents=True)
+    (tasks / "agent-1.output").write_bytes(b"")
+    subagents = tmp_path / "projects" / "slug" / "s1" / "subagents"
+    subagents.mkdir(parents=True)
+    _write(subagents / "agent-agent-1.jsonl", [
+        _agent_call("s1", "agent-1", 1.5, "general-purpose", f"r{i}")
+        for i in range(calls)
+    ])
+    return scratch, tmp_path / "projects"
+
+
+def test_the_empty_scratch_output_does_not_hide_the_project_transcript(tmp_path):
+    """#84: the durable copy lives under the project dir, and audit read neither."""
+    scratch, projects = _windows_pair(tmp_path)
+    paths = agent_transcript_paths([scratch], projects)
+    assert len(paths) == 2, "both files exist; they are not the same file here"
+
+    (run,) = read_agent_runs(paths)
+    assert run.calls == 3, "the populated figure, not the 0-byte one"
+
+    main = _main(tmp_path, [_dispatch_line("s1", 0, "general-purpose", BRIEFED)])
+    audits, orphans = join(read_dispatches(main), read_agent_runs(paths))
+    assert audits[0].run is not None and orphans == []
+
+
+def test_a_symlinked_pair_is_one_run_not_two(tmp_path):
+    """The macOS layout: the scratch entry is a link to the project file."""
+    scratch, projects = _windows_pair(tmp_path)
+    real = projects / "slug" / "s1" / "subagents" / "agent-agent-1.jsonl"
+    link = scratch / "slug" / "s1" / "tasks" / "agent-1.output"
+    link.unlink()
+    try:
+        os.symlink(real, link)
+    except (OSError, NotImplementedError) as exc:
+        pytest.skip(f"symlinks unavailable on this box: {exc}")
+
+    paths = agent_transcript_paths([scratch], projects)
+    assert paths == [real], "one real file, and the durable half is the one kept"
+    assert [r.calls for r in read_agent_runs(paths)] == [3]
+
+
+def test_audit_defaults_to_both_roots(tmp_path, monkeypatch):
+    """The regression is at the call site, so pin the call site."""
+    scratch, projects = _windows_pair(tmp_path)
+    monkeypatch.setattr(
+        "agent_yield.discovery.subagent_transcript_dirs", lambda: [scratch]
+    )
+    monkeypatch.setattr(
+        "agent_yield.discovery.main_transcript_dir", lambda: projects
+    )
+    main = _main(tmp_path, [_dispatch_line("s1", 0, "general-purpose", BRIEFED)])
+    audits, orphans = audit(main_paths=main)
+    assert [a.run.calls for a in audits] == [3]
+    assert orphans == []
