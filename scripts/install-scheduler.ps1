@@ -121,7 +121,7 @@ if ($PSCmdlet.ShouldProcess($TaskName, "$verb, every $IntervalMinutes min")) {
         -Settings $settings -Description (
             "Runs scripts/run-unattended.py every $IntervalMinutes minutes. " +
             "Guards live in that script; stop the loop with .agent-yield/STOP.") | Out-Null
-    Write-Host "$verb`ed '$TaskName': $python $arguments"
+    Write-Host "${verb}ed '$TaskName': $python $arguments"
     Write-Host "every $IntervalMinutes minutes, first run in ~2 minutes"
     Write-Host "commit mode: $(if ($Commit) { 'ON -- see #171' } else { 'off' })"
     Write-Host ""
