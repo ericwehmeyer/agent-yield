@@ -1,8 +1,8 @@
 # Four of the five triage roles have no label in this tracker
 
-The tracker carries 13 labels: accessibility, bug, documentation, duplicate,
+The tracker carries 14 labels: accessibility, bug, documentation, duplicate,
 enhancement, good first issue, help wanted, invalid, question, task, blocked,
-windows and wontfix. Of the five canonical triage roles the skills speak in,
+windows, priority:high and wontfix. Of the five canonical triage roles the skills speak in,
 only `wontfix` exists under its own name. This file maps each role to a label
 that is really there, or records that none is.
 
@@ -26,3 +26,9 @@ Labels that exist were preferred over labels that would have to be created:
 more than 40 open issues already carry `task`, `bug` or `blocked`, which is the
 vocabulary in observed use. Closing the two gaps above means creating labels,
 not editing this file.
+
+`priority:high` is the one label since created, on 2026-08-30, for #128 -- a
+warning the other machine has to read before its next pull rather than during
+its next triage. It expresses urgency, not readiness, so it closes neither gap
+above. Nothing sorts by it; it exists so that one issue is not read in the order
+it was filed.
