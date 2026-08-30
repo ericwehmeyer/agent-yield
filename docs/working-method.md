@@ -371,16 +371,13 @@ wrong in the dangerous direction once already -- `boundary-audit.sh` reported
 the defect on a fixed machine on its first run, because bare `python` has no
 `agent_yield`.
 
-Two forms, both required.
+`ListAgents` shows sessions reachable over Remote Control, so ask that box and
+take the output verbatim -- a summary is inference wearing a witness's
+clothes. When the check will be run again, ship it as a script with an exit
+code first: the #130 list was four commands and is now `sh
+scripts/boundary-audit.sh`. For a one-off, just ask.
 
-1. **Ship the check as a script with an exit code**, not as a checklist. The
-   #130 list was four commands; it is now `sh scripts/boundary-audit.sh`,
-   exit 0 clean and 1 action needed. Both boxes then produce the same lines.
-2. **Ask the session on that machine.** `ListAgents` shows sessions reachable
-   over Remote Control. Send the script name and require the output verbatim.
-   A summary is inference wearing a witness's clothes.
-
-Never ask a peer session to perform something this session was refused. That
+The one hard line: do not ask a peer to do what this session was refused. That
 launders the operator's permission decision across machines, and it is the
 same failure as the boundary defect that produced this section.
 
