@@ -385,6 +385,72 @@ Full argument and what would falsify it:
 `docs/adr/0003-machine-local-facts-are-asked-for-not-inferred.md`.
 
 
+## 7.2 The pair is a differential: what reproduces on both is code, what does not is machine state
+
+The hardest question in this repo is whether something that went wrong is a
+defect or a property of the box it went wrong on. #120, #123, #125, #130 and
+#155 all turned on it, and one machine cannot answer it, because the evidence
+that would settle it is the untracked state the other machine holds.
+
+Two machines answer it in a single exchange. That is the return on the
+channel, and it is worth more than the messaging convenience that carries it.
+
+What 2026-08-30 produced in one working day:
+
+| finding | found on | why the other box could not see it |
+|---|---|---|
+| #130, the boundary refused the handoff its own message prescribed | Windows, by being bitten | the Mac's rendered `settings.json` is machine state and is not tracked |
+| #152, a refusal under `--enforce` is never recorded anywhere | Mac, running a script written on Windows | `--probe` forces advisory mode, so both probe logs were equally and identically silent |
+| #154, seven `.agent-yield/` directories, six of them strays | Mac | `.gitignore` matches at any depth, so `git status` on neither box ever mentioned one |
+| #155, three failures that read as a portability defect | Mac | the corpus is gitignored, so page and corpus disagree per machine, and the guard checks presence rather than identity |
+
+Two of those needed both boxes. #152 took a Windows script run against Mac
+state. #154's diagnosis took the counts side by side: seven directories there
+against one here says the cause is where the process was invoked rather than
+the platform, and neither count reaches that alone.
+
+The protocol is four lines.
+
+1. Ship the check as a script with an exit code, per 7.1. What crosses the
+   wire is then a script name, and what comes back is comparable.
+2. Ask the box that holds the evidence, and take its output verbatim.
+3. **Reproduce before generalising.** On both machines it is a code defect. On
+   one it is machine state, and the fix is usually to the machine or to the
+   guard rather than to the code. This step is the differential, and it is the
+   reason to keep the second machine.
+4. The finder files the issue. The other verifies what it can and marks the
+   rest unverified rather than asserting across the boundary.
+
+Step 3 earned itself the same day. The two boxes' failing tests were disjoint,
+two here in `test_harness.py` and three there in `test_context_cost_data.py`,
+and the rule called machine state for both before anyone looked. It was right.
+The Mac's three are a guard that skips when the corpus is absent and passes
+when it is merely different, comparing a page built from 21,614 calls against a
+local ingest of 6,529.
+
+### What the channel cost, measured on this box
+
+At the end of the day this session had run 84 calls for 10,545,087 tokens and
+$9.7473 at list price, opening at 64,855 context per call and reaching
+199,924, a growth of 3.1x. Those are measured, from `agent-yield status`.
+
+Counted from this transcript, the cross-machine exchange was four sends and
+three replies, under 10 of the 84 calls. That is the price of the two findings
+neither box could reach alone, against a day that also produced seven merged
+commits. The ratio is favourable enough that the interesting question is not
+whether to use the channel but what else it should be asked.
+
+The Mac's half of this figure is not in yet. It will be recorded here from
+that machine's own `status`, marked measured or estimated as it reports,
+because pricing a two-machine channel from one machine's transcript would
+falsify the section it appears in.
+
+The costs are otherwise real and small. Each question costs the other session
+a few turns, so it is for questions that turn on machine state rather than for
+anything a commit already answers. And a peer is a source of facts about
+itself, never a route to what this session was refused.
+
+
 ## 8. Snapshot perishable data before you need it
 
 Subagent transcripts live in a temp directory, and which one differs by
