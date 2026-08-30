@@ -112,7 +112,7 @@ def command_for(executable: Path) -> str:
 
     Quoted only when the path contains a space. An unquoted path with no space
     is byte-identical to what already runs on Windows, so this fix does not
-    silently re-render that machine's four hooks into a form nobody has tested.
+    silently re-render that machine's hooks into a form nobody has tested.
     """
     text = executable.as_posix()
     return f'"{text}"' if " " in text else text
@@ -221,7 +221,7 @@ def _expected(root: Path) -> str:
         raise HarnessError(
             f"no agent-yield console script under {root / VENV_DIR}: build the "
             "venv first. Rendering a command that points at nothing would "
-            "install four hooks that fail on every call and say so nowhere."
+            "install hooks that fail on every call and say so nowhere."
         )
     return render(_read_template(root), executable)
 
@@ -273,8 +273,8 @@ def check(root: Path) -> tuple[int, str]:
 
     if not live_path.is_file():
         return 1, (
-            f"{LIVE_PATH} is MISSING: this clone is running with none of the "
-            "four hooks. Run `agent-yield harness --install`."
+            f"{LIVE_PATH} is MISSING: this clone is running with none of "
+            "its hooks. Run `agent-yield harness --install`."
         )
 
     live = live_path.read_text(encoding="utf-8")

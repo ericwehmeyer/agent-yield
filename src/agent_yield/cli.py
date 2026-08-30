@@ -18,7 +18,7 @@ from . import session as session_module
 from . import sessions as sessions_module
 from . import statusline as statusline_module
 from .discovery import default_roots
-from .ingest import ingest, load_ingested
+from .ingest import ingest, load_ingested, needs_full_walk
 from .interventions import SCORABLE_METRICS, load_interventions
 from .prereg import PreregError, append_intervention, render_intervention
 from .modes import (
@@ -62,8 +62,18 @@ MODES_FILENAME = "session-modes.toml"
 def _cmd_ingest(args) -> int:
     roots = [Path(r) for r in args.root] if args.root else default_roots()
     dest = anchored(args.dest)
-    held = ingest(dest, roots)
-    print(f"{held} calls held in {dest}")
+    if args.changed_only and not args.full and needs_full_walk(dest):
+        # Said out loud, and on stdout, even under --quiet. This is the one
+        # path where the command does nothing, and a silent nothing is
+        # indistinguishable from an up-to-date corpus -- the defect #29 cost
+        # this repo once already. --quiet means quiet on success.
+        print("[agent-yield] ingest skipped: no usable record of what has "
+              f"already been read beside {dest}. The corpus is not being "
+              "updated until someone runs `agent-yield ingest --full` once.")
+        return 0
+    held = ingest(dest, roots, full=args.full)
+    if not args.quiet:
+        print(f"{held} calls held in {dest}")
     return 0
 
 
@@ -519,6 +529,12 @@ def main(argv: list[str] | None = None) -> int:
     p = subs.add_parser("ingest", help="read transcripts and persist calls")
     p.add_argument("--root", action="append", help="transcript root (repeatable)")
     p.add_argument("--dest", default=str(DEFAULT_CALLS_PATH))
+    p.add_argument("--full", action="store_true",
+                   help="re-read every transcript, not only the ones that changed")
+    p.add_argument("--changed-only", action="store_true",
+                   help="skip rather than fall back to a full walk (for the hook)")
+    p.add_argument("--quiet", action="store_true",
+                   help="say nothing on success (for the hook)")
     p.set_defaults(func=_cmd_ingest)
 
     p = subs.add_parser("predict", help="project a dispatch's cost")

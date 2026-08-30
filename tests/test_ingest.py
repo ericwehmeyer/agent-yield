@@ -1,3 +1,5 @@
+import io
+import os
 import json
 from pathlib import Path
 
@@ -10,7 +12,11 @@ from agent_yield.ingest import (
     load_ingested,
     load_records,
     median_agent_total,
+    needs_full_walk,
+    seen_path,
 )
+
+NL = chr(10)
 
 
 def _line(**kw):
@@ -408,3 +414,142 @@ def test_ingest_says_when_a_subtree_could_not_be_walked(tmp_path, monkeypatch, c
     assert "1 directory could not be read" in err
     assert "floor" in err
     assert str(blocked) in err
+
+
+# --- the incremental walk (#161) --------------------------------------------
+#
+# A full walk of this box took 89 seconds on 2026-08-30, which is why `ingest`
+# stayed a manual subcommand and the corpus sat 3.8 days stale. These tests
+# pin the skip and, more importantly, every condition that must UNDO it: a
+# skip that fires when it should not is a silent undercount, the one error
+# this tool exists to prevent.
+
+
+def _stat_ns(path: Path):
+    st = path.stat()
+    return (st.st_atime_ns, st.st_mtime_ns)
+
+
+def _rewrite_invisibly(path: Path, text: str):
+    """Replace a file's contents while putting its mtime and size back.
+
+    This is how a re-read is made observable: anything the second run finds in
+    here, it could only have found by reading the file again.
+    """
+    before = _stat_ns(path)
+    assert len(text) == len(path.read_text(encoding="utf-8")), "sizes must match"
+    path.write_text(text, encoding="utf-8", newline=chr(10))
+    os.utime(path, ns=before)
+
+
+def _one(roots: Path, name: str, *lines: str) -> Path:
+    path = roots / name
+    path.write_text("".join(line + NL for line in lines), encoding="utf-8",
+                    newline=chr(10))
+    return path
+
+
+def test_an_unchanged_transcript_is_not_read_a_second_time(tmp_path):
+    """The claim under test, asserted by making a re-read observable.
+
+    The corpus staying at one row is proof the file was skipped, rather than
+    proof the dedup rule caught a duplicate -- which is all that counting a
+    re-ingested identical file would show.
+    """
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    path = _one(roots, "s.jsonl", _line(req="r1", msg="m1", cr=100))
+    dest = tmp_path / "calls.jsonl"
+    assert ingest(dest, [roots]) == 1
+
+    _rewrite_invisibly(path, _line(req="r2", msg="m2", cr=100) + NL)
+
+    assert ingest(dest, [roots]) == 1
+    assert [r.request_id for r in load_ingested(dest)] == ["r1"]
+
+
+def test_a_grown_transcript_is_read_again(tmp_path):
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    path = _one(roots, "s.jsonl", _line(req="r1", msg="m1", cr=100))
+    dest = tmp_path / "calls.jsonl"
+    assert ingest(dest, [roots]) == 1
+
+    with io.open(path, "a", encoding="utf-8", newline=chr(10)) as fh:
+        fh.write(_line(req="r2", msg="m2", cr=100) + NL)
+
+    assert ingest(dest, [roots]) == 2
+
+
+def test_a_new_transcript_is_found_without_re_reading_the_old_ones(tmp_path):
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    _one(roots, "a.jsonl", _line(req="r1", msg="m1", cr=100))
+    dest = tmp_path / "calls.jsonl"
+    ingest(dest, [roots])
+
+    _one(roots, "b.jsonl", _line(req="r2", msg="m2", cr=100))
+    assert ingest(dest, [roots]) == 2
+    assert sorted(r.request_id for r in load_ingested(dest)) == ["r1", "r2"]
+
+
+def test_full_re_reads_a_file_the_sidecar_says_is_done(tmp_path):
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    path = _one(roots, "s.jsonl", _line(req="r1", msg="m1", cr=100))
+    dest = tmp_path / "calls.jsonl"
+    ingest(dest, [roots])
+
+    _rewrite_invisibly(path, _line(req="r2", msg="m2", cr=100) + NL)
+
+    assert ingest(dest, [roots], full=True) == 2
+
+
+def test_a_corpus_that_moved_underneath_voids_the_sidecar(tmp_path):
+    """The guard that matters on two machines.
+
+    A corpus merged, truncated or hand-edited since the sidecar was written is
+    not the one it describes, and skipping against it would drop calls with no
+    symptom. Strict equality on the row count, so any disagreement re-walks.
+    """
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    _one(roots, "s.jsonl",
+         _line(req="r1", msg="m1", cr=100), _line(req="r2", msg="m2", cr=100))
+    dest = tmp_path / "calls.jsonl"
+    assert ingest(dest, [roots]) == 2
+
+    held = [line for line in dest.read_text(encoding="utf-8").splitlines() if line]
+    dest.write_text(held[0] + NL, encoding="utf-8", newline=chr(10))
+
+    assert needs_full_walk(dest) is True
+    assert ingest(dest, [roots]) == 2
+
+
+def test_needs_full_walk_is_true_before_the_first_run_and_false_after(tmp_path):
+    """What the SessionStart hook asks so it never blocks on an 89-second walk."""
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    _one(roots, "s.jsonl", _line(req="r1", msg="m1", cr=100))
+    dest = tmp_path / "calls.jsonl"
+
+    assert needs_full_walk(dest) is True
+    ingest(dest, [roots])
+    assert needs_full_walk(dest) is False
+
+
+def test_the_sidecar_sits_beside_its_own_corpus_and_no_other(tmp_path):
+    assert seen_path(tmp_path / "calls.jsonl") == tmp_path / "calls.jsonl.seen.json"
+    assert seen_path(tmp_path / "other.jsonl") != seen_path(tmp_path / "calls.jsonl")
+
+
+def test_an_unreadable_sidecar_is_a_full_walk_not_a_crash(tmp_path):
+    roots = tmp_path / "roots"
+    roots.mkdir()
+    _one(roots, "s.jsonl", _line(req="r1", msg="m1", cr=100))
+    dest = tmp_path / "calls.jsonl"
+    ingest(dest, [roots])
+    seen_path(dest).write_text("{ not json", encoding="utf-8")
+
+    assert needs_full_walk(dest) is True
+    assert ingest(dest, [roots]) == 1

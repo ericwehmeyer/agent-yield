@@ -89,10 +89,12 @@ That is how #51 survived a fix to the same function.
 A Mac and this Windows box both commit to `main` and file issues against it.
 Pull before touching `docs/NEXT.md` or anything else under `docs/`.
 
-**After a pull, run `agent-yield harness --check`.** The four hooks are
-rendered per machine from `.claude/settings.template.json`; the live
+**After a pull, run `agent-yield harness --check`.** The hooks are rendered
+per machine from `.claude/settings.template.json`; the live
 `.claude/settings.json` is machine state and is not tracked. `--check` exits 1
-on drift and names a file rendered on the other box. `--install` writes it.
+on drift and names a file rendered on the other box. `--install` writes it, and
+refuses unless the live file is already a rendered copy -- `--force` past that
+only once the diff is one you made.
 A pull once replaced one machine's four working hooks with the other's and
 said nothing, because git overwrites ignored files silently (#125, ADR-0002).
 

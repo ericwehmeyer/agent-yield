@@ -158,8 +158,73 @@ def load_ingested(path: Path) -> list[CallRecord]:
     return records
 
 
-def ingest(dest: Path, roots: Iterable[Path]) -> int:
-    """Merge newly-found calls into `dest`. Returns the total count held."""
+def seen_path(dest: Path) -> Path:
+    """Where the walk records what it has already read, beside its corpus.
+
+    Named after `dest` rather than fixed, because the sidecar is a claim about
+    one corpus and is void beside any other.
+    """
+    dest = Path(dest)
+    return dest.parent / (dest.name + ".seen.json")
+
+
+def _load_seen(path: Path, corpus_rows: int) -> dict[str, list[int]]:
+    """Files whose contents are already merged into a corpus of this size.
+
+    The row count is the guard, and it is strict equality. A corpus that was
+    truncated, hand-edited, or merged from the other machine is not the one
+    this sidecar was written beside, and skipping files against it would drop
+    calls silently -- which is the one error this tool exists to prevent. Any
+    mismatch throws the sidecar away and walks everything.
+    """
+    try:
+        state = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    if state.get("corpus_rows") != corpus_rows:
+        return {}
+    files = state.get("files")
+    return files if isinstance(files, dict) else {}
+
+
+def needs_full_walk(dest: Path) -> bool:
+    """True when the sidecar cannot be trusted and every transcript must be read.
+
+    The hook asks this before ingesting, because the answer is the difference
+    between a 1-second startup and an 89-second one. A void sidecar is not an
+    error -- it is the state after a fresh clone, a corpus merged from the
+    other machine, or an interrupted run -- but it is not something to
+    discover while a session is waiting to start.
+    """
+    dest = Path(dest)
+    return not _load_seen(seen_path(dest), len(load_ingested(dest)))
+
+
+def _fingerprint(path: Path) -> list[int] | None:
+    """(mtime_ns, size), or None if the file cannot be stat-ed.
+
+    Taken BEFORE the file is read, never after. A transcript appended to
+    between the stat and the read is read short, but its fingerprint no longer
+    matches on the next run, so the next walk picks the rest up. Stat-ing
+    afterwards would record the newer file as fully read and lose those calls
+    for good.
+    """
+    try:
+        stat = Path(path).stat()
+    except OSError:
+        return None
+    return [stat.st_mtime_ns, stat.st_size]
+
+
+def ingest(dest: Path, roots: Iterable[Path], full: bool = False) -> int:
+    """Merge newly-found calls into `dest`. Returns the total count held.
+
+    Transcripts are append-only, so a file whose mtime and size are unchanged
+    since the last successful merge holds nothing new, and re-reading it is
+    the whole cost of this command: a full walk of this box took 92 seconds on
+    2026-08-30, which is why `ingest` stayed manual and the corpus sat 3.8 days
+    stale (#161). `full=True` re-reads everything.
+    """
     dest = Path(dest)
     dest.parent.mkdir(parents=True, exist_ok=True)
 
@@ -192,7 +257,18 @@ def ingest(dest: Path, roots: Iterable[Path]) -> int:
             "a total: " + ", ".join(str(p) for p in scan.unreadable),
             file=sys.stderr,
         )
-    for record in load_records(scan.paths):
+    already = {} if full else _load_seen(seen_path(dest), len(existing))
+    fingerprints: dict[str, list[int]] = {}
+    to_read: list[Path] = []
+    for path in scan.paths:
+        fingerprint = _fingerprint(path)
+        if fingerprint is None:
+            continue
+        fingerprints[str(path)] = fingerprint
+        if already.get(str(path)) != fingerprint:
+            to_read.append(path)
+
+    for record in load_records(to_read):
         key = record.dedup_key
         if key is not None:
             if key in seen:
@@ -208,5 +284,11 @@ def ingest(dest: Path, roots: Iterable[Path]) -> int:
     merged.sort(key=lambda r: r.timestamp)
     dest.write_text(
         "\n".join(_to_json(r) for r in merged) + "\n", encoding="utf-8", newline="\n"
+    )
+    # Written after the corpus, so a crash between the two leaves a sidecar
+    # that disagrees with the row count and is discarded on the next run.
+    seen_path(dest).write_text(
+        json.dumps({"corpus_rows": len(merged), "files": fingerprints}),
+        encoding="utf-8", newline=chr(10),
     )
     return len(merged)

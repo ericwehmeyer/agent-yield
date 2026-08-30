@@ -25,12 +25,19 @@ from agent_yield import harness
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
-# The exact four commands the Windows box was running at 6d35b47, as arguments.
-# Pinned rather than derived: this is the instrument every figure in the repo
-# was measured under, so a change here retires those figures and must be
-# deliberate enough to edit a test.
+# The exact commands this box runs, as arguments. Pinned rather than derived:
+# this is the instrument every figure in the repo was measured under, so a
+# change here retires those figures and must be deliberate enough to edit a
+# test.
+#
+# The first four are what the Windows box ran at 6d35b47. `ingest` was added on
+# 2026-08-30 for #161, and it is the one entry that changed the instrument
+# rather than only its wiring: SessionStart now does about a second of work it
+# did not do before, on a chain that was previously all sub-100ms. Figures
+# measured before that date carry a session-start cost this one does not.
 PINNED_ARGUMENTS = [
     "resume --hook --probe",
+    "ingest --changed-only --quiet",
     "gate --enforce-brief",
     "guard",
     "boundary --enforce",
@@ -111,7 +118,7 @@ def test_the_template_carries_no_machine_fact():
         assert needle not in text, f"{harness.TEMPLATE_PATH} contains {why}: {needle!r}"
 
 
-def test_the_template_still_renders_the_four_hooks_that_were_measured():
+def test_the_template_still_renders_the_hooks_that_were_measured():
     rendered = harness.render(
         (REPO_ROOT / harness.TEMPLATE_PATH).read_text(encoding="utf-8"),
         Path("/anywhere/.venv/bin/agent-yield"),

@@ -8,6 +8,12 @@
             "type": "command",
             "command": "{{AGENT_YIELD}} resume --hook --probe",
             "timeout": 10
+          },
+          {
+            "type": "command",
+            "command": "{{AGENT_YIELD}} ingest --changed-only --quiet",
+            "timeout": 60,
+            "statusMessage": "Catching the corpus up"
           }
         ]
       }
