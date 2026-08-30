@@ -2979,3 +2979,38 @@ accepted because it is **loud**: a tracked file disappearing shows in
 fails `test_days_with_no_activity_are_present_and_zero` on
 `surviving_lines: 0 != None`. Both files came with the pull and neither touches
 the harness. Filed as #126 rather than folded into this commit.
+
+## [Web 2026-08-30] A session that only oriented, and the note it leaves is one ordering
+
+`agent-yield resume` printed `no handoff at .agent-yield/handoff.md` and nothing
+was consumed. **The silence has a different cause here than the one #130
+reports:** this clone is an ephemeral Linux checkout with no `.agent-yield/`
+directory at all, so it is the ordinary missing-file case and is not evidence
+that the Windows box ended another session without writing one. Same message,
+two causes.
+
+Nothing in the repo changed. This branch and `origin/main` are both `65e3597`,
+the tree is clean, 55 issues are open, and the three commits of 2026-08-30 are
+triage: the label roster said 13, filing #128 made it 14, then two rewraps.
+
+**The next action is #129 and then #130, and #130 is what fixes the order.**
+#129 is the allowance band nothing reads: `rate_limits` appears in
+`statusline.py`, `allowance.py` and `cli.py`, and in none of the four hooks, so
+the one limit that ends a session outright is the one no threshold watches.
+#130 is the other half, a remedy addressed to a session that has no turn left to
+run it. Its *now what* asks for two bands rather than one, the earlier writing
+the handoff while calls are still cheap and the later refusing dispatch. Neither
+is started and nothing is claimed.
+
+The band is CHOSEN, not measured, and the log says why it has to be. 51
+snapshots, 2026-08-26 to 08-30: the five-hour window peaked at 36% and the
+seven-day at 54%, so no pop was ever recorded. What is measured is the climb —
+19% to 31% in 24 minutes on 08-26, in steps of up to 4 points between renders.
+Ten minutes is one handoff turn, and a step that coarse means a band tests *at
+or above*, never *crossed*.
+
+This container could not have checked either one. No `.venv`, no `pytest`, and
+no `.agent-yield/`, so the probe and allowance logs both tickets reason from are
+absent; `agent-yield harness --check` was skipped for the same reason, and the
+hooks it guards are machine state that never existed here. Code and tests run
+after an install. Measurement does not.
