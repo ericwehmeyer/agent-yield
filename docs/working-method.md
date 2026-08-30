@@ -430,7 +430,7 @@ local ingest of 6,529.
 
 ### What the channel cost, measured on both boxes
 
-Both figures come from `agent-yield status` on the machine they describe, and
+Both totals come from `agent-yield status` on the machine they describe, and
 the segment tables from `scripts/session-split.py`, which exists so the two
 boxes stop inventing separate arithmetic for the same question.
 
@@ -448,29 +448,51 @@ boxes stop inventing separate arithmetic for the same question.
 per streamed message and several share a single API request. Counting
 usage-bearing entries overstates calls by 2.1x on the Mac and 2.6x here, both
 measured. The Mac made that error on its first pass and caught it by
-reconciling against `status`, which is the only reason it is written down.
+reconciling against `status`, which is the only reason it is written down
+rather than repeated on the second machine.
 
-The Mac's segmentation: 48% of its calls and 59% of its context bill went to
-the cross-machine exchanges. The same script on this box reports 3 peer-turn
-calls against 88 of the operator's, and the difference is method rather than
-behaviour. On the Mac each exchange arrived as its own turn. Here the sends
-happened inside turns the operator had started, so their cost is folded into
-segments the script attributes to him. **The two splits are not comparable, and
-saying so is worth more than forcing a single number out of them.**
+The script was checked against a hand count rather than trusted. On the Mac's
+transcript it reproduced all five segments exactly in calls, cache read and
+cache write; the single divergence was one context-per-call cell differing by
+one token, because the script floors where the hand count rounded.
 
-What both boxes do show is the same shape. Context per call climbs
-monotonically across a session, 52,172 to 209,492 here across nine segments,
-86,523 to 174,314 there across six. So the Mac's 59% is a fact about when its
-exchanges happened rather than about what they cost: its cross-machine work
-ran late in an already-grown session, and the same exchanges opening a session
-would have billed roughly what its `#129` work billed. Price the channel from
-the call share, which travels. The context share does not.
+#### The channel's share is a bracket, not a number
 
-The prediction before the day was that a two-machine day would be the
-expensive kind. Neither session ever left the `cheap` band, and neither
-reached `RESTART_HARD_FACTOR`. Between them they produced four issues, seven
-merged commits here and one there, and two findings that neither box could
-have reached alone.
+Two labellings answer two questions. The script asks who started a segment. A
+hand labelling asks what the calls were spent on. They agree everywhere except
+where a send happened inside a turn the operator had already begun, which
+produces no break and which the script must therefore attribute to the
+operator. That fold happens on both machines, so **every mechanical peer share
+is a lower bound on what the channel cost.**
+
+Lower bounds compare as lower bounds, which is what makes the two boxes
+readable side by side after all:
+
+| | mechanical, lower bound | hand-labelled, upper bound |
+|---|---|---|
+| Mac | 39% of calls, 48% of cache read | 48% of calls |
+| Windows | 3% of 91 requests, 5% of cache read | not labelled |
+
+So the channel cost the Mac's session between 39% and 48% of its calls, and at
+least 3% of this one. The gap between the two machines is a fact about how each
+operator drove the exchange rather than a reason to refuse the comparison: on
+the Mac each exchange arrived as its own turn, while here the sends sat inside
+turns the operator had already started.
+
+#### Position, not the channel, sets the context share
+
+Context per call climbs monotonically across a session, 52,172 to 209,492 here
+across nine segments and 86,523 to 174,314 there across six. The Mac's context
+share is therefore a fact about when its exchanges happened rather than what
+they cost: its cross-machine work ran late in an already-grown session, and the
+same exchanges opening a session would have billed roughly what its `#129` work
+billed. Price the channel from the call share, which travels. The context share
+does not.
+
+The prediction before the day was that a two-machine day would be the expensive
+kind. Neither session ever left the `cheap` band, and neither reached
+`RESTART_HARD_FACTOR`. Between them they produced four issues, nine merged
+commits, and two findings neither box could have reached alone.
 
 
 ## 8. Snapshot perishable data before you need it

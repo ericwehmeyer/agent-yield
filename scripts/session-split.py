@@ -123,6 +123,11 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  {name:12} {calls:3} calls ({calls * 100 // calls_all:2}%)   "
               f"{read:12,} cache read ({read * 100 // read_all:2}%)")
     print()
+    print("  The peer share is a LOWER BOUND. A send made inside a turn the")
+    print("  operator started produces no break, so its calls are attributed to")
+    print("  the operator -- this segments by who started a turn, not by what")
+    print("  the calls were spent on. Hand-labelling gives the upper bound.")
+    print()
     print("  The call share is the portable figure. The context share depends on")
     print("  WHERE in the session the segments fell, since context per call grows.")
     return 0
