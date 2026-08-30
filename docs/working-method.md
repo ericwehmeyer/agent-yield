@@ -468,13 +468,21 @@ is a lower bound on what the channel cost.**
 Lower bounds compare as lower bounds, which is what makes the two boxes
 readable side by side after all:
 
-| | mechanical, lower bound | hand-labelled, upper bound |
-|---|---|---|
-| Mac | 39% of calls, 48% of cache read | 48% of calls |
-| Windows | 3% of 91 requests, 5% of cache read | not labelled |
+Every figure below is pinned to the request count it was taken at, because a
+running session has no fixed split. The Mac's row moved from 39% to 40% of
+calls and from 48% to 50% of cache read across two exchanges while this section
+was being written, and the movement is one-directional: once the remaining work
+in a session is peer-driven, every further call raises the peer share. A live
+measurement of the channel is therefore a lower bound in time as well as in
+method, and only a pinned one is reproducible.
 
-So the channel cost the Mac's session between 39% and 48% of its calls, and at
-least 3% of this one. The gap between the two machines is a fact about how each
+| measured 2026-08-30 | mechanical, lower bound | hand-labelled, upper bound |
+|---|---|---|
+| Mac, at 69 requests | 39% of calls, 48% of cache read | 48% of calls |
+| Windows, at 91 requests | 3% of calls, 5% of cache read | not labelled |
+
+So the channel cost the Mac's session between 39% and 48% of its calls at 69
+requests, and at least 3% of this one at 91. The gap between the two machines is a fact about how each
 operator drove the exchange rather than a reason to refuse the comparison: on
 the Mac each exchange arrived as its own turn, while here the sends sat inside
 turns the operator had already started.
