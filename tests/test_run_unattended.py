@@ -603,3 +603,37 @@ def test_a_different_runs_id_is_still_caught(git_repo):
 
     _, problems = runner.audit_commits(git_repo, before, {"key": "FPR"}, "run123")
     assert any("Unattended-Run: run123" in p for p in problems)
+
+
+# --- #177: the denied global config dir has to be this machine's ----------
+
+def test_the_global_config_dir_denied_is_this_machine_s_own():
+    """The list held `//c/Users/ewehm/.claude/**` and nothing else.
+
+    On the Mac that pattern matches no path, so the guard against an unattended
+    run editing the harness that governs it was absent while a reader counting
+    entries would score it present.
+    """
+    home = Path.home().as_posix()
+    for verb in ("Edit", "Write"):
+        assert f"{verb}({home}/.claude/**)" in runner.DISALLOWED_TOOLS
+
+    for pattern in runner._home_claude_patterns():
+        assert pattern in runner.DISALLOWED_TOOLS
+        assert pattern in runner.disallowed_tools(True), "never widened away"
+
+
+def test_windows_gets_both_spellings_of_the_same_directory():
+    """PowerShell writes C:/Users/ewehm; git-bash writes //c/Users/ewehm. The
+    runner is launched from both and which one the matcher sees is unmeasured,
+    so both are denied -- the pre-#177 literal among them, unchanged."""
+    patterns = runner._home_claude_patterns("C:/Users/ewehm")
+    assert set(patterns) == {
+        "Edit(//c/Users/ewehm/.claude/**)", "Write(//c/Users/ewehm/.claude/**)",
+        "Edit(C:/Users/ewehm/.claude/**)", "Write(C:/Users/ewehm/.claude/**)",
+    }
+
+
+def test_a_posix_home_gets_one_spelling_and_no_drive_letter():
+    assert runner._home_claude_patterns("/Users/ericw") == (
+        "Edit(/Users/ericw/.claude/**)", "Write(/Users/ericw/.claude/**)")
