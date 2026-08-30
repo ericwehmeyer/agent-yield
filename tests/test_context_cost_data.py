@@ -47,12 +47,6 @@ _GENERATOR = _ROOT / "docs" / "context-cost-data.py"
 _PAGE = _ROOT / "docs" / "context-cost.html"
 _CORPUS = _ROOT / ".agent-yield" / "calls.jsonl"
 
-needs_corpus = pytest.mark.skipif(
-    not _CORPUS.exists(),
-    reason=".agent-yield/calls.jsonl is gitignored; no corpus on this machine",
-)
-
-
 def _load():
     """Import the hyphenated generator by path; it is a script, not a package."""
     spec = importlib.util.spec_from_file_location("context_cost_data", _GENERATOR)
@@ -60,6 +54,41 @@ def _load():
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
+
+
+def _corpus_state() -> tuple[bool, str]:
+    """Is this machine's corpus the one the page was built from?
+
+    THREE STATES, and the old guard distinguished two (#155). It skipped when
+    `calls.jsonl` was absent and ran otherwise, so a machine holding a corpus
+    that was merely DIFFERENT graded the page against it and reported 23
+    disagreements. Every one of them was correct arithmetic on the wrong
+    corpus, and the failure read as a stale page.
+
+    The identity is on the page already: its footer states the call count and
+    span it was built from, and `_anchors` has always compared that line. This
+    just asks it first, and turns a wrong answer into a skip that says which
+    two corpora are involved rather than into three failures that name none.
+    """
+    if not _CORPUS.exists():
+        return False, ".agent-yield/calls.jsonl is gitignored; no corpus on this machine"
+    try:
+        generator = _load()
+        mismatch = generator.corpus_mismatch(
+            generator.corpus_identity(), _PAGE.read_text(encoding="utf-8")
+        )
+    except Exception as exc:  # a corpus that cannot be read is not a page defect
+        return False, f"the corpus could not be identified: {exc}"
+    if mismatch:
+        return False, f"a different corpus from the page's -- {mismatch}"
+    return True, ""
+
+
+_CORPUS_MATCHES, _CORPUS_WHY = _corpus_state()
+
+# `-rs` is mandatory in this repo (#29) precisely so this reason is read. A
+# skip that says "a different corpus" is the finding; a silent one is not.
+needs_corpus = pytest.mark.skipif(not _CORPUS_MATCHES, reason=_CORPUS_WHY)
 
 
 @pytest.fixture(scope="module")
@@ -225,3 +254,65 @@ def test_unreadable_data_block_is_reported_rather_than_raised(module, data, page
 
     stale = module.diff(data, broken)
     assert stale and "cannot be checked" in stale[0], stale
+
+
+# --- The corpus-identity guard, and it is the only thing here CI can run ----
+#
+# Every test above needs `.agent-yield/calls.jsonl`, which is gitignored, so
+# CI skips all of them. These do not: they read the committed page and compare
+# it against identities constructed here. That matters more than it sounds --
+# the guard whose job is to decide whether the other tests may run was itself
+# the one thing no machine without a corpus could check.
+
+
+def test_the_page_states_which_corpus_it_was_built_from(module, page) -> None:
+    # Not a new fact recorded for this purpose. The page has always said this
+    # in its footer and `_anchors` has always compared it; #155 is that
+    # nothing asked it FIRST.
+    assert module.page_corpus(page) == {
+        "calls": 21_614, "span": ["2026-07-24", "2026-08-26"]
+    }
+
+
+def test_the_page_s_own_corpus_is_not_a_mismatch(module, page) -> None:
+    # The path that must stay open: on the machine holding the page's corpus,
+    # `--check` falls through to `diff` and grades every figure as before.
+    same = module.page_corpus(page)
+    assert module.corpus_mismatch(same, page) is None
+
+
+def test_a_different_corpus_names_both_sides(module, page) -> None:
+    """The message is the whole remedy, so it carries both identities.
+
+    "the page is stale" sent a reader to the prose. This sends them to the
+    ingest, which is where the disagreement actually is.
+    """
+    mine = {"calls": 6_529, "span": ["2026-08-23", "2026-08-26"]}
+    said = module.corpus_mismatch(mine, page)
+    assert said is not None
+    assert "6,529" in said and "21,614" in said
+    assert "2026-08-23" in said and "2026-07-24" in said
+
+
+def test_a_corpus_differing_only_in_span_is_still_a_different_corpus(module, page) -> None:
+    # The call count alone would call two different windows the same corpus,
+    # and a re-ingest that drops a day is exactly how that happens.
+    stated = module.page_corpus(page)
+    shifted = {"calls": stated["calls"], "span": ["2026-07-25", stated["span"][1]]}
+    assert module.corpus_mismatch(shifted, page) is not None
+
+
+def test_a_footer_reworded_past_its_anchor_is_not_reported_as_a_wrong_corpus(
+    module, page
+) -> None:
+    """None is not a mismatch, and the difference is load-bearing.
+
+    A footer edited past its pattern already fails as "no longer checked",
+    which is the defect this file exists for (#87 one level down). If an
+    unreadable footer read as a different corpus instead, that failure would
+    turn into a skip and the guard would switch itself off.
+    """
+    reworded = page.replace("calls, deduplicated,", "calls, de-duplicated,", 1)
+    assert reworded != page, "the fixture footer is gone; update this test"
+    assert module.page_corpus(reworded) is None
+    assert module.corpus_mismatch({"calls": 1, "span": ["x", "y"]}, reworded) is None

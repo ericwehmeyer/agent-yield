@@ -183,6 +183,61 @@ def build() -> dict:
     }
 
 
+# The page states which corpus it was built from, in its own footer, and
+# `_anchors` has always compared that line. What was missing is that a
+# disagreement THERE explains every other disagreement, and reads as a stale
+# page when it is a different corpus (#155). `.agent-yield/calls.jsonl` is
+# gitignored, so "the corpus" is whatever this machine last ingested.
+_PAGE_CORPUS_RE = re.compile(
+    r"calls\.jsonl</span>: ([\d,]+) calls, deduplicated, "
+    r"(\d{4}-\d\d-\d\d) to (\d{4}-\d\d-\d\d)"
+)
+
+
+def corpus_identity(records: list | None = None) -> dict:
+    """Which corpus this is: call count and day span, nothing derived.
+
+    Deliberately not a digest. Two ingests of the same window can differ by a
+    call without either being wrong, and a hash would call that a different
+    corpus; the count and the span are what the page states about itself and
+    so are what can be compared against it.
+    """
+    records = load_ingested(CORPUS) if records is None else records
+    days = sorted({r.day for r in records})
+    return {
+        "calls": len(records),
+        "span": [days[0].isoformat(), days[-1].isoformat()] if days else ["", ""],
+    }
+
+
+def page_corpus(text: str) -> dict | None:
+    """The corpus the page says it was built from, or None if it no longer says.
+
+    None is not a mismatch. A footer reworded past its anchor is already a
+    disagreement `diff` reports, and treating it as a different corpus here
+    would suppress that report.
+    """
+    found = _PAGE_CORPUS_RE.search(text)
+    if not found:
+        return None
+    return {
+        "calls": int(found.group(1).replace(",", "")),
+        "span": [found.group(2), found.group(3)],
+    }
+
+
+def corpus_mismatch(identity: dict, text: str) -> str | None:
+    """One line when this machine's corpus is not the page's, else None."""
+    stated = page_corpus(text)
+    if stated is None or stated == identity:
+        return None
+    return (
+        f"this corpus is {identity['calls']:,} calls over {identity['span'][0]} "
+        f"to {identity['span'][1]}; the page was built from {stated['calls']:,} "
+        f"over {stated['span'][0]} to {stated['span'][1]}"
+    )
+
+
 def _fmt_m(n: int) -> str:
     return f"{n / 1e6:.0f}M" if n >= 1e6 else f"{n:,}"
 
@@ -377,7 +432,9 @@ def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--check", action="store_true",
                     help="compare the page's data blocks AND prose against the "
-                         "corpus without touching it; exit 1 on any disagreement")
+                         "corpus without touching it; exit 1 on any "
+                         "disagreement, exit 2 when this machine's corpus is "
+                         "not the one the page was built from")
     ap.add_argument("--write", action="store_true", help="rewrite the page's data blocks")
     ap.add_argument("--json", action="store_true", help="dump the whole computation")
     args = ap.parse_args(argv)
@@ -394,7 +451,23 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     if args.check:
-        stale = diff(data, PAGE.read_text(encoding="utf-8"))
+        text = PAGE.read_text(encoding="utf-8")
+        # Asked BEFORE the figures, because it answers for all of them at once.
+        # Every anchor disagrees when the corpus is a different one, and
+        # reporting 23 stale figures on a page that is correct is how a guard
+        # gets switched off (#155).
+        wrong_corpus = corpus_mismatch(
+            {"calls": data["calls"], "span": data["span"]}, text
+        )
+        if wrong_corpus:
+            print("\nDIFFERENT CORPUS -- the page is not being checked:")
+            print(f"  {wrong_corpus}")
+            print("\nEvery figure would disagree for that reason alone. Re-ingest "
+                  "to the page's\ncorpus, or regenerate against this one with "
+                  "--write and rewrite the prose\nfrom the report above. Exit 2 "
+                  "means unchecked; exit 1 means checked and stale.")
+            return 2
+        stale = diff(data, text)
         if stale:
             print("\nSTALE -- the page disagrees with the corpus:")
             for line in stale:
