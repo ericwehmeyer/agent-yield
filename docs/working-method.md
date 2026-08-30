@@ -361,6 +361,33 @@ too** — 833 code against 2,050 docs — so the code lines that argument leaned
 were the other machine's. Full re-run in `NEXT.md`, *[Windows 2026-08-26
 16:15]*.
 
+## 7.1 A queue moves work; it cannot answer a question about the other box
+
+Section 7 holds for anything that is committed. It cannot help with what is
+deliberately not: `.claude/settings.json` is rendered per machine, and #130
+turned on whether the Mac's copy ran `boundary --enforce` against code that
+still had the deadlock. No commit records that. Guessing it from here was
+wrong in the dangerous direction once already -- `boundary-audit.sh` reported
+the defect on a fixed machine on its first run, because bare `python` has no
+`agent_yield`.
+
+Two forms, both required.
+
+1. **Ship the check as a script with an exit code**, not as a checklist. The
+   #130 list was four commands; it is now `sh scripts/boundary-audit.sh`,
+   exit 0 clean and 1 action needed. Both boxes then produce the same lines.
+2. **Ask the session on that machine.** `ListAgents` shows sessions reachable
+   over Remote Control. Send the script name and require the output verbatim.
+   A summary is inference wearing a witness's clothes.
+
+Never ask a peer session to perform something this session was refused. That
+launders the operator's permission decision across machines, and it is the
+same failure as the boundary defect that produced this section.
+
+Full argument and what would falsify it:
+`docs/adr/0003-machine-local-facts-are-asked-for-not-inferred.md`.
+
+
 ## 8. Snapshot perishable data before you need it
 
 Subagent transcripts live in a temp directory, and which one differs by
