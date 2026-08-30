@@ -3,8 +3,8 @@
 The tracker carries 14 labels: accessibility, bug, documentation, duplicate,
 enhancement, good first issue, help wanted, invalid, question, task, blocked,
 windows, priority:high and wontfix. Of the five canonical triage roles the
-skills speak in, only `wontfix` exists under its own name. This file maps each role to a label
-that is really there, or records that none is.
+skills speak in, only `wontfix` exists under its own name. This file maps each
+role to a label that is really there, or records that none is.
 
 | Label in mattpocock/skills | Label in our tracker | Meaning                                                       |
 | -------------------------- | -------------------- | ------------------------------------------------------------- |
