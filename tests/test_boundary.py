@@ -8,6 +8,8 @@ import json
 import os
 from pathlib import Path
 
+import pytest
+
 from agent_yield import boundary
 from agent_yield.boundary import (
     OVERRIDE_ENV,
@@ -57,6 +59,12 @@ def _touch_handoff(tmp_path: Path, when: dt.datetime) -> Path:
     os.utime(path, (stamp, stamp))
     return path
 
+
+
+@pytest.fixture(autouse=True)
+def _sentinel_stays_in_tmp(tmp_path, monkeypatch):
+    """No test spends the live repo's refusal. #69's lesson, for a sentinel."""
+    monkeypatch.setattr(boundary, "REFUSAL_SPENT_PATH", tmp_path / "spent")
 
 def test_a_cheap_session_is_never_stopped(tmp_path):
     assert boundary_message(_cheap(tmp_path), tmp_path / "none.md") is None
@@ -261,3 +269,94 @@ def test_arming_is_not_something_the_hook_can_do_to_itself(tmp_path, monkeypatch
                           "arm_refusal": True, "prompt": "arm yourself"})
     assert main(["--probe"], stdin=io.StringIO(payload)) == 0
     assert not (tmp_path / "armed").exists()
+
+
+# --- the boundary must not refuse its own remedy, and must not refuse twice ---
+# Both were live defects: session c15eb016 was refused on the prompt the
+# refusal told it to run, then exited with nothing written down (#130).
+
+REMEDY = 'agent-yield handoff --note "what is unfinished"'
+
+
+def _refusing(tmp_path, prompt=None, session="s"):
+    """A session past the hard factor with no handoff: the boundary is up."""
+    payload = {"hook_event_name": "UserPromptSubmit", "session_id": session}
+    if prompt is not None:
+        payload["prompt"] = prompt
+    return dict(payload=payload, enforce=True, stats=_grown(tmp_path),
+                handoff_path=tmp_path / "none.md",
+                spent_path=tmp_path / "spent")
+
+
+def test_an_unrelated_prompt_is_still_refused(tmp_path):
+    code, message = decide(**_refusing(tmp_path, "push the branch"))
+    assert code == 2
+    assert message is not None
+
+
+def test_the_prompt_that_runs_the_remedy_is_never_refused(tmp_path):
+    """The message prescribes this command. Refusing it is the deadlock."""
+    code, message = decide(**_refusing(tmp_path, REMEDY))
+    assert code == 0
+    # still advised, just not blocked
+    assert message is not None and "handoff" in message
+
+
+def test_the_remedy_is_recognised_however_it_is_invoked(tmp_path):
+    for prompt in (".venv/Scripts/agent-yield.exe handoff",
+                   "!agent-yield handoff",
+                   "C:/Users/x/agent-yield.exe handoff --note \"y\"",
+                   "  AGENT-YIELD  handoff"):
+        code, _ = decide(**_refusing(tmp_path, prompt))
+        assert code == 0, prompt
+
+
+def test_a_near_miss_is_not_the_remedy(tmp_path):
+    # A session apiece: one refusal is all a session gets, so a shared one
+    # would let the second prompt pass for the wrong reason.
+    for n, prompt in enumerate(("agent-yield resume", "agent-yield handoffs",
+                                "handoff", "handoff the branch")):
+        code, _ = decide(**_refusing(tmp_path, prompt, session=f"near-{n}"))
+        assert code == 2, prompt
+
+
+def test_enforce_refuses_once_and_then_advises(tmp_path):
+    """The refusal costs one turn, not the session."""
+    first, _ = decide(**_refusing(tmp_path, "one"))
+    second, message = decide(**_refusing(tmp_path, "two"))
+    third, _ = decide(**_refusing(tmp_path, "three"))
+    assert (first, second, third) == (2, 0, 0)
+    assert message is not None
+
+
+def test_a_fresh_session_gets_its_own_refusal(tmp_path):
+    assert decide(**_refusing(tmp_path, "one", session="first"))[0] == 2
+    assert decide(**_refusing(tmp_path, "two", session="first"))[0] == 0
+    assert decide(**_refusing(tmp_path, "one", session="second"))[0] == 2
+
+
+def test_the_refusal_is_recorded_before_it_is_returned(tmp_path):
+    """A crash after the refusal must not leave a hook that refuses forever."""
+    spent = tmp_path / "spent"
+    assert not spent.exists()
+    assert decide(**_refusing(tmp_path, "one"))[0] == 2
+    assert spent.read_text(encoding="utf-8").strip() == "s"
+
+
+def test_a_refusal_it_cannot_record_is_not_a_refusal(tmp_path):
+    """Fail open: unable to spend means unable to block."""
+    blocked = tmp_path / "wall"
+    blocked.write_text("not a directory", encoding="utf-8")
+    kwargs = _refusing(tmp_path, "one")
+    kwargs["spent_path"] = blocked / "spent"
+    code, message = decide(**kwargs)
+    assert code == 0
+    assert message is not None
+
+
+def test_the_remedy_exemption_does_not_leak_into_advisory_mode(tmp_path):
+    """Advisory mode already returns 0; the exemption must not silence it."""
+    code, message = decide({"prompt": REMEDY}, stats=_grown(tmp_path),
+                           handoff_path=tmp_path / "none.md")
+    assert code == 0
+    assert message is not None

@@ -58,6 +58,7 @@ from __future__ import annotations
 import datetime as dt
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from typing import TextIO
@@ -76,7 +77,9 @@ __all__ = [
     "OVERRIDE_ENV",
     "PROBE_PATH",
     "REFUSAL_ARMED_PATH",
+    "REFUSAL_SPENT_PATH",
     "arm_refusal",
+    "invokes_the_remedy",
     "handoff_is_current",
     "boundary_message",
     "decide",
@@ -97,6 +100,48 @@ PROBE_PATH = Path(".agent-yield") / "boundary-probe.jsonl"
 # block the prompt, the operator's next one goes through. A measurement that
 # can lock someone out of their session is not a measurement worth having.
 REFUSAL_ARMED_PATH = Path(".agent-yield") / "boundary-refusal-armed"
+
+# One refusal per session, spent before it is returned. `--enforce` used to
+# return 2 on every prompt while the condition held, so the remedy the message
+# prescribes needed a turn the refusal was denying. Session c15eb016 hit that
+# on 2026-08-30 at 11:45 EDT, ran 88 calls to 220,658 context, and was exited
+# with nothing written down -- the boundary lost the session it exists to save
+# (#130). The comment above REFUSAL_ARMED_PATH already stated the rule; this
+# is the enforce path finally keeping it.
+REFUSAL_SPENT_PATH = Path(".agent-yield") / "boundary-refusal-spent"
+
+# A prompt that runs the remedy is never refused. Matching is deliberately
+# loose -- across `agent-yield handoff`, a venv path, a `.exe`, and a leading
+# `!`. Too wide costs one missed refusal; too narrow costs the whole session,
+# so the asymmetry decides which way to err.
+REMEDY_RE = re.compile(r"""agent-yield(?:\.exe)?["']?\s+handoff\b""", re.IGNORECASE)
+
+
+def invokes_the_remedy(prompt: str | None) -> bool:
+    """Does this prompt run `agent-yield handoff`?"""
+    return bool(prompt and REMEDY_RE.search(prompt))
+
+
+def _spend_refusal(session_id: str, path: Path | None = None) -> bool:
+    """Claim this session's one refusal. False once it is already spent.
+
+    Recorded before the refusal is returned, never after: a crash between the
+    two must leave a session that can still be prompted. Keyed by session so a
+    fresh session gets a fresh refusal, and failing to write means not
+    refusing -- a boundary that cannot record itself has no business blocking.
+    """
+    target = Path(path) if path is not None else REFUSAL_SPENT_PATH
+    try:
+        if target.read_text(encoding="utf-8").strip() == session_id:
+            return False
+    except OSError:
+        pass
+    try:
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(session_id + "\n", encoding="utf-8", newline="\n")
+    except OSError:
+        return False
+    return True
 
 
 def handoff_is_current(handoff_path: Path, stats: SessionStats) -> bool:
@@ -259,8 +304,10 @@ def decide(
     handoff_path: Path | None = None,
     hard_factor: float = RESTART_HARD_FACTOR,
     stats: SessionStats | None = None,
+    spent_path: Path | None = None,
 ) -> tuple[int, str | None]:
-    """Return (exit_code, message). Exit 2 only under ``enforce``."""
+    """Return (exit_code, message). Exit 2 only under ``enforce``, and at
+    most once per session -- never on the prompt that runs the remedy."""
     # Resolved at call time, not bound as a default: the hook reads it from
     # the working directory it is invoked in, and tests point it elsewhere.
     handoff_path = handoff_path or DEFAULT_HANDOFF_PATH
@@ -273,7 +320,25 @@ def decide(
     message = boundary_message(stats, handoff_path, hard_factor)
     if message is None:
         return 0, None
-    return (2 if enforce else 0), message
+    if not enforce:
+        return 0, message
+    # The message prescribes `agent-yield handoff`; refusing that prompt is
+    # the one thing this hook must never do.
+    if invokes_the_remedy(payload.get("prompt")):
+        return 0, message
+    session = str(payload.get("session_id") or "unidentified")
+    if not _spend_refusal(session, spent_path):
+        return 0, message
+    return 2, message + REFUSED_SUFFIX
+
+
+# Appended only when a prompt is actually refused, so the operator learns the
+# refusal is survivable from the refusal itself. Without this the message
+# named a remedy and no way to reach it.
+REFUSED_SUFFIX = (
+    " This refusal is spent: send your prompt again and it will go through, "
+    "and a prompt running `agent-yield handoff` is never refused."
+)
 
 
 REFUSAL_PROBE_MESSAGE = (
