@@ -102,7 +102,37 @@ MACHINE_LABELS = {"Windows": "windows", "Darwin": "macos"}
 # there is one implementation of eligibility and this is not a second opinion.
 PICKED = re.compile(r"^#(\d+)\s+(.*)$")
 
-# Enough to read the repo, change it, and run its own test file. Not enough to
+def _home_claude_patterns(home_posix: str | None = None) -> tuple[str, ...]:
+    """Deny-patterns for the global config directory, spelled for this machine.
+
+    `Edit(.claude/**)` is relative and covers this checkout. The global
+    directory sits outside it and has to be named absolutely, which makes the
+    pattern machine state -- and the list carried one machine's literal,
+    `//c/Users/ewehm/.claude/**`, until #177. On the Mac it matched nothing, so
+    the guard against an unattended run editing the harness that governs it
+    read as present and was absent. That is worse than absent, because a
+    reviewer counts the entry and moves on. Derived here instead, so a clone
+    denies its own home rather than somebody else's.
+
+    Windows gets both spellings. `Path.home().as_posix()` is `C:/Users/ewehm`
+    and git-bash writes the same directory `//c/Users/ewehm`; the runner is
+    launched from both shells and which form the matcher sees is not measured.
+    Denying a path that does not exist costs nothing. Missing the one that does
+    is the defect this replaced.
+
+    `home_posix` is a parameter only so the Windows branch stays reachable from
+    a test running on the Mac.
+    """
+    if home_posix is None:
+        home_posix = Path.home().as_posix()
+    forms = {f"{home_posix.rstrip('/')}/.claude"}
+    drive, _, rest = home_posix.partition("/")
+    if len(drive) == 2 and drive[1] == ":":
+        forms.add(f"//{drive[0].lower()}/{rest.rstrip('/')}/.claude")
+    return tuple(f"{verb}({form}/**)"
+                 for form in sorted(forms) for verb in ("Edit", "Write"))
+
+
 # A denylist, which is the weaker shape, and it is forced rather than chosen.
 #
 # This was an allowlist until 2026-08-30. It did nothing. Four measured arms on
@@ -135,7 +165,7 @@ DISALLOWED_TOOLS = ",".join((
     "Bash(pip install*)", "Bash(npm install*)", "Bash(schtasks*)",
     "Bash(Register-ScheduledTask*)",
     "Edit(.claude/**)", "Write(.claude/**)",
-    "Edit(//c/Users/ewehm/.claude/**)", "Write(//c/Users/ewehm/.claude/**)",
+    *_home_claude_patterns(),
     # Rewriting history, or the guard that stopped the last run.
     "Bash(git reset --hard*)", "Bash(git checkout --*)", "Bash(git clean*)",
     "Write(.agent-yield/STOP)", "Edit(.agent-yield/STOP)",
