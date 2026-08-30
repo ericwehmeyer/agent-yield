@@ -428,6 +428,24 @@ The Mac's three are a guard that skips when the corpus is absent and passes
 when it is merely different, comparing a page built from 21,614 calls against a
 local ingest of 6,529.
 
+### Ask for a checkpoint before the other box's `main` moves under it
+
+`main` gained eight commits in the 22 minutes between 11:58 and 12:20 EDT on
+2026-08-30, while the Mac was holding #129 on a branch cut from `9209666`.
+Nothing was lost, and the reason is luck rather than method: #129 was already
+committed, so the rebase that put those eight underneath it had something to
+rebase. An uncommitted tree on that box at 12:20 would have met eight
+fast-forwards it never saw coming, and from inside a session a pull nobody
+scheduled is indistinguishable from a routine one.
+
+So before doing anything that will move the other machine's `main` under it,
+**ask that box to run `agent-yield handoff` and wait for the confirmation.**
+The checkpoint costs one call and writes that session's cost table, working
+tree and claimed work to disk, which is exactly what a surprise pull cannot
+reconstruct. It applies to a merge train, a rebase of `main` and a
+force-push. It does not apply to pushing a branch the other box is not on,
+which is why the eight above should have been one ask and not eight.
+
 ### What the channel cost, measured on both boxes
 
 Both totals come from `agent-yield status` on the machine they describe, and
