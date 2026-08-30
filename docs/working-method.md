@@ -428,27 +428,49 @@ The Mac's three are a guard that skips when the corpus is absent and passes
 when it is merely different, comparing a page built from 21,614 calls against a
 local ingest of 6,529.
 
-### What the channel cost, measured on this box
+### What the channel cost, measured on both boxes
 
-At the end of the day this session had run 84 calls for 10,545,087 tokens and
-$9.7473 at list price, opening at 64,855 context per call and reaching
-199,924, a growth of 3.1x. Those are measured, from `agent-yield status`.
+Both figures come from `agent-yield status` on the machine they describe, and
+the segment tables from `scripts/session-split.py`, which exists so the two
+boxes stop inventing separate arithmetic for the same question.
 
-Counted from this transcript, the cross-machine exchange was four sends and
-three replies, under 10 of the 84 calls. That is the price of the two findings
-neither box could reach alone, against a day that also produced seven merged
-commits. The ratio is favourable enough that the interesting question is not
-whether to use the channel but what else it should be asked.
+|  | Windows | Mac |
+|---|---|---|
+| calls | 84 | 64 |
+| context/call, opening | 64,855 | 57,459 |
+| context/call, current | 199,924 | 187,803 |
+| growth | 3.1x | 3.3x |
+| display total | 10,545,087 | 8,443,770 |
+| list price | $9.7473 | $9.1249 |
+| cost band | cheap | cheap |
 
-The Mac's half of this figure is not in yet. It will be recorded here from
-that machine's own `status`, marked measured or estimated as it reports,
-because pricing a two-machine channel from one machine's transcript would
-falsify the section it appears in.
+**Count requests, not usage blocks.** A transcript carries one assistant entry
+per streamed message and several share a single API request. Counting
+usage-bearing entries overstates calls by 2.1x on the Mac and 2.6x here, both
+measured. The Mac made that error on its first pass and caught it by
+reconciling against `status`, which is the only reason it is written down.
 
-The costs are otherwise real and small. Each question costs the other session
-a few turns, so it is for questions that turn on machine state rather than for
-anything a commit already answers. And a peer is a source of facts about
-itself, never a route to what this session was refused.
+The Mac's segmentation: 48% of its calls and 59% of its context bill went to
+the cross-machine exchanges. The same script on this box reports 3 peer-turn
+calls against 88 of the operator's, and the difference is method rather than
+behaviour. On the Mac each exchange arrived as its own turn. Here the sends
+happened inside turns the operator had started, so their cost is folded into
+segments the script attributes to him. **The two splits are not comparable, and
+saying so is worth more than forcing a single number out of them.**
+
+What both boxes do show is the same shape. Context per call climbs
+monotonically across a session, 52,172 to 209,492 here across nine segments,
+86,523 to 174,314 there across six. So the Mac's 59% is a fact about when its
+exchanges happened rather than about what they cost: its cross-machine work
+ran late in an already-grown session, and the same exchanges opening a session
+would have billed roughly what its `#129` work billed. Price the channel from
+the call share, which travels. The context share does not.
+
+The prediction before the day was that a two-machine day would be the
+expensive kind. Neither session ever left the `cheap` band, and neither
+reached `RESTART_HARD_FACTOR`. Between them they produced four issues, seven
+merged commits here and one there, and two findings that neither box could
+have reached alone.
 
 
 ## 8. Snapshot perishable data before you need it
