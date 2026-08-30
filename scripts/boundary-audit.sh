@@ -74,19 +74,25 @@ else
   fail "no agent-yield executable found under .venv or on PATH"
 fi
 
-# 3. Has this machine already been refused and nobody noticed?
-if [ -f "$PROBE" ]; then
-  # grep -c already prints 0 when it matches nothing; a `|| echo 0` here
-  # appends a second line and the comparison below stops being a number.
-  refusals=$(grep -c '"exit_code": 2' "$PROBE" 2>/dev/null) || true
-  stops=$(grep -c '"would_stop": true' "$PROBE" 2>/dev/null) || true
-  if [ "$refusals" -gt 0 ]; then
-    fail "$PROBE records $refusals refusal(s) and $stops would-stop row(s)"
+# 3. Has this machine actually been refused?
+#
+# Not from the probe log. `--probe` forces advisory mode (#152), so an
+# enforcing hook never wrote a row there and its silence means nothing.
+REFUSALS=.agent-yield/boundary-refusals.jsonl
+if [ -f "$REFUSALS" ]; then
+  n=$(grep -c '"exit_code": 2' "$REFUSALS" 2>/dev/null) || true
+  if [ "${n:-0}" -gt 0 ]; then
+    fail "$REFUSALS records ${n:-0} real refusal(s) -- read them, each cost a turn"
   else
-    ok "$PROBE has no refusals ($stops would-stop row(s))"
+    ok "$REFUSALS exists and holds no refusals"
   fi
 else
-  note "note    $PROBE absent -- the probe has never run here"
+  note "note    no refusal log yet; it is created the first time one happens"
+fi
+if [ -f "$PROBE" ]; then
+  probed=$(grep -c '"refusal_probe": true' "$PROBE" 2>/dev/null) || true
+  note "note    $PROBE holds ${probed:-0} deliberate measurement(s), and cannot"
+  note "        record refusals under --enforce at all -- that is #152"
 fi
 
 # 4. The new per-session sentinel must never be committed.
