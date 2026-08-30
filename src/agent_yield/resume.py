@@ -78,6 +78,7 @@ from .handoff import (
     read,
 )
 from .hookio import read_payload
+from .state import anchored
 
 __all__ = [
     "INJECT_REASONS",
@@ -234,8 +235,9 @@ def _probe(
         else:
             entry["keys"] = None
             entry["has_reason_key"] = False
-        PROBE_PATH.parent.mkdir(parents=True, exist_ok=True)
-        with PROBE_PATH.open("a", encoding="utf-8", newline="\n") as handle:
+        probe = anchored(PROBE_PATH)
+        probe.parent.mkdir(parents=True, exist_ok=True)
+        with probe.open("a", encoding="utf-8", newline="\n") as handle:
             handle.write(json.dumps(entry) + "\n")
     except Exception:
         return
@@ -261,7 +263,7 @@ def probe_entries(path: Path | None = None, limit: int | None = None) -> list[di
     """The probe log, newest last. Unreadable or corrupt lines are skipped
     rather than raised on: a diagnostic that dies on its own log is worse than
     one that reports a short list."""
-    path = path or PROBE_PATH
+    path = anchored(path or PROBE_PATH)
     entries: list[dict] = []
     try:
         for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
@@ -330,7 +332,7 @@ def _within(a: str | None, b: str | None, seconds: float = 120.0) -> bool:
 def status(out: Path | None = None, probe_path: Path | None = None,
            transcripts: Path | None = None, limit: int = 5) -> dict:
     """What the loader did, and whether a session can be shown to have got it."""
-    out = out or DEFAULT_HANDOFF_PATH
+    out = anchored(out or DEFAULT_HANDOFF_PATH)
     archived = out.with_name(out.name + ARCHIVE_SUFFIX)
     now = dt.datetime.now(dt.timezone.utc)
     got = receipts(transcripts)
@@ -427,7 +429,7 @@ def _parse_out(args: list[str]) -> Path:
         i = args.index("--out")
         if i + 1 < len(args):
             return Path(args[i + 1])
-    return DEFAULT_HANDOFF_PATH
+    return anchored(DEFAULT_HANDOFF_PATH)
 
 
 def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
