@@ -20,6 +20,28 @@ hooks do not fire for tool calls made inside a subagent (#34692), so what is
 gated is the decision to dispatch and not the spending that follows it; and hook
 config loads at session start, so a policy change lands in the NEXT session.
 
+The plan allowance is read here too, and it is the only band in this repo
+that refuses on a quantity the operator CANNOT spend past (#129). The other
+two -- the daily ceiling and the brief rubric -- refuse things that would
+still work if allowed. At 100% of a rate-limit window nothing works, the
+session ends where it stands, and `agent-yield resume` injects nothing into
+the next one because nothing was written. So the refusal here is not "this is
+expensive", it is "what is left of this window is for writing down, not for
+dispatching".
+
+Three constraints on it, all from the data rather than from taste:
+
+  - The input is a LOG, not the payload. A PreToolUse payload carries no
+    `rate_limits`; only the statusline sees them, and it snapshots them at no
+    token cost. So this reads what the status line last wrote, which makes
+    staleness a first-class question and `allowance.STALE_AFTER_MINUTES` the
+    answer. On a machine where the status line is not running (#120) the log
+    goes quiet and this guard correctly goes silent with it.
+  - The threshold is CHOSEN and says so in `thresholds.py`. Nothing in the log
+    can measure the room one handoff needs.
+  - Its override is its own. Silencing the allowance must not also silence the
+    daily ceiling, for the same reason boundary.py keeps a separate one.
+
 Brief quality is checked here too, and warns rather than refuses.
 `--enforce-brief` exists and is OFF: it is the EAGER form, refusing any
 non-exempt dispatch whose prompt lacks a marker. The recommended form refuses
@@ -40,9 +62,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import TextIO
 
+from .allowance import (
+    SNAPSHOT_PATH as ALLOWANCE_PATH,
+    Reading,
+    STALE_AFTER_MINUTES,
+    latest_readings,
+    load as load_allowance,
+)
 from .hookio import read_payload
 from .predict import Projection, project
-from .thresholds import REFERENCE_CONTEXT, band_for_day
+from .thresholds import (
+    REFERENCE_CONTEXT,
+    allowance_advice,
+    allowance_says_stop,
+    band_for_day,
+)
 
 DISPATCH_TOOLS = ("Agent", "Task")
 DEFAULT_CALLS_PATH = Path(".agent-yield") / "calls.jsonl"
@@ -50,6 +84,12 @@ DEFAULT_CALLS_PATH = Path(".agent-yield") / "calls.jsonl"
 # Named, per section 4.5's "refuse-with-named-override". Never a silent bypass:
 # an override that leaves no trace is indistinguishable from no gate at all.
 OVERRIDE_ENV = "AGENT_YIELD_OVERRIDE"
+
+# Distinct from OVERRIDE_ENV on purpose, exactly as boundary.py keeps its own:
+# an operator who decides the day's token ceiling is wrong has not decided
+# that the plan's rate limit is wrong, and one variable for both would let the
+# first silence the second by accident.
+ALLOWANCE_OVERRIDE_ENV = "AGENT_YIELD_ALLOWANCE_OVERRIDE"
 
 # docs/working-method.md §12: an exploratory dispatch is SUPPOSED to lack the
 # brief markers below -- exempting it is the whole reason the rubric is safe
@@ -194,6 +234,56 @@ def gate_message(day_total: int, projection: Projection) -> str | None:
     )
 
 
+def allowance_message(
+    readings: dict[str, Reading] | None,
+    stale_after: float = STALE_AFTER_MINUTES,
+) -> tuple[str | None, bool]:
+    """The line about the plan allowance, and whether it refuses this dispatch.
+
+    Both windows are checked and the worse one speaks: they have opposite
+    remedies -- five-hour refills, seven-day does not -- so which one is
+    talking has to reach the caller.
+
+    Silent on a stale reading, and that is the safe direction here rather than
+    the timid one. A fossil says nothing about the window it names; refusing
+    every dispatch in a session on a three-day-old 95% would be the failure
+    mode that gets a guard uninstalled.
+    """
+    if not readings:
+        return None, False
+    lines, refuse = [], False
+    for window in ("five_hour", "seven_day"):
+        reading = readings.get(window)
+        if reading is None or not reading.is_fresh(stale_after):
+            continue
+        advice = allowance_advice(
+            window, reading.used_percentage, reading.minutes_to_reset
+        )
+        if advice is None:
+            continue
+        lines.append(f"[agent-yield] ALLOWANCE: {advice}")
+        refuse = refuse or allowance_says_stop(
+            window, reading.used_percentage, reading.minutes_to_reset
+        )
+    if not lines:
+        return None, False
+    return " ".join(lines), refuse
+
+
+def read_current_allowance(path: Path | None = None) -> dict[str, Reading]:
+    """What the status line last wrote about each window. Never raises.
+
+    Resolved at call time rather than bound as a default, for boundary.py's
+    reason: the hook reads the log from whatever working directory it is
+    invoked in, and a default frozen at import time cannot be pointed
+    elsewhere by a test.
+    """
+    try:
+        return latest_readings(load_allowance(path or ALLOWANCE_PATH))
+    except Exception:
+        return {}
+
+
 def _day_total(calls_path: Path) -> int:
     from .ingest import load_ingested
 
@@ -201,8 +291,18 @@ def _day_total(calls_path: Path) -> int:
     return sum(r.usage.total for r in load_ingested(calls_path) if r.day == today)
 
 
-def _decide(payload: dict, enforce_brief: bool = False) -> tuple[int, str | None]:
-    """Return (exit_code, message). Exit 2 means refuse this dispatch."""
+def _decide(
+    payload: dict,
+    enforce_brief: bool = False,
+    readings: dict[str, Reading] | None = None,
+) -> tuple[int, str | None]:
+    """Return (exit_code, message). Exit 2 means refuse this dispatch.
+
+    `readings` is passed in rather than read here: the allowance log lives in
+    the working directory, and a decision function that reaches for it makes
+    every test of every other band depend on whatever this machine's status
+    line happened to write. `main` does the read.
+    """
     request = read_dispatch(payload)
     if request is None:
         return 0, None
@@ -219,12 +319,17 @@ def _decide(payload: dict, enforce_brief: bool = False) -> tuple[int, str | None
         and not os.environ.get(OVERRIDE_ENV)
     )
 
+    allow_message, over_allowance = allowance_message(readings)
+    over_allowance = over_allowance and not os.environ.get(ALLOWANCE_OVERRIDE_ENV)
+
     brief_msg = None
     subagent_type = (request.subagent_type or "").lower()
     if subagent_type not in BRIEF_EXEMPT_TYPES:
         brief_msg = brief_message(missing_markers(request))
 
-    messages = [m for m in (day_message, brief_msg) if m]
+    # The allowance leads: it is the only one of the three that the operator
+    # cannot decide to spend past.
+    messages = [m for m in (allow_message, day_message, brief_msg) if m]
     combined = " ".join(messages) if messages else None
 
     # --enforce-brief is off by default: turning it on is a separate recorded
@@ -234,8 +339,14 @@ def _decide(payload: dict, enforce_brief: bool = False) -> tuple[int, str | None
         enforce_brief and brief_msg is not None and not os.environ.get(OVERRIDE_ENV)
     )
 
+    overrides = []
+    if over_allowance:
+        overrides.append(ALLOWANCE_OVERRIDE_ENV)
     if over_ceiling or refuse_brief:
-        return 2, f"{combined} Set {OVERRIDE_ENV}=1 to dispatch anyway."
+        overrides.append(OVERRIDE_ENV)
+    if overrides:
+        named = " and ".join(f"{name}=1" for name in dict.fromkeys(overrides))
+        return 2, f"{combined} Set {named} to dispatch anyway."
     return 0, combined
 
 
@@ -246,7 +357,11 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
         payload = json.loads(read_payload(stdin) or "{}")
         if not isinstance(payload, dict):
             return 0
-        code, message = _decide(payload, enforce_brief=enforce_brief)
+        code, message = _decide(
+            payload,
+            enforce_brief=enforce_brief,
+            readings=read_current_allowance(),
+        )
     except Exception:
         # Deliberately broad. A gate that raises refuses every dispatch in the
         # session and the caller cannot tell that apart from a real refusal.

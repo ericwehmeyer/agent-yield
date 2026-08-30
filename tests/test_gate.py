@@ -4,18 +4,29 @@ import pathlib
 
 import pytest
 
+from agent_yield import gate as gate_module
+from agent_yield.allowance import STALE_AFTER_MINUTES as STALE_MINUTES
+from agent_yield.allowance import Reading
 from agent_yield.gate import (
+    ALLOWANCE_OVERRIDE_ENV,
     OVERRIDE_ENV,
     DispatchRequest,
     _decide,
+    allowance_message,
     brief_message,
     gate_message,
     main,
     missing_markers,
+    read_current_allowance,
     read_dispatch,
 )
 from agent_yield.predict import project
-from agent_yield.thresholds import DAILY_CEILING, DAILY_WARN
+from agent_yield.thresholds import (
+    ALLOWANCE_HANDOFF,
+    ALLOWANCE_STOP,
+    DAILY_CEILING,
+    DAILY_WARN,
+)
 
 # The payload shape verified on 2026-08-25 by .claude/hooks/probe.py.
 DISPATCH = {
@@ -333,3 +344,141 @@ def test_a_mistyped_gate_flag_is_a_usage_error_and_not_a_silent_block(capsys):
     assert code == 2
     assert "unrecognized arguments" in err
     assert "line ranges" not in err
+
+
+# --- The plan allowance, the one band nobody can spend past (#129) ---------
+
+
+@pytest.fixture(autouse=True)
+def _no_allowance_log_by_default(monkeypatch, tmp_path):
+    """Every other test in this file decides about a band that is not this one.
+
+    Without this they read whatever this machine's status line last wrote into
+    `.agent-yield/allowance.jsonl`, which makes the day-ceiling tests pass or
+    fail on the operator's rate limit. Tests that want a reading pass one.
+    """
+    monkeypatch.setattr(gate_module, "ALLOWANCE_PATH", tmp_path / "absent.jsonl")
+
+
+def reading(window: str, used: int, age: float = 1.0, minutes_to_reset=None) -> Reading:
+    return Reading(window=window, used_percentage=used, observed="t",
+                   age_minutes=age, minutes_to_reset=minutes_to_reset)
+
+
+def test_no_allowance_log_means_no_opinion(tmp_path):
+    assert read_current_allowance(tmp_path / "nothing.jsonl") == {}
+    assert allowance_message({}) == (None, False)
+    assert allowance_message(None) == (None, False)
+
+
+def test_a_clear_window_says_nothing():
+    assert allowance_message({"five_hour": reading("five_hour", 40)}) == (None, False)
+
+
+def test_the_handoff_band_warns_without_refusing():
+    payload = {**DISPATCH, "_day_total": 0}
+    code, message = _decide(
+        payload, readings={"seven_day": reading("seven_day", ALLOWANCE_HANDOFF)}
+    )
+    assert code == 0
+    assert "ALLOWANCE" in message
+
+
+def test_the_stop_band_refuses_the_dispatch(monkeypatch):
+    """The dispatch is the call that spends the rest of the window unattended.
+
+    Hooks do not fire inside a subagent (#34692), so this is the last point at
+    which anything can be refused before the spending goes out of view.
+    """
+    monkeypatch.delenv(ALLOWANCE_OVERRIDE_ENV, raising=False)
+    payload = {**DISPATCH, "_day_total": 0}
+    code, message = _decide(
+        payload, readings={"five_hour": reading("five_hour", ALLOWANCE_STOP)}
+    )
+    assert code == 2
+    assert "ALLOWANCE" in message
+    assert f"{ALLOWANCE_OVERRIDE_ENV}=1" in message
+
+
+def test_the_allowance_override_is_its_own(monkeypatch):
+    # Deciding the day's token ceiling is wrong is not deciding the plan's
+    # rate limit is wrong. One variable for both would let the first silence
+    # the second by accident.
+    monkeypatch.delenv(ALLOWANCE_OVERRIDE_ENV, raising=False)
+    monkeypatch.setenv(OVERRIDE_ENV, "1")
+    payload = {**DISPATCH, "_day_total": DAILY_CEILING}
+    code, _ = _decide(
+        payload, readings={"five_hour": reading("five_hour", ALLOWANCE_STOP)}
+    )
+    assert code == 2
+
+    monkeypatch.setenv(ALLOWANCE_OVERRIDE_ENV, "1")
+    code, message = _decide(
+        payload, readings={"five_hour": reading("five_hour", ALLOWANCE_STOP)}
+    )
+    assert code == 0
+    assert "ALLOWANCE" in message, "an override silences the refusal, never the line"
+
+
+def test_a_stale_reading_never_refuses_anything():
+    """A quiet log is ambiguous, and the ambiguity has to fail open.
+
+    Nothing was spent, or the status line is not running at all (#120 reports
+    exactly that on the other machine). A fossil at 95% would refuse every
+    dispatch for the rest of the session, which is how a guard gets removed.
+    """
+    stale = {"five_hour": reading("five_hour", 99, age=STALE_MINUTES + 1)}
+    assert allowance_message(stale) == (None, False)
+    code, message = _decide({**DISPATCH, "_day_total": 0}, readings=stale)
+    assert code == 0
+    assert message is None or "ALLOWANCE" not in message
+
+
+def test_both_windows_speak_and_the_stop_one_decides():
+    message, refuse = allowance_message({
+        "five_hour": reading("five_hour", ALLOWANCE_HANDOFF),
+        "seven_day": reading("seven_day", ALLOWANCE_STOP),
+    })
+    assert refuse
+    assert "five-hour window" in message and "seven-day window" in message
+
+
+def test_a_reset_that_arrives_first_downgrades_the_refusal():
+    # resets_at reaches the hook, not just the threshold module: a five-hour
+    # window returning before this pace can exhaust it is a warning, not a
+    # refusal. Never observed in a payload here -- see test_allowance.py.
+    message, refuse = allowance_message(
+        {"five_hour": reading("five_hour", 96, minutes_to_reset=3)}
+    )
+    assert not refuse
+    assert "ALLOWANCE" in message
+
+
+def test_the_allowance_leads_the_message():
+    # Three bands can speak at once. The one the operator cannot decide to
+    # spend past goes first.
+    payload = {**DISPATCH, "_day_total": DAILY_CEILING}
+    _code, message = _decide(
+        payload, readings={"seven_day": reading("seven_day", ALLOWANCE_HANDOFF)}
+    )
+    assert message.index("ALLOWANCE") < message.index("OVER CEILING")
+
+
+def test_a_broken_allowance_log_fails_open(monkeypatch, tmp_path):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("the log is a directory today")
+
+    monkeypatch.setattr("agent_yield.gate.load_allowance", boom)
+    assert read_current_allowance(tmp_path / "x.jsonl") == {}
+    assert main(stdin=io.StringIO(json.dumps({**DISPATCH, "_day_total": 0}))) == 0
+
+
+def test_a_non_dispatch_tool_is_never_refused_on_the_allowance():
+    # The gate fires on Agent and Task. A Bash call is not the thing that
+    # spends the window out of view, and refusing one would block the handoff
+    # this band is telling the operator to write.
+    code, message = _decide(
+        {"tool_name": "Bash", "tool_input": {}, "_day_total": 0},
+        readings={"five_hour": reading("five_hour", 99)},
+    )
+    assert (code, message) == (0, None)

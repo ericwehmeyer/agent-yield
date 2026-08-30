@@ -251,3 +251,169 @@ def cost_advice(context: int) -> str | None:
 # Re-derive it once there is enough history to measure where survival actually
 # flattens; until then it is a convention and is labelled one.
 SURVIVAL_HORIZON_DAYS = 7
+
+
+# ---------------------------------------------------------------------------
+# Allowance: the plan's rate limit. Every band above is clearable by spending
+# more; this is the one that confiscates the pen (#129). A cost band says the
+# next call bills a lot. This one says there is no next call.
+#
+# CHOSEN, both numbers, and NOTHING HERE COULD MEASURE THEM. The quantity a
+# band has to leave room for is one handoff, and a handoff moves
+# `used_percentage` by less than its 1-point resolution, so the room it needs
+# does not appear in the log at any resolution the log has.
+#
+# What the log does bound is the RATE, and the numbers are set from it.
+# MEASURED, one stretch: on 2026-08-26 the five-hour window went 19% at 22:51
+# to 31% at 23:15 -- 0.5 points per minute -- moving in steps of up to 4
+# points between consecutive renders (5% at 20:17, 9% at 20:30). Read against
+# that rate:
+#
+#   - 90% is ~20 minutes of spending: one handoff turn, plus enough left to
+#     finish the call already in flight rather than abandoning it.
+#   - 80% is ~40 minutes: room to land what is running before writing it down.
+#   - The 10-point gap between the two is wider than the largest step ever
+#     observed, so no single render can jump the whole band.
+#
+# One stretch of one window on one machine. The seven-day window has no
+# measured rate at all and takes the same two numbers, because inventing a
+# second pair with nothing behind them would look like two measurements.
+ALLOWANCE_HANDOFF = 80
+ALLOWANCE_STOP = 90
+
+# Points per minute, five-hour window, from the 2026-08-26 stretch above.
+# The only rate this repo has measured, and the only one any projection here
+# is entitled to use.
+FIVE_HOUR_POINTS_PER_MINUTE = 0.5
+
+# Largest step between consecutive renders, same day. It is here because it
+# is what forbids a "crossed the threshold" test: a session can go 78 -> 82
+# and never take the value 80.
+MAX_OBSERVED_STEP_POINTS = 4
+
+# Named for the remedy, like COST_LADDER, and for the same reason: what
+# distinguishes the bands is what to do about them.
+ALLOWANCE_LADDER = ("handoff", "stop")
+
+# Two windows, and they are not one band. Five-hour refills on its own, so
+# its remedy is write it down and wait it out. Seven-day ends the week, so
+# its remedy is write it down and stop dispatching. Same percentage, opposite
+# actions -- which is the whole reason `allowance_advice` takes the window.
+ALLOWANCE_WINDOWS = ("five_hour", "seven_day")
+
+
+def allowance_band(used_percentage: int | None) -> str:
+    """Which band a window's `used_percentage` sits in.
+
+    AT OR ABOVE, never "crossed". The window moves in steps of up to
+    `MAX_OBSERVED_STEP_POINTS`, so a threshold can be passed inside one render
+    without ever being taken as a value.
+
+    `None` is "clear": a client that does not report a window is not a window
+    at 0%, and the same distinction `allowance.read_allowance` refuses to
+    collapse is refused here.
+    """
+    if used_percentage is None:
+        return "clear"
+    if used_percentage >= ALLOWANCE_STOP:
+        return "stop"
+    if used_percentage >= ALLOWANCE_HANDOFF:
+        return "handoff"
+    return "clear"
+
+
+def minutes_of_allowance_left(used_percentage: int) -> float:
+    """Minutes to 100% at the one climb rate ever measured here.
+
+    Five-hour only. The seven-day window has no measured rate, and applying
+    this one to it would be a fabrication with a decimal point on it.
+    """
+    return max(0.0, (100 - used_percentage) / FIVE_HOUR_POINTS_PER_MINUTE)
+
+
+def allowance_decision(
+    window: str,
+    used_percentage: int | None,
+    minutes_to_reset: float | None = None,
+) -> str:
+    """The band, after the reset clock has had its say.
+
+    `resets_at` is in the condition and not just in the wording: 95% with six
+    days to run and 95% with forty minutes to run call for opposite actions.
+    A five-hour window that resets sooner than this pace can exhaust it will
+    not pop, so it drops to `handoff` -- write it down, keep working. The
+    seven-day window never drops, because there is no measured pace to say it
+    is safe with.
+
+    UNEXERCISED IN PRODUCTION. `resets_at` is null in all 51 snapshots in
+    `.agent-yield/allowance.jsonl` and in all 8 in the strays beside it: this
+    machine's client has never sent it, whatever `allowance.py`'s docstring
+    reads off the field name. Everything below is reached only when a client
+    does send it, and is tested only against synthetic payloads.
+    """
+    band = allowance_band(used_percentage)
+    if (
+        band == "stop"
+        and window == "five_hour"
+        and minutes_to_reset is not None
+        and used_percentage is not None
+        and minutes_to_reset < minutes_of_allowance_left(used_percentage)
+    ):
+        return "handoff"
+    return band
+
+
+_ALLOWANCE_ADVICE = {
+    ("five_hour", "handoff"): (
+        "The five-hour window is at {used}%, past {ALLOWANCE_HANDOFF}%. At the "
+        "one rate measured here, 0.5 points a minute, that is about {minutes} "
+        "minutes of dispatching left. Write the handoff now, while calls are "
+        "still cheap; it costs a file and clears nothing else."
+    ),
+    ("five_hour", "stop"): (
+        "The five-hour window is at {used}%, past {ALLOWANCE_STOP}%. About "
+        "{minutes} minutes left at the measured rate, and a dispatch spends it "
+        "faster than a turn does. Write the handoff, then wait the window out: "
+        "it refills on its own and the next session starts with what you wrote."
+    ),
+    ("seven_day", "handoff"): (
+        "The seven-day window is at {used}%, past {ALLOWANCE_HANDOFF}%. Nothing "
+        "refills this one before it resets. Write the handoff now and spend "
+        "what is left on the work, not on the recovery."
+    ),
+    ("seven_day", "stop"): (
+        "The seven-day window is at {used}%, past {ALLOWANCE_STOP}%. This one "
+        "does not come back this week. Write the handoff and stop dispatching; "
+        "a subagent spends the remainder without asking again."
+    ),
+}
+
+
+def allowance_advice(
+    window: str,
+    used_percentage: int | None,
+    minutes_to_reset: float | None = None,
+) -> str | None:
+    """What to do about the band, or ``None`` when the window is clear."""
+    band = allowance_decision(window, used_percentage, minutes_to_reset)
+    template = _ALLOWANCE_ADVICE.get((window, band))
+    if template is None or used_percentage is None:
+        return None
+    minutes = round(minutes_of_allowance_left(used_percentage))
+    if minutes_to_reset is not None:
+        minutes = round(min(minutes, minutes_to_reset))
+    return template.format(
+        used=used_percentage,
+        minutes=minutes,
+        ALLOWANCE_HANDOFF=ALLOWANCE_HANDOFF,
+        ALLOWANCE_STOP=ALLOWANCE_STOP,
+    )
+
+
+def allowance_says_stop(
+    window: str,
+    used_percentage: int | None,
+    minutes_to_reset: float | None = None,
+) -> bool:
+    """Whether the band's remedy is "spend nothing more on a dispatch"."""
+    return allowance_decision(window, used_percentage, minutes_to_reset) == "stop"

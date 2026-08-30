@@ -10,6 +10,10 @@ from __future__ import annotations
 import pytest
 
 from agent_yield.thresholds import (
+    ALLOWANCE_HANDOFF,
+    ALLOWANCE_LADDER,
+    ALLOWANCE_STOP,
+    ALLOWANCE_WINDOWS,
     COMPACT_AT_BOUNDARY,
     COMPACT_NOW,
     CONTEXT_WARN,
@@ -18,12 +22,19 @@ from agent_yield.thresholds import (
     COST_RESTART,
     COST_STOP,
     DEFAULT_WINDOW,
+    FIVE_HOUR_POINTS_PER_MINUTE,
+    MAX_OBSERVED_STEP_POINTS,
     PREFER_FRESH_SESSION_AT_BOUNDARY,
     RESTART_FACTOR,
     RESTART_HARD_FACTOR,
+    allowance_advice,
+    allowance_band,
+    allowance_decision,
+    allowance_says_stop,
     cost_advice,
     cost_band,
     cost_says_leave,
+    minutes_of_allowance_left,
 )
 
 MILLION = DEFAULT_WINDOW
@@ -147,3 +158,124 @@ def test_the_hard_restart_factor_sits_well_above_the_advisory():
     # A boundary near the advisory would fire in every working session.
     assert RESTART_HARD_FACTOR > RESTART_FACTOR
     assert RESTART_HARD_FACTOR >= 2 * RESTART_FACTOR
+
+
+# --- The third family: the allowance, which is neither capacity nor cost ----
+#
+# It is in a third unit -- percent of a plan window -- and that is the point.
+# Capacity asks how much room is left, cost asks what the next call bills, and
+# both are quantities the operator can decide to spend anyway. This one ends
+# the session whatever the operator decides, which is why it is the only band
+# here whose remedy is "write it down" rather than "spend it differently".
+
+def test_the_band_is_at_or_above_never_crossed():
+    """The defect this forecloses is the one the log's step size guarantees.
+
+    The window moves up to 4 points between consecutive renders (5% at 20:17,
+    9% at 20:30 on 2026-08-26), so a session can go 78 -> 82 and never take
+    the value 80. Any test of the form "did it cross" misses that session
+    entirely.
+    """
+    assert allowance_band(ALLOWANCE_HANDOFF - 1) == "clear"
+    assert allowance_band(ALLOWANCE_HANDOFF) == "handoff"
+    assert allowance_band(ALLOWANCE_STOP - 1) == "handoff"
+    assert allowance_band(ALLOWANCE_STOP) == "stop"
+    # The jump that skips both exact thresholds still lands in the band.
+    assert allowance_band(ALLOWANCE_STOP + 2) == "stop"
+
+
+def test_no_single_render_can_jump_the_whole_band():
+    # The gap has to be wider than the largest step ever observed, or a
+    # session can pass from "clear" to capped without a render in between
+    # where anything could have fired.
+    assert ALLOWANCE_STOP - ALLOWANCE_HANDOFF > MAX_OBSERVED_STEP_POINTS
+    assert 100 - ALLOWANCE_STOP > MAX_OBSERVED_STEP_POINTS
+
+
+def test_a_window_that_was_not_reported_is_not_a_window_at_zero():
+    # Same refusal as allowance.read_allowance: absent means the client did
+    # not send the block. 0% would read as a fresh allowance and silence the
+    # band exactly when the client is the one that cannot be measured.
+    assert allowance_band(None) == "clear"
+    assert allowance_advice("five_hour", None) is None
+    assert not allowance_says_stop("five_hour", None)
+
+
+def test_the_stop_band_leaves_room_for_the_remedy_it_names():
+    # The band's whole justification: at the one measured rate there is still
+    # time to write a handoff after it fires. One turn, not one minute.
+    minutes = minutes_of_allowance_left(ALLOWANCE_STOP)
+    assert minutes == (100 - ALLOWANCE_STOP) / FIVE_HOUR_POINTS_PER_MINUTE
+    assert minutes >= 15
+    assert minutes_of_allowance_left(ALLOWANCE_HANDOFF) > minutes
+    # Past the cap the answer is zero, never negative time.
+    assert minutes_of_allowance_left(120) == 0.0
+
+
+def test_the_two_windows_get_different_advice_at_the_same_percentage():
+    """The reason they are two bands and not one.
+
+    Five-hour refills on its own, so its remedy is write it down and wait.
+    Seven-day ends the week, so its remedy is write it down and stop. A
+    single band would have to pick one of those and be wrong half the time.
+    """
+    five, seven = (allowance_advice(w, 95) for w in ALLOWANCE_WINDOWS)
+    assert five != seven
+    assert "refills on its own" in five
+    assert "does not come back this week" in seven
+
+
+def test_a_reset_that_beats_the_burn_rate_downgrades_the_five_hour_stop():
+    # resets_at is in the CONDITION, not just the wording: 95% with the window
+    # returning in four minutes is not the same situation as 95% with four
+    # hours of it left to burn, and only one of them is worth refusing a
+    # dispatch over.
+    assert allowance_decision("five_hour", 95) == "stop"
+    assert allowance_decision("five_hour", 95, minutes_to_reset=4) == "handoff"
+    assert allowance_decision("five_hour", 95, minutes_to_reset=90) == "stop"
+    assert not allowance_says_stop("five_hour", 95, minutes_to_reset=4)
+
+
+def test_the_seven_day_window_never_downgrades_on_its_reset():
+    # There is no measured climb rate for the seven-day window, so there is
+    # nothing to say it is safe with. Borrowing the five-hour rate would be a
+    # fabrication with a decimal point on it.
+    assert allowance_decision("seven_day", 95, minutes_to_reset=1) == "stop"
+    assert allowance_says_stop("seven_day", 95, minutes_to_reset=1)
+
+
+def test_the_ladder_names_remedies_and_the_bands_do_not_share_one():
+    # Same rule COST_LADDER is held to: a band that shares another's remedy
+    # should not exist.
+    assert ALLOWANCE_LADDER == ("handoff", "stop")
+    said = {allowance_advice(w, pct)
+            for w in ALLOWANCE_WINDOWS
+            for pct in (ALLOWANCE_HANDOFF, ALLOWANCE_STOP)}
+    assert len(said) == 4
+
+
+def test_the_chosen_numbers_say_they_are_chosen():
+    """The distinction this repo exists to make, applied to its own constants.
+
+    A handoff moves `used_percentage` by less than its 1-point resolution, so
+    no amount of logging can measure the room these numbers reserve. They are
+    policy, and the file has to say so where the next person edits them.
+    """
+    from pathlib import Path
+
+    source = Path(__file__).resolve().parents[1] / "src" / "agent_yield" / "thresholds.py"
+    text = source.read_text()
+    block = text.split("# Allowance: the plan's rate limit", 1)[1]
+    block = block.split("ALLOWANCE_HANDOFF", 1)[0]
+    assert "CHOSEN" in block
+    assert "MEASURED" in block, "the rate the numbers are read against"
+    assert "0.5 points per minute" in block
+
+
+def test_the_advice_never_prices_the_allowance_in_dollars():
+    # Same rule as cost_advice, and it bites harder here: allowance.py's whole
+    # argument is that the plan's size is calibrated and never declared, so a
+    # dollar figure in a hook message would be the tier table it refuses.
+    for window in ALLOWANCE_WINDOWS:
+        for pct in (ALLOWANCE_HANDOFF, ALLOWANCE_STOP):
+            assert "$" not in allowance_advice(window, pct)

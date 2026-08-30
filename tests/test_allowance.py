@@ -5,14 +5,17 @@ operator is actually rationed on, and the point of these tests is mostly what
 the module REFUSES: the arithmetic is trivial and every way it can be a shape
 rather than a measurement has to be closed.
 """
+import datetime as dt
 import json
 
 from agent_yield import allowance
 from agent_yield.allowance import (
     MIN_POINTS,
+    STALE_AFTER_MINUTES,
     Snapshot,
     append,
     estimate,
+    latest_readings,
     load,
     read_allowance,
 )
@@ -137,3 +140,104 @@ def test_no_tier_table_ships_with_this_module():
     assert "not declared" in source.lower() or "CALIBRATED" in source
     assert not any(name.lower().endswith(("_plans", "_tiers", "plan_table"))
                    for name in vars(allowance))
+
+
+# --- Either window, and the freshest value each one has ---------------------
+NOW = dt.datetime(2026, 8, 26, 12, 0, tzinfo=dt.timezone.utc)
+
+
+def snap(minutes_ago: int, five_hour=None, seven_day=None, resets_at=None) -> Snapshot:
+    when = NOW - dt.timedelta(minutes=minutes_ago)
+    return Snapshot(timestamp=when.isoformat(), five_hour=five_hour,
+                    seven_day=seven_day, five_hour_resets_at=resets_at)
+
+
+def test_a_five_hour_only_payload_is_recorded_not_dropped():
+    """#129: the window that pops first was the one that went unrecorded.
+
+    `read_allowance` required a seven-day value, so a client sending only the
+    five-hour block recorded nothing at all -- and five-hour is the window
+    that caps a session first.
+    """
+    snapshot = read_allowance({"rate_limits": {"five_hour": {"used_percentage": 88}}})
+    assert snapshot is not None
+    assert snapshot.five_hour == 88
+    assert snapshot.seven_day is None
+
+
+def test_a_payload_with_neither_window_is_still_none():
+    assert read_allowance({"rate_limits": {"five_hour": {}, "seven_day": {}}}) is None
+
+
+def test_a_five_hour_only_row_survives_the_round_trip(tmp_path):
+    log = tmp_path / "allowance.jsonl"
+    append(log, snap(0, five_hour=88), None)
+    held = load(log)
+    assert [s.five_hour for s in held] == [88]
+    assert held[0].seven_day is None
+
+
+def test_a_row_with_no_seven_day_value_cannot_calibrate_the_seven_day_plan():
+    # The estimate prices the seven-day window in dollars per point. A row
+    # with no seven-day value has no points to contribute.
+    rows = [Snapshot(timestamp="2026-08-26T10:00:00+00:00", five_hour=40,
+                     session_dollars=1.0),
+            at(12, 30, 21.0)]
+    assert estimate(rows) is None
+
+
+def test_each_window_keeps_its_own_freshest_value():
+    """Per window, never per row.
+
+    Four of the 51 snapshots on this machine carry `five_hour: null` against a
+    seven-day value. Taking the last row wholesale would let one of those
+    retire a five-hour reading that is still the only one there is.
+    """
+    readings = latest_readings(
+        [snap(60, five_hour=30, seven_day=40), snap(5, seven_day=44)], now=NOW
+    )
+    assert readings["five_hour"].used_percentage == 30
+    assert readings["seven_day"].used_percentage == 44
+    assert readings["five_hour"].age_minutes == 60
+    assert readings["seven_day"].age_minutes == 5
+
+
+def test_staleness_is_reported_and_not_applied():
+    # The log is only written when a percentage MOVES, so a quiet log is
+    # ambiguous: nothing spent, or no status line running at all (#120).
+    # Nothing here can tell those apart, so this hands the caller the age and
+    # lets it decide what it will refuse a dispatch on.
+    old, fresh = latest_readings([snap(STALE_AFTER_MINUTES + 1, five_hour=95)],
+                                 now=NOW), latest_readings(
+        [snap(1, five_hour=95)], now=NOW)
+    assert not old["five_hour"].is_fresh()
+    assert fresh["five_hour"].is_fresh()
+
+
+def test_the_reset_clock_is_minutes_from_now_when_the_client_sends_one():
+    resets = (NOW + dt.timedelta(minutes=25)).isoformat().replace("+00:00", "Z")
+    readings = latest_readings([snap(1, five_hour=95, resets_at=resets)], now=NOW)
+    assert round(readings["five_hour"].minutes_to_reset) == 25
+
+
+def test_no_reset_timestamp_has_ever_been_observed_here():
+    """The claim in the docstring, checked against the log rather than assumed.
+
+    `resets_at` was in this module's WHAT IS OBSERVABLE paragraph from the
+    start, read off the field name. It is null in every snapshot this machine
+    has ever taken, so anything built on it is unexercised, and a reading
+    without it has to work.
+    """
+    readings = latest_readings([snap(1, five_hour=95, seven_day=44)], now=NOW)
+    assert readings["five_hour"].minutes_to_reset is None
+    assert readings["five_hour"].used_percentage == 95
+    assert "has never seen" in (allowance.__doc__ or "").lower() or \
+        "never sent" in (allowance.__doc__ or "").lower()
+
+
+def test_an_unparseable_timestamp_is_skipped_rather_than_dated_to_now():
+    # Dating it to now would make a corrupt row the freshest reading in the
+    # log, which is the one row that must never win.
+    readings = latest_readings([Snapshot(timestamp="not a time", five_hour=99),
+                                snap(10, five_hour=20)], now=NOW)
+    assert readings["five_hour"].used_percentage == 20

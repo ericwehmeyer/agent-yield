@@ -6,9 +6,17 @@ absolute figure does not. This module is the other half -- what the operator is
 really rationed on.
 
 WHAT IS OBSERVABLE. The statusline payload carries
-`rate_limits.{five_hour,seven_day}.{used_percentage,resets_at}`. That is the
-binding constraint, measured, in the units the plan actually enforces, and it
-needs no price table at all.
+`rate_limits.{five_hour,seven_day}.used_percentage`. That is the binding
+constraint, measured, in the units the plan actually enforces, and it needs no
+price table at all.
+
+WHAT THIS FILE CLAIMED AND HAS NEVER SEEN. `resets_at` was in that sentence
+from the start, read off the field name rather than off a payload. It has
+arrived null in every snapshot ever taken: 0 of 51 in `.agent-yield/`, 0 of 8
+in the strays beside it, 2026-08-26 to 08-30. So `Snapshot` carries the two
+reset timestamps, `estimate` keys its windows by one of them, and
+`thresholds.allowance_decision` will use them -- all against a field this
+machine's client has never sent. Nothing here should be built to require it.
 
 WHAT IS NOT, AND WHY THERE IS NO TIER TABLE HERE. The allowance's absolute
 size, whether models draw on it at different rates, and overage behaviour
@@ -54,7 +62,11 @@ MIN_POINTS = 5
 @dataclass(frozen=True)
 class Snapshot:
     timestamp: str
-    seven_day: int
+    # Both windows are optional and for the same reason: a client sends the
+    # blocks it sends. `seven_day` was mandatory until #129, which made a
+    # payload carrying only `five_hour` record nothing -- and five-hour is the
+    # window that pops first.
+    seven_day: int | None = None
     five_hour: int | None = None
     seven_day_resets_at: str | None = None
     five_hour_resets_at: str | None = None
@@ -102,12 +114,20 @@ def read_allowance(payload: dict, timestamp: str | None = None) -> Snapshot | No
     None rather than zeros: a payload without `rate_limits` is a client that
     does not report them, and recording that as 0% used would read as a fresh
     allowance.
+
+    EITHER window is enough (#129). This refused a five-hour-only payload
+    until 2026-08-30, on the reasoning that seven-day is the operator's real
+    currency -- but five-hour is the window that caps a session first, and the
+    log already holds 4 snapshots with `five_hour: null` against a seven-day
+    value, so the asymmetry runs both ways and dropping either one loses the
+    guard its input.
     """
     limits = payload.get("rate_limits")
     if not isinstance(limits, dict):
         return None
     seven_day = _percentage(limits.get("seven_day"))
-    if seven_day is None:
+    five_hour = _percentage(limits.get("five_hour"))
+    if seven_day is None and five_hour is None:
         return None
 
     cost = payload.get("cost")
@@ -120,7 +140,7 @@ def read_allowance(payload: dict, timestamp: str | None = None) -> Snapshot | No
     return Snapshot(
         timestamp=timestamp or dt.datetime.now(dt.timezone.utc).isoformat(),
         seven_day=seven_day,
-        five_hour=_percentage(limits.get("five_hour")),
+        five_hour=five_hour,
         seven_day_resets_at=_resets_at(limits.get("seven_day")),
         five_hour_resets_at=_resets_at(limits.get("five_hour")),
         session_dollars=dollars,
@@ -162,11 +182,13 @@ def load(path: Path) -> list[Snapshot]:
             raw = json.loads(line)
         except ValueError:
             continue
-        if not isinstance(raw, dict) or "seven_day" not in raw:
+        if not isinstance(raw, dict):
+            continue
+        if raw.get("seven_day") is None and raw.get("five_hour") is None:
             continue
         out.append(Snapshot(
             timestamp=raw.get("timestamp", ""),
-            seven_day=raw["seven_day"],
+            seven_day=raw.get("seven_day"),
             five_hour=raw.get("five_hour"),
             seven_day_resets_at=raw.get("seven_day_resets_at"),
             five_hour_resets_at=raw.get("five_hour_resets_at"),
@@ -194,7 +216,7 @@ def estimate(snapshots: Iterable[Snapshot]) -> PlanEstimate | None:
     ordered = sorted(snapshots, key=lambda s: s.timestamp)
     by_window: dict[str | None, list[Snapshot]] = {}
     for snapshot in ordered:
-        if snapshot.session_dollars is None:
+        if snapshot.session_dollars is None or snapshot.seven_day is None:
             continue
         by_window.setdefault(snapshot.seven_day_resets_at, []).append(snapshot)
 
@@ -219,3 +241,89 @@ def estimate(snapshots: Iterable[Snapshot]) -> PlanEstimate | None:
         if best is None or candidate.points > best.points:
             best = candidate
     return best
+
+
+# --- Reading the log back, for a hook that has to decide something ----------
+#
+# `estimate` above answers "how big is the plan". This half answers "how much
+# of it is left right now", which is the question #129 found nothing was
+# asking. The two are different enough to be worth saying: the estimate wants
+# the WIDEST pair it can find, this wants the FRESHEST value it can trust.
+
+# CHOSEN. A snapshot is only written when a percentage moves, so a quiet log
+# is ambiguous: either nothing has been spent, or the status line is not
+# running at all and the last value is a fossil (#120 reports exactly that on
+# the other machine). Nothing in the log distinguishes the two, so this is a
+# bound on how wrong the fossil can be -- 90 minutes is ~45 points at the one
+# measured climb rate, which is already the whole band, so a reading older
+# than this cannot support a refusal.
+STALE_AFTER_MINUTES = 90
+
+
+@dataclass(frozen=True)
+class Reading:
+    """One window's current state, as far as the log can say."""
+    window: str
+    used_percentage: int
+    observed: str
+    age_minutes: float
+    resets_at: str | None = None
+    minutes_to_reset: float | None = None
+
+    def is_fresh(self, stale_after: float = STALE_AFTER_MINUTES) -> bool:
+        return self.age_minutes <= stale_after
+
+
+def _moment(text: str | None) -> dt.datetime | None:
+    """A timestamp from the log or the payload, always aware, or None."""
+    if not text:
+        return None
+    try:
+        moment = dt.datetime.fromisoformat(text.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    if moment.tzinfo is None:
+        moment = moment.replace(tzinfo=dt.timezone.utc)
+    return moment
+
+
+def latest_readings(
+    snapshots: Iterable[Snapshot], now: dt.datetime | None = None
+) -> dict[str, Reading]:
+    """The freshest value each window has, keyed by window name.
+
+    Per window, not per snapshot. A row carrying `five_hour: null` says the
+    client omitted the block on that render, not that the window is at 0%, so
+    the seven-day value in a later row must not retire a five-hour value from
+    an earlier one.
+
+    Staleness is reported, never applied: this returns what the log holds and
+    how old it is, and the caller decides what it is willing to act on. A
+    refusal and a status line want different answers to that.
+    """
+    moment = now or dt.datetime.now(dt.timezone.utc)
+    out: dict[str, Reading] = {}
+    for snapshot in sorted(snapshots, key=lambda s: s.timestamp):
+        observed = _moment(snapshot.timestamp)
+        if observed is None:
+            continue
+        age = max(0.0, (moment - observed).total_seconds() / 60)
+        for window, used, resets_at in (
+            ("five_hour", snapshot.five_hour, snapshot.five_hour_resets_at),
+            ("seven_day", snapshot.seven_day, snapshot.seven_day_resets_at),
+        ):
+            if used is None:
+                continue
+            reset = _moment(resets_at)
+            out[window] = Reading(
+                window=window,
+                used_percentage=used,
+                observed=snapshot.timestamp,
+                age_minutes=age,
+                resets_at=resets_at,
+                minutes_to_reset=(
+                    max(0.0, (reset - moment).total_seconds() / 60)
+                    if reset is not None else None
+                ),
+            )
+    return out
