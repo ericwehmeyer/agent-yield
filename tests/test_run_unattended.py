@@ -266,3 +266,90 @@ def test_a_tracker_that_cannot_be_read_yields_an_empty_body_not_a_crash(monkeypa
 
     monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: Out())
     assert runner.issue_body(113) == ""
+
+
+# --- #176: the guard is a denylist, because the allowlist was a comment ----
+
+def test_the_denylist_covers_leaving_the_machine_and_signing_as_the_operator():
+    denied = runner.DISALLOWED_TOOLS
+    for pattern in ("Bash(git push*)", "Bash(git commit*)", "WebFetch",
+                    "Bash(pip install*)", "Write(.agent-yield/STOP)"):
+        assert pattern in denied, f"{pattern} is not denied"
+
+
+def test_the_runner_passes_disallowed_not_allowed(repo, monkeypatch):
+    """--allowed-tools measured additive on #176: it adds, never subtracts."""
+    seen = {}
+
+    class Out:
+        stdout, stderr, returncode = '{"is_error": false}', "", 0
+
+    def spy(cmd, **kwargs):
+        seen["cmd"] = cmd
+        return Out()
+
+    monkeypatch.setattr(runner.subprocess, "run", spy)
+    runner.run_claude("brief", repo, "acceptEdits", 5, "claude")
+    assert "--disallowed-tools" in seen["cmd"]
+    assert "--allowed-tools" not in seen["cmd"]
+
+
+def test_denials_are_logged_because_they_indict_the_brief(repo, stubs, monkeypatch):
+    monkeypatch.setattr(runner, "run_claude", lambda *a, **k: {
+        "is_error": False, "num_turns": 3, "total_cost_usd": 0.1,
+        "permission_denials": [{"tool_name": "Bash", "tool_input": {}},
+                               {"tool_name": "WebFetch"}]})
+    monkeypatch.setattr(runner, "figures_added_to_prose", lambda root: [])
+    assert runner.main([]) == 0
+    assert rows(repo)[0]["permission_denials"] == ["Bash", "WebFetch"]
+
+
+# --- #175: figures the run put into prose ---------------------------------
+
+DIFF = """diff --git a/docs/adr/0001.md b/docs/adr/0001.md
+--- a/docs/adr/0001.md
++++ b/docs/adr/0001.md
+@@ -56,0 +57 @@
++guard 156.8ms, gate 175.0ms, and 3,232 invocations in 2026
+diff --git a/src/agent_yield/harness.py b/src/agent_yield/harness.py
+--- a/src/agent_yield/harness.py
++++ b/src/agent_yield/harness.py
+@@ -10,0 +11 @@
++TIMEOUT_MS = 5000
+"""
+
+
+def test_figures_in_prose_are_listed_and_code_constants_are_not(repo, monkeypatch):
+    class Out:
+        stdout, stderr, returncode = DIFF, "", 0
+
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: Out())
+    found = runner.figures_added_to_prose(repo)
+    assert "156.8" in found and "175.0" in found
+    assert "5000" not in found, "a constant in code is not a claim in prose"
+
+
+def test_a_figure_is_listed_once_however_often_it_repeats(repo, monkeypatch):
+    text = ("--- a/docs/x.md\n+++ b/docs/x.md\n"
+            "+62.1ms here\n+62.1ms again\n")
+
+    class Out:
+        stdout, stderr, returncode = text, "", 0
+
+    monkeypatch.setattr(runner.subprocess, "run", lambda *a, **k: Out())
+    assert runner.figures_added_to_prose(repo) == ["62.1"]
+
+
+def test_the_run_prints_what_a_reviewer_has_to_check(repo, stubs, monkeypatch, capsys):
+    monkeypatch.setattr(runner, "figures_added_to_prose", lambda root: ["156.8", "40"])
+    assert runner.main([]) == 0
+    out = capsys.readouterr().out
+    assert "156.8" in out and "#175" in out
+    assert rows(repo)[0]["figures_added"] == ["156.8", "40"]
+
+
+def test_the_brief_forbids_a_number_that_no_command_produced(repo, stubs):
+    runner.main([])
+    brief = stubs["claude"][0]["brief"]
+    assert "come from a command you ran" in brief
+    assert "has failed even" in brief

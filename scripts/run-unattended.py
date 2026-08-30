@@ -72,16 +72,65 @@ MACHINE_LABELS = {"Windows": "windows", "Darwin": "macos"}
 PICKED = re.compile(r"^#(\d+)\s+(.*)$")
 
 # Enough to read the repo, change it, and run its own test file. Not enough to
-# push, install, or reach the network. Stated here rather than in the boundary
-# file because `~/.claude/settings.json` is the operator's edit, and a runner
-# that widens the operator's standing allowlist to do its job has widened it
-# for every interactive session too.
-ALLOWED_TOOLS = (
-    "Read,Grep,Glob,Edit,Write,TodoWrite,"
-    "Bash(.venv/Scripts/python.exe -m pytest*),"
-    "Bash(python -m pytest*),"
-    "Bash(git status*),Bash(git diff*)"
-)
+# A denylist, which is the weaker shape, and it is forced rather than chosen.
+#
+# This was an allowlist until 2026-08-30. It did nothing. Four measured arms on
+# #176: `--allowed-tools Read` still ran Bash under `acceptEdits` AND under
+# `default`, with `permission_denials` empty both times -- the flag ADDS
+# permissions and never subtracts them. The first unattended run made five Bash
+# calls and two PowerShell calls outside a list that named neither, and nothing
+# denied anything.
+#
+# `--disallowed-tools` does work, takes the same `Tool(pattern*)` syntax, and
+# populates `permission_denials`. So the guard is enumerate-the-bad, with the
+# known weakness that anything not enumerated is permitted. The stronger form
+# is a `permissions.deny` block in `.claude/settings.template.json` that an
+# unattended run cannot widen; #176 holds that.
+#
+# Two rules for editing this list. Nothing here may be the only thing standing
+# between the loop and a mistake that costs money or leaves the machine -- push,
+# publish, install, network. And every entry is a line the brief should never
+# have led the run toward in the first place, so a non-empty `permission_denials`
+# in the log is a finding about the brief, not only about the guard.
+DISALLOWED_TOOLS = ",".join((
+    # Leaving the machine.
+    "Bash(git push*)", "Bash(gh pr*)", "Bash(gh release*)", "Bash(gh repo*)",
+    "Bash(curl*)", "Bash(wget*)", "Bash(scp*)", "Bash(ssh*)",
+    "WebFetch", "WebSearch",
+    # Signing as the operator with no physical act. #171 holds the decision;
+    # until it is made the runner's own brief forbids this and so does this.
+    "Bash(git commit*)", "Bash(git tag*)",
+    # Changing what the next run is, or what it runs on.
+    "Bash(pip install*)", "Bash(npm install*)", "Bash(schtasks*)",
+    "Bash(Register-ScheduledTask*)",
+    "Edit(.claude/**)", "Write(.claude/**)",
+    "Edit(//c/Users/ewehm/.claude/**)", "Write(//c/Users/ewehm/.claude/**)",
+    # Rewriting history, or the guard that stopped the last run.
+    "Bash(git reset --hard*)", "Bash(git checkout --*)", "Bash(git clean*)",
+    "Write(.agent-yield/STOP)", "Edit(.agent-yield/STOP)",
+))
+
+# Numbers that appear in prose the run added, which #175 exists because of.
+# No trailing \b: the figures that went wrong were written `62.1ms` and
+# `156.8ms`, and a word boundary after the last digit does not exist there.
+# Thousands separators are part of the number because `docs/style.md` requires
+# them -- `249,257`, never "about a quarter million" -- so `3,232` is one
+# figure and not two.
+FIGURE = re.compile(r"\b\d[\d,]*\.\d+|\b\d[\d,]*\b")
+YEAR = re.compile(r"^(?:19|20)\d\d$")
+PROSE_SUFFIXES = (".md", ".html", ".txt", ".rst")
+
+
+def _is_claim(text: str) -> bool:
+    """Would a reader take this as a measurement rather than a count of two?
+
+    A decimal, a thousands separator, or three or more digits. Years are
+    excluded by shape: `2026` is a date in every case that matters here, and a
+    list a reviewer stops reading is worse than one figure fewer in it.
+    """
+    if YEAR.match(text):
+        return False
+    return "." in text or "," in text or len(text) >= 3
 
 
 def now() -> datetime:
@@ -217,6 +266,15 @@ say so in one line rather than guessing.
   failed brief, not diligence.
 - Write the fix and the test that fails without it. Run only the test file you
   touched, plus any file the issue names.
+- **Every number you write down has to come from a command you ran in this
+  session.** If the task wants a measured figure, run the thing that measures
+  it and quote its output. If you cannot run it, write that the figure is
+  unmeasured and name the command someone should run. A plausible number is
+  worse than a missing one here: this repository's entire claim is the
+  difference between measured and chosen, and prose that says "this is
+  measured" about a figure you produced from context is the one defect that
+  cannot be caught by reading it. A run that invents a figure has failed even
+  if everything else in it is correct.
 - {ending}
 - Finish by printing: the files you changed, the exact pytest command you ran,
   and its final summary line. If you did not run it, say that instead of
@@ -228,7 +286,8 @@ def run_claude(brief: str, cwd: Path, permission_mode: str, timeout: int,
                claude: str) -> dict:
     """Invoke `claude -p` and return its JSON result, or a shaped failure."""
     cmd = [claude, "-p", brief, "--output-format", "json",
-           "--permission-mode", permission_mode, "--allowed-tools", ALLOWED_TOOLS]
+           "--permission-mode", permission_mode,
+           "--disallowed-tools", DISALLOWED_TOOLS]
     started = time.monotonic()
     elapsed = lambda: int((time.monotonic() - started) * 1000)  # noqa: E731
     try:
@@ -250,10 +309,46 @@ def run_claude(brief: str, cwd: Path, permission_mode: str, timeout: int,
                 "raw": out.stdout[:2000], "duration_ms": elapsed()}
 
 
+def figures_added_to_prose(root: Path) -> list[str]:
+    """Numbers the run introduced into prose files, newest diff only.
+
+    #175 is why this exists. The first unattended run wrote five hook timings
+    into an ADR as measured, derived a bold 40% cross-machine claim from them,
+    and added the sentence `docs/style.md` asks for -- "the 62.1ms is measured,
+    the choice is chosen" -- around numbers that were never measured. Only one
+    of the six came from anywhere real. The prose passed the style guide, which
+    is the problem: the guide tests fluency, and fluency is free.
+
+    This does not judge whether a figure is true. Nothing here can. It lists
+    what a reviewer has to check, so that checking is not contingent on someone
+    noticing there was something to check.
+    """
+    out = subprocess.run(["git", "diff", "-U0"], cwd=root,
+                         capture_output=True, text=True)
+    if out.returncode != 0:
+        return []
+    found: list[str] = []
+    interesting = False
+    for line in out.stdout.splitlines():
+        if line.startswith("+++ "):
+            interesting = line.rstrip().endswith(PROSE_SUFFIXES)
+        elif interesting and line.startswith("+"):
+            found.extend(f for f in FIGURE.findall(line) if _is_claim(f))
+    seen: dict[str, None] = {}
+    for figure in found:
+        seen.setdefault(figure, None)
+    return list(seen)
+
+
 def summarise(result: dict) -> dict:
     """The figures worth keeping from a `claude -p` JSON result."""
     usage = result.get("usage") or {}
+    denials = result.get("permission_denials") or []
     return {
+        # Non-empty exactly when the brief walked the run into the denylist,
+        # which is a finding about the brief as much as about the guard.
+        "permission_denials": [d.get("tool_name") for d in denials
+                               if isinstance(d, dict)],
         "session_id": result.get("session_id"),
         "num_turns": result.get("num_turns"),
         "duration_ms": result.get("duration_ms"),
@@ -343,10 +438,12 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         lock.unlink(missing_ok=True)
 
+    figures = figures_added_to_prose(root)
     row = {"started_at": started_at, "finished_at": now().isoformat(),
            "issue": number, "title": title, "committed": args.commit,
            "permission_mode": args.permission_mode, "claim_note": claim_note,
-           "brief_chars": len(brief), **summarise(result)}
+           "brief_chars": len(brief), "figures_added": figures,
+           **summarise(result)}
     path = log_row(root, row)
 
     if row["is_error"]:
@@ -356,6 +453,14 @@ def main(argv: list[str] | None = None) -> int:
     cost = row["total_cost_usd"]
     priced = f", ${cost:.4f}" if isinstance(cost, (int, float)) else ""
     print(f"done in {row['num_turns']} turns{priced}")
+    if row["permission_denials"]:
+        print(f"denied: {', '.join(row['permission_denials'])} -- "
+              "the brief led it somewhere the guard refused")
+    if figures:
+        print(f"{len(figures)} figure(s) added to prose, unverified: "
+              f"{', '.join(figures[:12])}")
+        print("Check each against the command that produced it before "
+              "committing (#175).")
     print(f"logged to {path}")
     return 0
 
