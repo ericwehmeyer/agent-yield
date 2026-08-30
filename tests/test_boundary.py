@@ -8,7 +8,6 @@ import json
 import os
 from pathlib import Path
 
-import pytest
 
 from agent_yield import boundary
 from agent_yield.boundary import (
@@ -59,12 +58,6 @@ def _touch_handoff(tmp_path: Path, when: dt.datetime) -> Path:
     os.utime(path, (stamp, stamp))
     return path
 
-
-
-@pytest.fixture(autouse=True)
-def _sentinel_stays_in_tmp(tmp_path, monkeypatch):
-    """No test spends the live repo's refusal. #69's lesson, for a sentinel."""
-    monkeypatch.setattr(boundary, "REFUSAL_SPENT_PATH", tmp_path / "spent")
 
 def test_a_cheap_session_is_never_stopped(tmp_path):
     assert boundary_message(_cheap(tmp_path), tmp_path / "none.md") is None

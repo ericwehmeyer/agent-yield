@@ -18,6 +18,8 @@ import json
 
 import pytest
 
+from agent_yield import boundary
+
 
 @pytest.fixture
 def cp1252_stdin():
@@ -34,3 +36,17 @@ def cp1252_stdin():
         )
 
     return make
+
+
+@pytest.fixture(autouse=True)
+def _refusal_sentinel_stays_in_tmp(tmp_path, monkeypatch):
+    """No test spends the live repo's one refusal.
+
+    Autouse and suite-wide rather than per-file: the boundary's refusal is
+    now recorded on disk, so a test that runs `--enforce` without redirecting
+    the sentinel writes real session state and then passes or fails depending
+    on whether the suite has run before. That is #69's defect in a new place,
+    and the second run is the one that catches it.
+    """
+    monkeypatch.setattr(boundary, "REFUSAL_SPENT_PATH",
+                        tmp_path / "boundary-refusal-spent")
