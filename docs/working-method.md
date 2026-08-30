@@ -1265,6 +1265,74 @@ the dispatch (measured lag: 1.4–1.6s). When it cannot match it reports
 because a join whose failures are invisible is indistinguishable from one that
 always works — the same lesson as #29, one file over.
 
+### 12.3 Admission and receipt: the two rules the rubric left out (2026-08-30)
+
+§12 says what a brief must contain and what the parent must not read. It does
+not say **when a dispatch is worth making at all**, nor what the parent does
+with the artifact once part (c) has produced one. Both gaps were hit in one
+session on 2026-08-30.
+
+#### The admission test: four conditions, or do it inline
+
+1. **Independent.** No shared state, no sequential dependency on another live
+   agent. §11.1 is the counter-case: a *dependent* task split three ways cost
+   385,109 tokens against 249,944, 54% more.
+2. **Read-heavy and decision-light.** The child pays once for what it reads.
+   That asymmetry is what §12 opens with, and it only pays when there is a lot
+   to read.
+3. **A nameable output path exists**, per part (c).
+4. **Doing it inline would put more into the parent than the return contract
+   will.**
+
+Condition 4 decides most cases and is the reason "dispatch to save context" is
+usually wrong for a small task. The dispatch overhead *is* the return, and a
+return costing more than the reading it replaced is a loss.
+
+#### The receipt rule: do not read back what you dispatched
+
+Part (c) exists because child transcripts evaporate, not because the parent
+should open the file. A parent that dispatches, takes a bounded summary, then
+reads the artifact anyway has paid for that reading twice and cancelled rule 1.
+Read it only when a decision the parent must make is unsettled by the summary,
+and then read the range that settles it rather than the document.
+
+#### The measurement is an anecdote with a receipt, and says so
+
+Two research dispatches on 2026-08-30, both carrying parts (a) through (d),
+cost 62,831 tokens over 15 tool uses and 83,601 over 20. Those totals come from
+the harness completion record. They do **not** come from `agent-yield agents`,
+which could not join either run: both report `unlinked`, which is issue #84.
+
+The instrument cannot currently score the dispatches this section is about.
+Until it can, the per-call context that would make these comparable to
+§11.4's 17,580–67,123 band does not exist, and no figure here should be quoted
+as if it did.
+
+The parent's side is what did work: two return summaries of roughly 400 words
+each, against two documents it has still not opened.
+
+#### An amendment to §3, whose premise was the tree and not the agent
+
+§3 says agents do not touch git, because parallel agents in one working tree
+race the index and produce commits mixing three tasks. Both dispatches above
+committed to their own branches without incident, each running in its own git
+worktree. Where that isolation is available, §3 reads: **agents do not share a
+working tree.** Where it is not, §3 stands as written.
+
+#### What would falsify §12.3
+
+- **If a parent that reads its children's artifacts ships better work**, the
+  receipt rule is a false economy in the way rule 1 could also be. §11's lever 3
+  already records two real catches that came from a parent not rubber-stamping.
+- **If condition 4 is unmeasurable in practice**, it is a slogan. Nobody has
+  measured the task size below which a dispatch's return costs more than the
+  reading it replaced.
+- **If briefed dispatches in worktrees cost more than briefed dispatches in a
+  shared tree**, the §3 amendment has bought correctness with tokens and that
+  price is not recorded here.
+
+---
+
 ## What would falsify this
 
 - **If a fresh agent's context is not much smaller than the parent's**, §1
