@@ -43,6 +43,20 @@ replaced. Anything else is a hand edit or an unrelated configuration, and it is
 reported rather than destroyed. Silently replacing a config that took work to
 build is precisely what #125 is about, and a tool that fixes a defect by
 committing it again has fixed nothing.
+
+`settings.local.json` is unrendered, and is checked anyway
+----------------------------------------------------------
+It is machine state by design and this tool never writes it, but it wires hooks
+onto the same tool calls the rendered file does. For five days it ran
+`.claude/hooks/probe.py` -- this repo's script -- under
+`C:/Users/ewehm/repos/migration-kit/.venv/Scripts/python.exe`, another
+checkout's virtualenv (#113). Rebuilding that unrelated venv would have broken
+every tool call in this repo, and the 5s hook timeout means the symptom is
+latency rather than an error anybody reads.
+
+So `check()` reports a hook interpreter that lives outside this checkout. It
+does not fix or rewrite the file: the fix is one token and belongs to whoever
+owns that machine's local settings. Naming it is the part no machine was doing.
 """
 from __future__ import annotations
 
@@ -55,6 +69,7 @@ PLACEHOLDER = "{{AGENT_YIELD}}"
 
 TEMPLATE_PATH = Path(".claude") / "settings.template.json"
 LIVE_PATH = Path(".claude") / "settings.json"
+LOCAL_PATH = Path(".claude") / "settings.local.json"
 
 VENV_DIR = Path(".venv")
 
@@ -207,6 +222,73 @@ def _executables_in(document: str) -> list[str]:
     return found
 
 
+def _looks_absolute(text: str) -> bool:
+    """Absolute under either OS's rules, not just the one running.
+
+    `Path("C:/x").is_absolute()` is False on POSIX, so the check that matters
+    most -- the Mac reading a Windows-authored local settings file -- is the one
+    the standard test would skip. A bare `python` or a `.venv/...` relative to
+    an unknown working directory is not judged here: it names no other checkout,
+    and guessing what it resolves to would report a defect that may not exist.
+    """
+    if text.startswith(("/", "\\")):
+        return True
+    return len(text) > 2 and text[1] == ":" and text[2] in "/\\"
+
+
+def _within(text: str, root: Path) -> bool:
+    """Is this path token inside `root`? Compared as text, both ways round.
+
+    A resolved comparison would need the path to exist, and the whole point is
+    to name an interpreter that may well have been deleted. Case-insensitive on
+    Windows because `C:/Users` and `c:/users` are one directory there.
+    """
+    prefix = root.as_posix().rstrip("/") + "/"
+    candidate = text.replace("\\", "/")
+    if os.name == "nt":
+        prefix, candidate = prefix.casefold(), candidate.casefold()
+    return candidate.startswith(prefix)
+
+
+def foreign_interpreters(root: Path) -> list[str]:
+    """Hook interpreters in `settings.local.json` that live outside this clone.
+
+    Every one of these makes a tool call in this repo depend on a directory
+    this repo does not own. Order preserved and duplicates dropped: the same
+    interpreter usually wires several hooks, and repeating it makes the report
+    longer without making it truer.
+    """
+    path = root / LOCAL_PATH
+    if not path.is_file():
+        return []
+    found: list[str] = []
+    for text in _executables_in(path.read_text(encoding="utf-8")):
+        if not _looks_absolute(text) or _within(text, root):
+            continue
+        if text not in found:
+            found.append(text)
+    return found
+
+
+def _foreign_interpreter_report(root: Path) -> str:
+    """The #113 section of `check()`'s output, or empty when there is none."""
+    foreign = foreign_interpreters(root)
+    if not foreign:
+        return ""
+    lines = [
+        f"FOREIGN INTERPRETER: {LOCAL_PATH} runs {len(foreign)} hook "
+        f"{'command' if len(foreign) == 1 else 'commands'} under an executable "
+        "outside this checkout, so every matching tool call here depends on "
+        "another directory staying where it is:",
+    ]
+    lines.extend(f"  {text}" for text in foreign)
+    lines.append(
+        f"Point them at this clone's own venv ({root / VENV_DIR}). This tool "
+        f"does not edit {LOCAL_PATH}, which is machine state."
+    )
+    return "\n".join(lines)
+
+
 def _read_template(root: Path) -> str:
     path = root / TEMPLATE_PATH
     try:
@@ -266,20 +348,34 @@ def install(root: Path, *, force: bool = False) -> tuple[int, str]:
 
 
 def check(root: Path) -> tuple[int, str]:
-    """Report drift between the template and the live file."""
+    """Report drift between the template and the live file.
+
+    Two independent faults, reported together and both exiting 1. Drift is
+    about the rendered file; a foreign interpreter is about the local one. A
+    clone can easily have the second without the first, which is how #113 ran
+    for five days under a `--check` that said everything matched.
+    """
     root = root.resolve()
     expected = _expected(root)
     live_path = root / LIVE_PATH
+    foreign_local = _foreign_interpreter_report(root)
+
+    def report(*sections: str) -> str:
+        return "\n\n".join(section for section in sections if section)
 
     if not live_path.is_file():
-        return 1, (
+        return 1, report(
             f"{LIVE_PATH} is MISSING: this clone is running with none of "
-            "its hooks. Run `agent-yield harness --install`."
+            "its hooks. Run `agent-yield harness --install`.",
+            foreign_local,
         )
 
     live = live_path.read_text(encoding="utf-8")
     if live == expected:
-        return 0, f"{LIVE_PATH} matches {TEMPLATE_PATH}, rendered for this machine"
+        matched = f"{LIVE_PATH} matches {TEMPLATE_PATH}, rendered for this machine"
+        if foreign_local:
+            return 1, report(matched, foreign_local)
+        return 0, matched
 
     # #125's own signature, named rather than left inside a diff: every hook
     # points at an executable that is not on this disk. The file was rendered
@@ -297,7 +393,7 @@ def check(root: Path) -> tuple[int, str]:
     lines.append(f"{LIVE_PATH} DRIFTS from {TEMPLATE_PATH}:")
     lines.append("")
     lines.append(_diff(live, expected))
-    return 1, "\n".join(lines)
+    return 1, report("\n".join(lines), foreign_local)
 
 
 def main(argv: list[str] | None = None) -> int:

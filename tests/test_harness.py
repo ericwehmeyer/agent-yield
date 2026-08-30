@@ -308,6 +308,90 @@ def test_check_reports_a_missing_live_file_as_no_hooks_at_all(tmp_path):
     assert "--install" in report
 
 
+# --- a hook this repo owns, run by a venv it does not (#113) --------------
+
+def write_local(root: Path, interpreter: str) -> None:
+    """The shape `settings.local.json` had while #113 was open."""
+    (root / ".claude").mkdir(parents=True, exist_ok=True)
+    (root / harness.LOCAL_PATH).write_text(json.dumps({
+        "hooks": {
+            "PreToolUse": [{
+                "matcher": "Agent",
+                "hooks": [{
+                    "type": "command",
+                    "command": f"{interpreter} {root.as_posix()}"
+                               "/.claude/hooks/probe.py",
+                    "timeout": 5,
+                }],
+            }]
+        }
+    }, indent=2) + "\n", encoding="utf-8")
+
+
+def test_check_names_an_interpreter_from_another_checkout(tmp_path):
+    """#113 as filed: this repo's script, the neighbouring repo's virtualenv.
+
+    The rendered file is clean here, so this is the case a template-only check
+    calls a pass -- and did, for the five days the wiring stood.
+    """
+    make_project(tmp_path)
+    harness.install(tmp_path)
+    other = tmp_path.parent / f"migration-kit-{uuid.uuid4().hex}"
+    write_local(tmp_path, (other / ".venv" / "bin" / "python").as_posix())
+
+    code, report = harness.check(tmp_path)
+
+    assert code == 1
+    assert "FOREIGN INTERPRETER" in report
+    assert (other / ".venv" / "bin" / "python").as_posix() in report
+    assert f"matches {harness.TEMPLATE_PATH}" in report
+
+
+def test_a_windows_interpreter_is_judged_on_a_posix_box_too(tmp_path):
+    """The cross-machine half. The Mac is the reader who needs this most.
+
+    `Path("C:/...").is_absolute()` is False on POSIX, so the obvious
+    implementation reports nothing on the one machine that did not author the
+    file, and #113 stays invisible exactly where it was invisible.
+    """
+    make_project(tmp_path)
+    harness.install(tmp_path)
+    write_local(
+        tmp_path,
+        "C:/Users/ewehm/repos/migration-kit/.venv/Scripts/python.exe",
+    )
+    assert harness.foreign_interpreters(tmp_path) == [
+        "C:/Users/ewehm/repos/migration-kit/.venv/Scripts/python.exe"
+    ]
+
+
+def test_this_clones_own_interpreter_is_not_foreign(tmp_path):
+    """Backslashes, forward slashes and a `.venv` inside the root all pass.
+
+    Without this the check has an easy way to be right: flag everything.
+    """
+    make_project(tmp_path)
+    harness.install(tmp_path)
+    for interpreter in (
+        (tmp_path / ".venv" / "Scripts" / "python.exe").as_posix(),
+        str(tmp_path / ".venv" / "bin" / "python"),
+        "python",
+        ".venv/Scripts/python.exe",
+    ):
+        write_local(tmp_path, interpreter)
+        assert harness.foreign_interpreters(tmp_path) == [], interpreter
+    assert harness.check(tmp_path)[0] == 0
+
+
+def test_no_local_settings_is_not_a_finding(tmp_path):
+    """The Mac has never had one, and absence is not a defect to report."""
+    make_project(tmp_path)
+    harness.install(tmp_path)
+    assert not (tmp_path / harness.LOCAL_PATH).exists()
+    assert harness.foreign_interpreters(tmp_path) == []
+    assert harness.check(tmp_path)[0] == 0
+
+
 # --- the CLI wiring, which is where the gate broke once before ------------
 
 def test_the_subcommand_reaches_the_module(tmp_path):
@@ -345,3 +429,21 @@ def test_this_clone_is_running_the_template_it_ships():
     """
     code, report = harness.check(REPO_ROOT)
     assert code == 0, report
+
+
+@pytest.mark.skipif(
+    not (REPO_ROOT / harness.LOCAL_PATH).is_file(),
+    reason="no settings.local.json here; it is machine state and the Mac has none",
+)
+def test_this_clones_local_hooks_run_on_this_clones_interpreter():
+    """The assertion #113 was open against, pointed at the real file.
+
+    It failed for five days: `.claude/hooks/probe.py` ran under
+    `migration-kit/.venv`, so deleting an unrelated repo's virtualenv would
+    have broken every dispatch in this one.
+    """
+    foreign = harness.foreign_interpreters(REPO_ROOT)
+    assert foreign == [], (
+        f"{harness.LOCAL_PATH} runs a hook under {foreign}, outside this "
+        "checkout. Run `agent-yield harness --check` for the full report."
+    )
