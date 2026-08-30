@@ -85,6 +85,13 @@ DEFAULT_CALLS_PATH = Path(".agent-yield") / "calls.jsonl"
 # an override that leaves no trace is indistinguishable from no gate at all.
 OVERRIDE_ENV = "AGENT_YIELD_OVERRIDE"
 
+# #143: the hook subprocess reads the parent session's environment, and a
+# dispatch made from inside a subagent has no way to set a variable there.
+# A marker in the dispatch's own description is reachable from wherever the
+# call is made -- and, because tool_input is visible in the dispatch itself,
+# it is still a trace, never a silent bypass.
+OVERRIDE_MARKER = "AGENT_YIELD_OVERRIDE"
+
 # Distinct from OVERRIDE_ENV on purpose, exactly as boundary.py keeps its own:
 # an operator who decides the day's token ceiling is wrong has not decided
 # that the plan's rate limit is wrong, and one variable for both would let the
@@ -284,6 +291,16 @@ def read_current_allowance(path: Path | None = None) -> dict[str, Reading]:
         return {}
 
 
+def _has_override(request: DispatchRequest) -> bool:
+    """True when the dispatch itself carries the override marker.
+
+    Reachable from inside a subagent, unlike OVERRIDE_ENV: the calling agent
+    writes tool_input directly, so this needs no access to the hook
+    subprocess's environment.
+    """
+    return bool(request.description) and OVERRIDE_MARKER in request.description
+
+
 def _day_total(calls_path: Path) -> int:
     from .ingest import load_ingested
 
@@ -317,6 +334,7 @@ def _decide(
         day_message is not None
         and band_for_day(day_total) == "over"
         and not os.environ.get(OVERRIDE_ENV)
+        and not _has_override(request)
     )
 
     allow_message, over_allowance = allowance_message(readings)
@@ -336,7 +354,10 @@ def _decide(
     # decision, not a side effect of building the check. When it is on, it
     # honours OVERRIDE_ENV exactly as the day-ceiling refusal does.
     refuse_brief = (
-        enforce_brief and brief_msg is not None and not os.environ.get(OVERRIDE_ENV)
+        enforce_brief
+        and brief_msg is not None
+        and not os.environ.get(OVERRIDE_ENV)
+        and not _has_override(request)
     )
 
     overrides = []

@@ -10,6 +10,7 @@ from agent_yield.allowance import Reading
 from agent_yield.gate import (
     ALLOWANCE_OVERRIDE_ENV,
     OVERRIDE_ENV,
+    OVERRIDE_MARKER,
     DispatchRequest,
     _decide,
     allowance_message,
@@ -94,6 +95,22 @@ def test_over_ceiling_refuses_the_dispatch(monkeypatch):
 def test_named_override_lets_it_through(monkeypatch):
     monkeypatch.setenv(OVERRIDE_ENV, "1")
     payload = {**DISPATCH, "_day_total": DAILY_CEILING}
+    assert main(stdin=io.StringIO(json.dumps(payload))) == 0
+
+
+def test_a_description_marker_lets_a_dispatch_through_without_the_env_var(monkeypatch):
+    # #143: a subagent cannot set OVERRIDE_ENV on the hook subprocess -- that
+    # process reads the parent session's environment. The escape hatch has
+    # to be reachable through the dispatch's own tool_input instead.
+    monkeypatch.delenv(OVERRIDE_ENV, raising=False)
+    payload = {
+        **DISPATCH,
+        "tool_input": {
+            **DISPATCH["tool_input"],
+            "description": f"No-op probe agent {OVERRIDE_MARKER}",
+        },
+        "_day_total": DAILY_CEILING,
+    }
     assert main(stdin=io.StringIO(json.dumps(payload))) == 0
 
 
@@ -184,6 +201,16 @@ def test_brief_warning_is_exit_2_only_under_enforce_brief(monkeypatch):
 def test_override_env_clears_the_enforce_brief_refusal(monkeypatch):
     monkeypatch.setenv(OVERRIDE_ENV, "1")
     payload = {**DISPATCH, "_day_total": 0}
+    assert main(["--enforce-brief"], stdin=io.StringIO(json.dumps(payload))) == 0
+
+
+def test_the_description_marker_also_clears_the_enforce_brief_refusal(monkeypatch):
+    monkeypatch.delenv(OVERRIDE_ENV, raising=False)
+    payload = {
+        **DISPATCH,
+        "tool_input": {**DISPATCH["tool_input"], "description": OVERRIDE_MARKER},
+        "_day_total": 0,
+    }
     assert main(["--enforce-brief"], stdin=io.StringIO(json.dumps(payload))) == 0
 
 
