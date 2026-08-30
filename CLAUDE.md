@@ -84,6 +84,14 @@ caught one.
 A test whose expectation is derived from the code under test proves nothing.
 That is how #51 survived a fix to the same function.
 
+A fixture that shells out to `git` builds its child environment from scratch,
+never `{**os.environ}`: an inherited one carries the operator's global config,
+and `commit.gpgsign=true` behind a smartcard made four tests wait on a PIN CI
+never has (#127). `tests/conftest.py` poisons `GIT_CONFIG_GLOBAL` for the whole
+run so that mistake fails on every platform. Not `GIT_CONFIG_SYSTEM` -- Git for
+Windows keeps `core.autocrlf=true` in that scope, and the code under test is
+entitled to read it.
+
 ## Two machines push to this repo
 
 A Mac and this Windows box both commit to `main` and file issues against it.

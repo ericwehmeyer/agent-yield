@@ -61,19 +61,41 @@ def _transcript(tmp_path: Path, calls: int = 20) -> Path:
     return path
 
 
+# Variables a child git cannot start without, copied from the parent when the
+# parent has them. Everything else is dropped, and dropping it is the point:
+# an inherited environment carries the operator's global config with it, and on
+# a box with `commit.gpgsign=true` behind a smartcard every commit this fixture
+# makes asks for a PIN that CI never has (#127). `SystemRoot` is passed through
+# for the reason tests/test_outcomes.py records at its own copy of this rule --
+# stripping it breaks a child process on Windows, and presents as a one-platform
+# flake rather than as this helper's doing. Absent on POSIX, so no branch on
+# os.name.
+_PASS_THROUGH = ("PATH", "SystemRoot")
+
+
+def _git_env(**extra: str) -> dict[str, str]:
+    env = {
+        "GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
+        "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e",
+    }
+    for name in _PASS_THROUGH:
+        if name in os.environ:
+            env[name] = os.environ[name]
+    env.update(extra)
+    return env
+
+
 def _repo(tmp_path: Path) -> Path:
     repo = tmp_path / "repo"
     repo.mkdir()
-    env = {"GIT_AUTHOR_NAME": "t", "GIT_AUTHOR_EMAIL": "t@e",
-           "GIT_COMMITTER_NAME": "t", "GIT_COMMITTER_EMAIL": "t@e"}
     def git(*args, when: str | None = None):
-        full = dict(env)
+        extra = {}
         if when:
-            full["GIT_AUTHOR_DATE"] = full["GIT_COMMITTER_DATE"] = when
+            extra["GIT_AUTHOR_DATE"] = extra["GIT_COMMITTER_DATE"] = when
         subprocess.run(["git", *args], cwd=repo, check=True,
                        capture_output=True, text=True,
                        encoding="utf-8", errors="replace",
-                       env={**_environ(), **full})
+                       env=_git_env(**extra))
     git("init", "-q")
     (repo / "old.txt").write_text("old\n", encoding="utf-8")
     git("add", "-A")
@@ -84,9 +106,27 @@ def _repo(tmp_path: Path) -> Path:
     return repo
 
 
-def _environ() -> dict:
-    import os
-    return dict(os.environ)
+def test_the_fixture_commits_without_the_operators_global_git_config(
+    tmp_path, monkeypatch
+):
+    """#127: four tests here died on a PIN prompt CI never sees.
+
+    `_repo` inherited the whole environment, and with it the operator's global
+    `commit.gpgsign=true`, so every commit the fixture made in its throwaway
+    repo asked a smartcard to sign and timed out once the PIN cache expired --
+    green on all six CI arms, red on the only box that edits this file. The
+    global config planted here points at a gpg binary that does not exist, so
+    an inherited one fails the commit outright on every platform rather than
+    only where a smartcard is plugged in.
+    """
+    config = tmp_path / "global.gitconfig"
+    config.write_text(
+        "[commit]\n\tgpgsign = true\n"
+        "[gpg]\n\tformat = openpgp\n\tprogram = no-such-gpg-binary\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("GIT_CONFIG_GLOBAL", str(config))
+    assert (_repo(tmp_path) / "new.txt").exists()
 
 
 def test_the_four_usage_fields_stay_apart(tmp_path):

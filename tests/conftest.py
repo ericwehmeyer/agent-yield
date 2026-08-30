@@ -34,3 +34,40 @@ def cp1252_stdin():
         )
 
     return make
+
+
+# A git config the operator's machine cannot leak past. Same idea as
+# `cp1252_stdin` above: reproduce the machine-specific failure on every
+# platform, so the suite goes red everywhere rather than on one box.
+#
+# A fixture that shells out to `git` must build its child environment from
+# scratch -- PATH, SystemRoot, and the four identity variables -- because an
+# inherited one carries the operator's global config with it. On a box with
+# `commit.gpgsign=true` behind a smartcard that made four tests wait on a PIN
+# CI never has (#127), green on all six arms and red only where the file gets
+# edited. `gpg.program` here names a binary that does not exist, so a fixture
+# that inherits the environment fails its commit outright, everywhere, at
+# authoring time.
+_NO_SUCH_GPG = (
+    "[commit]\n\tgpgsign = true\n"
+    "[gpg]\n\tformat = openpgp\n\tprogram = no-such-gpg-binary\n"
+)
+
+
+@pytest.fixture(autouse=True, scope="session")
+def poison_the_operators_git_config(tmp_path_factory):
+    """The global scope only. The system scope is the platform's, not his.
+
+    Measured, not assumed: poisoning `GIT_CONFIG_SYSTEM` as well costs a
+    passing test. Git for Windows ships `core.autocrlf=true` in the system
+    config, and with that scope replaced `dirty_paths` reads the fixture's own
+    committed file back as `M old.txt`, so a clean tree announces itself
+    dirty. The line the boundary falls on: global config is what the operator
+    chose and what must never reach a fixture, system config is what the
+    installer wrote and what the code under test is entitled to read.
+    """
+    config = tmp_path_factory.mktemp("gitconfig") / "no-such-gpg.gitconfig"
+    config.write_text(_NO_SUCH_GPG, encoding="utf-8")
+    with pytest.MonkeyPatch.context() as patch:
+        patch.setenv("GIT_CONFIG_GLOBAL", str(config))
+        yield config
