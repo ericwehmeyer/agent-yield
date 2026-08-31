@@ -118,6 +118,7 @@ PROBE_PATH = Path(".agent-yield") / "statusline-probe.jsonl"
 # What a failure looks like: short, neutral, and obviously this tool's, so a
 # persistently blank measurement is visible rather than mistaken for calm.
 QUIET = "ay -"
+EXIT_NO_DATA = 3
 
 # COMPOSITION (issue #66). `statusLine` takes ONE command, and a project
 # `.claude/settings.json` REPLACES the user one rather than merging with it, so
@@ -522,12 +523,14 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
             with_timeout = COMPOSE_TIMEOUT
 
     line = QUIET
+    valid_payload = False
     payload: dict = {}
     raw = ""
     try:
         raw = read_payload(stdin) or ""
         loaded = json.loads(raw or "{}")
         if isinstance(loaded, dict):
+            valid_payload = True
             payload = loaded
             # Four answers, best first. An explicit --window is the operator
             # overriding a measurement, so it wins. Then the window this
@@ -570,7 +573,7 @@ def main(argv: list[str] | None = None, stdin: TextIO | None = None) -> int:
     # tool's own line, never the composition: what arrived is this tool's
     # contract to measure, and another command's output is not.
     print(compose_line(line, with_commands, raw, with_timeout))
-    return 0
+    return EXIT_NO_DATA if "--no-write" in args and valid_payload and line == QUIET else 0
 
 
 if __name__ == "__main__":

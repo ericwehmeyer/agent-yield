@@ -259,5 +259,5 @@ def test_the_subcommand_prints_the_window_before_the_table(
 def test_the_subcommand_says_so_when_the_corpus_is_missing(
         tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("AGENT_YIELD_ROOT", str(tmp_path))
-    assert main(["sessions", "--repo", str(tmp_path)]) == 0
+    assert main(["sessions", "--repo", str(tmp_path)]) == 3
     assert "no calls" in capsys.readouterr().out
