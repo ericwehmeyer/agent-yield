@@ -332,8 +332,9 @@ def _anchors(d: dict) -> list[tuple[str, re.Pattern, tuple[str, ...]]]:
          r"catches ([\d.]+)% of calls and ([\d.]+)% of the money",
          (f"{marks['600000'][0]:.1f}", f"{marks['600000'][1]:.1f}")),
         ("fig-1 caption: the 300,000 share",
-         r"the largest (\d+)% of their calls, everything above ([\d,]+) tokens",
-         (_pct0(marks["300000"][0]), "300,000")),
+         r"the largest (\d+)% of their calls, everything above ([\d,]+) tokens, "
+         r"accounts for ([\d.]+)% of what they spend",
+         (_pct0(marks["300000"][0]), "300,000", f"{marks['300000'][1]:.1f}")),
         ("fig-2 legend",
          r"Main session, ([\d,]+) calls.*?Subagent, ([\d,]+) calls",
          (f"{main['n']:,}", f"{sub['n']:,}")),

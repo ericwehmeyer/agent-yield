@@ -98,7 +98,7 @@ def module():
 
 @pytest.fixture(scope="module")
 def data(module):
-    """One `build()` for the whole file; it reads 21k records."""
+    """One `build()` for the whole file; it reads 23k records."""
     return module.build()
 
 
@@ -158,14 +158,14 @@ def test_check_passes_on_the_unmodified_text(module, data, page) -> None:
 @pytest.mark.parametrize(
     ("label", "before", "after"),
     [
-        ("a prose median", "218,440 tokens", "218,441 tokens"),
-        ("the headline", "We spent 3.21 billion", "We spent 3.22 billion"),
-        ("a tile", '<span class="v">452M</span>', '<span class="v">453M</span>'),
-        ("a decay series entry", "79%, 68%, 59%", "79%, 68%, 60%"),
-        ("the leverage series", "1.29, 1.43", "1.29, 1.44"),
+        ("a prose median", "186,954 tokens", "186,955 tokens"),
+        ("the headline", "We spent 3.44 billion", "We spent 3.45 billion"),
+        ("a tile", '<span class="v">453M</span>', '<span class="v">454M</span>'),
+        ("a decay series entry", "72%, 61%, 52%", "72%, 61%, 53%"),
+        ("the leverage series", "1.36, 1.55", "1.36, 1.56"),
         ("a rules-table worth", "283M<br>", "284M<br>"),
-        ("the legend", "Main session, 6,101 calls", "Main session, 6,102 calls"),
-        ("a data block", '"median":218440', '"median":218441'),
+        ("the legend", "Main session, 7,707 calls", "Main session, 7,708 calls"),
+        ("a data block", '"median":186954', '"median":186955'),
     ],
 )
 def test_check_fails_when_a_figure_moves(module, data, page, label, before, after) -> None:
@@ -189,8 +189,8 @@ def test_check_fails_when_a_sentence_is_reworded_past_its_anchor(module, data, p
     not as a pass.
     """
     reworded = page.replace(
-        "median subagent call carries 96,567 tokens.",
-        "typical subagent call runs to 96,567 tokens.",
+        "median subagent call carries 95,393 tokens.",
+        "typical subagent call runs to 95,393 tokens.",
         1,
     )
     assert reworded != page, "the fixture sentence is gone; update this test"
@@ -270,8 +270,22 @@ def test_the_page_states_which_corpus_it_was_built_from(module, page) -> None:
     # in its footer and `_anchors` has always compared it; #155 is that
     # nothing asked it FIRST.
     assert module.page_corpus(page) == {
-        "calls": 21_614, "span": ["2026-07-24", "2026-08-26"]
+        "calls": 23_532, "span": ["2026-07-24", "2026-08-30"]
     }
+
+
+def test_the_page_names_the_machine_it_was_built_on(page) -> None:
+    """#168, and it is the half regenerating does not fix.
+
+    `ingest` runs on every session start since #161, so each box's corpus
+    moves on its own and the two diverge without anyone touching them. The
+    decision recorded here is that this page stays one box's rather than
+    becoming a shared corpus -- which only works if the page says so, because
+    otherwise `_corpus_state()`'s skip on the other machine reads as a defect
+    in the page rather than as the intended outcome.
+    """
+    assert "built on the Windows box" in page
+    assert "a Mac checkout holds a different one" in page
 
 
 def test_the_page_s_own_corpus_is_not_a_mismatch(module, page) -> None:
@@ -290,7 +304,7 @@ def test_a_different_corpus_names_both_sides(module, page) -> None:
     mine = {"calls": 6_529, "span": ["2026-08-23", "2026-08-26"]}
     said = module.corpus_mismatch(mine, page)
     assert said is not None
-    assert "6,529" in said and "21,614" in said
+    assert "6,529" in said and "23,532" in said
     assert "2026-08-23" in said and "2026-07-24" in said
 
 
