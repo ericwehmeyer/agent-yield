@@ -475,7 +475,8 @@ def test_signing_env_overrides_the_child_and_writes_no_config(git_repo):
     env = runner.signing_env({"key": "FPR", "email": "a@b"}, base={})
     pairs = {env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"]
              for i in range(int(env["GIT_CONFIG_COUNT"]))}
-    assert pairs == {"user.signingkey": "FPR", "commit.gpgsign": "true"}
+    assert pairs == {"user.signingkey": "FPR", "commit.gpgsign": "true",
+                     "gpg.format": "openpgp"}
     assert env["GIT_AUTHOR_EMAIL"] == env["GIT_COMMITTER_EMAIL"] == "a@b"
     assert env["GIT_COMMITTER_NAME"] == runner.SIGNING_NAME
     assert (git_repo / ".git" / "config").read_text(encoding="utf-8") == before
@@ -637,3 +638,17 @@ def test_windows_gets_both_spellings_of_the_same_directory():
 def test_a_posix_home_gets_one_spelling_and_no_drive_letter():
     assert runner._home_claude_patterns("/Users/ericw") == (
         "Edit(/Users/ericw/.claude/**)", "Write(/Users/ericw/.claude/**)")
+
+
+def test_the_signing_format_is_forced_and_not_inherited():
+    """#177: this Mac's ~/.gitconfig says `gpg.format = ssh`.
+
+    Overriding `user.signingkey` alone handed git an OpenPGP fingerprint to
+    open as an SSH public key file -- `Couldn't load public key 711C78BB...:
+    No such file or directory?`, exit 128, after the run had done its work. An
+    identity is the key and the format it is a key for.
+    """
+    env = runner.signing_env({"key": "FPR", "email": "a@b"}, base={})
+    pairs = {env[f"GIT_CONFIG_KEY_{i}"]: env[f"GIT_CONFIG_VALUE_{i}"]
+             for i in range(int(env["GIT_CONFIG_COUNT"]))}
+    assert pairs["gpg.format"] == "openpgp"

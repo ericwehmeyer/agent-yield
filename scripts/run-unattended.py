@@ -255,9 +255,22 @@ def signing_env(identity: dict, base: dict | None = None) -> dict:
     tree and nowhere else. Writing `user.signingkey` into `.git/config` instead
     would reconfigure the operator's own commits in this clone, which is a
     worse bug than the one being fixed.
+
+    `gpg.format` is set for the same reason the key is, and #177 is why it is
+    here. This Mac's `~/.gitconfig` carries `gpg.format = ssh` and an SSH
+    signing key, so overriding `user.signingkey` alone handed git an OpenPGP
+    fingerprint to open as a file:
+
+        error: Couldn't load public key 711C78BB...: No such file or directory?
+        fatal: failed to write commit object
+
+    Exit 128, at the end of a run that had already done its work. An identity
+    is the key AND the format it is a key for, and inheriting half of it from
+    whatever the box's git config happens to say is not an identity.
     """
     env = dict(os.environ if base is None else base)
-    pairs = [("user.signingkey", identity["key"]), ("commit.gpgsign", "true")]
+    pairs = [("user.signingkey", identity["key"]), ("commit.gpgsign", "true"),
+             ("gpg.format", "openpgp")]
     env["GIT_CONFIG_COUNT"] = str(len(pairs))
     for i, (k, v) in enumerate(pairs):
         env[f"GIT_CONFIG_KEY_{i}"], env[f"GIT_CONFIG_VALUE_{i}"] = k, v
