@@ -509,3 +509,41 @@ def test_the_row_carries_the_join_from_commit_back_to_cost(repo, stubs, monkeypa
     assert row["signing_key"] == "FPR"
     assert len(row["run_id"]) == 12
     assert row["commits"] == [] and row["commit_problems"] == []
+
+
+def test_closes_after_the_trailer_does_not_hide_it(git_repo):
+    """The shape a321c43 actually had, which reported itself unattributed.
+
+    `Closes #N` has no colon, so git's trailer parser does not see a trailer
+    block at all and `%(trailers)` comes back empty -- even though the line is
+    right there in the message. The brief asks for both, so the audit reads the
+    message rather than trusting the parser.
+    """
+    before = runner.refs_now(git_repo)
+    (git_repo / "a.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "a.txt"], cwd=git_repo, check=True)
+    subprocess.run(["git", "commit", "-m",
+                    "#168: a fix\n\nUnattended-Run: run123\n\nCloses #168"],
+                   cwd=git_repo, check=True, capture_output=True)
+
+    # git itself sees nothing, which is the whole point of not asking it.
+    trailers = subprocess.run(["git", "log", "-1", "--format=%(trailers)"],
+                              cwd=git_repo, capture_output=True, text=True,
+                              encoding="utf-8", errors="replace")
+    assert trailers.stdout.strip() == ""
+
+    added, problems = runner.audit_commits(git_repo, before, {"key": "FPR"}, "run123")
+    assert len(added) == 1
+    assert not any("Unattended-Run" in p for p in problems), problems
+
+
+def test_a_different_runs_id_is_still_caught(git_repo):
+    """Reading the message must not degrade into matching any trailer at all."""
+    before = runner.refs_now(git_repo)
+    (git_repo / "a.txt").write_text("x", encoding="utf-8")
+    subprocess.run(["git", "add", "a.txt"], cwd=git_repo, check=True)
+    subprocess.run(["git", "commit", "-m", "fix\n\nUnattended-Run: someoneelse"],
+                   cwd=git_repo, check=True, capture_output=True)
+
+    _, problems = runner.audit_commits(git_repo, before, {"key": "FPR"}, "run123")
+    assert any("Unattended-Run: run123" in p for p in problems)

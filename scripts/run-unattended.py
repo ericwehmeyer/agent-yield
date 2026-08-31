@@ -163,7 +163,8 @@ def disallowed_tools(may_commit: bool) -> str:
 def _gpg() -> str:
     """The gpg git itself would use, so the expiry check reads the same keyring."""
     out = subprocess.run(["git", "config", "--get", "gpg.program"],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
     return out.stdout.strip() or "gpg"
 
 
@@ -175,7 +176,8 @@ def key_expiry(fingerprint: str, gpg: str | None = None) -> datetime | None:
     timestamp, empty when the key does not expire.
     """
     out = subprocess.run([gpg or _gpg(), "--with-colons", "--list-keys", fingerprint],
-                         capture_output=True, text=True)
+                         capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
     if out.returncode != 0:
         return None
     for line in out.stdout.splitlines():
@@ -239,7 +241,8 @@ def signing_env(identity: dict, base: dict | None = None) -> dict:
 def refs_now(root: Path) -> set[str]:
     """Every commit reachable from any ref, as the before-picture of a run."""
     out = subprocess.run(["git", "rev-list", "--all"], cwd=root,
-                         capture_output=True, text=True)
+                         capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
     return set(out.stdout.split()) if out.returncode == 0 else set()
 
 
@@ -254,15 +257,23 @@ def audit_commits(root: Path, before: set[str], identity: dict | None,
     but untrusted, which is what an unattended key with no ownertrust returns.
     """
     added = sorted(refs_now(root) - before)
-    fmt = "%G?%x09%GK%x09%(trailers:key=" + TRAILER + ",valueonly)"
+    # `%B`, not `%(trailers:key=...)`. Git's trailer parser reads only the final
+    # paragraph, and the brief also asks for `Closes #N`, which has no colon and
+    # so is not trailer-shaped -- it ends the block and pushes `Unattended-Run:`
+    # into a paragraph git ignores. Measured on a321c43: the line is in the
+    # message and `%(trailers)` returns empty. Every unattended commit would
+    # have been reported unattributed, and a check that always complains is a
+    # check nobody reads.
+    fmt = "%G?%x09%GK%x09%B"
     problems: list[str] = []
     for sha in added:
         out = subprocess.run(["git", "show", "--no-patch", "--format=" + fmt, sha],
-                             cwd=root, capture_output=True, text=True)
-        fields = out.stdout.strip().split("\t")
+                             cwd=root, capture_output=True, text=True,
+                             encoding="utf-8", errors="replace")
+        fields = out.stdout.split("\t", 2)
         status = fields[0].strip() if fields else ""
         key = fields[1].strip() if len(fields) > 1 else ""
-        trailer = fields[2].strip() if len(fields) > 2 else ""
+        message = fields[2] if len(fields) > 2 else ""
         if identity is None:
             problems.append(f"{sha[:7]} was committed by a run that had no "
                             "signing identity and was told not to commit")
@@ -272,7 +283,7 @@ def audit_commits(root: Path, before: set[str], identity: dict | None,
         elif key and not identity["key"].endswith(key):
             problems.append(f"{sha[:7]} is signed by {key}, which is not the "
                             "loop's key -- read it before trusting the author")
-        if run_id not in trailer:
+        if f"{TRAILER}: {run_id}" not in message:
             problems.append(f"{sha[:7]} carries no `{TRAILER}: {run_id}` trailer, "
                             "so it does not resolve to a priced run")
     return added, problems
