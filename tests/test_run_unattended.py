@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import os
 import subprocess
 from datetime import timedelta
 from pathlib import Path
@@ -179,12 +180,48 @@ def test_no_commit_is_still_available_by_hand(repo, stubs):
     assert "Do NOT commit" in stubs["claude"][0]["brief"]
 
 
-def test_commit_names_a_branch_and_never_main(repo, stubs, monkeypatch):
+def test_the_brief_tells_the_run_not_to_do_what_it_cannot(git_repo, stubs, monkeypatch):
+    """Run 2 burned five turns on `git checkout -b` and was refused each time.
+
+    The brief now names the branch it is already on and says the runner will
+    commit, because asking an agent for something the harness will refuse is a
+    brief defect, not an agent one.
+    """
     monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
-    runner.main(["--commit", "--signing-key", "DEADBEEF", "--signing-email", "a@b"])
+    monkeypatch.setattr(runner, "run_suite", lambda *a, **k: (True, "1 passed"))
+    runner.main(["--signing-key", "DEADBEEF", "--signing-email", "a@b"])
     brief = stubs["claude"][0]["brief"]
-    assert "unattended/113" in brief and "Closes #113" in brief
-    assert "Do not touch `main`" in brief
+    assert "Do not commit, branch or push" in brief
+    assert "unattended/113" in brief
+    assert "requires approval" in brief
+
+
+def test_the_parent_makes_the_branch_before_the_run_starts(git_repo, stubs, monkeypatch):
+    monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "run_suite", lambda *a, **k: (True, "1 passed"))
+    runner.main(["--signing-key", "DEADBEEF", "--signing-email", "a@b"])
+    head = subprocess.run(["git", "branch", "--show-current"], cwd=git_repo,
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace")
+    assert head.stdout.strip() == "unattended/113"
+
+
+def test_a_failing_suite_leaves_the_work_rather_than_committing_it(git_repo, stubs, monkeypatch):
+    """Run 2 passed 21 of 21 in its own file while four failed elsewhere.
+
+    The parent runs the whole suite, and a failure means the branch keeps the
+    work uncommitted for a human instead of carrying a passing message.
+    """
+    monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "run_suite", lambda *a, **k: (False, "4 failed"))
+    committed = []
+    monkeypatch.setattr(runner, "commit_run",
+                        lambda *a, **k: committed.append(a) or (None, "x"))
+    runner.main(["--signing-key", "DEADBEEF", "--signing-email", "a@b"])
+    assert committed == []
+    row = rows(git_repo)[0]
+    assert row["suite"] == "4 failed"
+    assert "not committed" in row["commit_note"]
 
 
 def test_the_brief_carries_the_do_not_explore_prohibition(repo, stubs):
@@ -452,8 +489,9 @@ def test_committing_is_allowed_out_of_the_denylist_only_when_signing_works():
         assert always in runner.disallowed_tools(True)
 
 
-def test_the_runner_passes_the_widened_denylist_and_the_env(repo, stubs, monkeypatch):
+def test_the_runner_passes_the_widened_denylist_and_the_env(git_repo, stubs, monkeypatch):
     monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "run_suite", lambda *a, **k: (True, "1 passed"))
     runner.main(["--signing-key", "FPR", "--signing-email", "a@b"])
     call = stubs["claude"][0]
     assert "Bash(git commit*)" not in call["denied"]
@@ -492,23 +530,41 @@ def test_a_run_that_committed_with_the_trailer_is_clean(git_repo):
                         "signing identity and was told not to commit"]
 
 
-def test_the_brief_names_the_exact_trailer_the_audit_looks_for(repo, stubs, monkeypatch):
-    """One string, two readers. A brief that asks for a different trailer than
-    the audit checks makes every run fail its own audit."""
+def test_the_commit_the_parent_writes_carries_the_id_the_audit_wants(git_repo, stubs, monkeypatch):
+    """One string, two readers, and now one writer -- so they cannot diverge.
+
+    The commit this makes is unsigned, and the audit says so. `signing_env` is
+    stubbed so the suite-wide `commit.gpgsign = false` stands: a real signature
+    needs the operator's key and, since the touch policy went to `Sign=on`, a
+    hand on the YubiKey (#127). The one expected complaint is therefore named
+    rather than filtered out, so a second one still fails -- and attribution,
+    not the signature, is what this test is about.
+    """
     monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "run_suite", lambda *a, **k: (True, "1 passed"))
+    (git_repo / "fixed.txt").write_text("x", encoding="utf-8")
+    monkeypatch.setattr(runner, "signing_env", lambda i, base=None: dict(os.environ))
     runner.main(["--signing-key", "FPR", "--signing-email", "a@b"])
-    run_id = rows(repo)[0]["run_id"]
-    assert f"{runner.TRAILER}: {run_id}" in stubs["claude"][0]["brief"]
+    row = rows(git_repo)[0]
+    body = subprocess.run(["git", "log", "-1", "--format=%B"], cwd=git_repo,
+                          capture_output=True, text=True,
+                          encoding="utf-8", errors="replace").stdout
+    assert f"{runner.TRAILER}: {row['run_id']}" in body
+    assert "Closes #113" in body
+    assert len(row["commit_problems"]) == 1, row["commit_problems"]
+    assert "is not signed" in row["commit_problems"][0], row["commit_problems"]
 
 
-def test_the_row_carries_the_join_from_commit_back_to_cost(repo, stubs, monkeypatch):
+def test_the_row_carries_the_join_from_commit_back_to_cost(git_repo, stubs, monkeypatch):
     monkeypatch.setattr(runner, "key_expiry", lambda *a, **k: None)
+    monkeypatch.setattr(runner, "run_suite", lambda *a, **k: (True, "1 passed"))
     runner.main(["--signing-key", "FPR", "--signing-email", "a@b"])
-    row = rows(repo)[0]
+    row = rows(git_repo)[0]
     assert row["committed"] is True
     assert row["signing_key"] == "FPR"
     assert len(row["run_id"]) == 12
-    assert row["commits"] == [] and row["commit_problems"] == []
+    assert row["branch"] == "unattended/113"
+    assert row["suite"] == "1 passed"
 
 
 def test_closes_after_the_trailer_does_not_hide_it(git_repo):

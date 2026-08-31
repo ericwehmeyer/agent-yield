@@ -289,6 +289,93 @@ def audit_commits(root: Path, before: set[str], identity: dict | None,
     return added, problems
 
 
+# The parent's own work, which the agent is not permitted to do (#171, run 2).
+SUITE = ("-m", "pytest", "-rs")
+
+
+def branch_for(number: int) -> str:
+    return f"unattended/{number}"
+
+
+def start_branch(root: Path, number: int) -> str | None:
+    """Put the run on its own branch before it starts. None, or a refusal.
+
+    The parent does this because the agent cannot. Run 2 tried `git checkout -b`,
+    `git switch -c` and `git branch`, five attempts across four spellings, and
+    every one came back "This command requires approval": `acceptEdits` approves
+    file edits, not shell side effects, and an unattended run has no approver.
+    Widening a permission list would have bought the same thing at the cost of
+    letting a run change branches whenever it liked.
+    """
+    out = subprocess.run(["git", "checkout", "-q", "-b", branch_for(number)],
+                         cwd=root, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
+    if out.returncode != 0:
+        return f"could not create {branch_for(number)}: {out.stderr.strip()}"
+    return None
+
+
+def run_suite(root: Path, python: str, timeout: int = 1800) -> tuple[bool, str]:
+    """The whole suite, not the file the run touched. (passed, last line).
+
+    `docs/working-method.md` tells an agent to run only its own test file, and
+    that rule assumes a parent who runs the suite afterwards. An unattended run
+    has no parent but this one. Run 2 passed 21 of 21 in its own file and was
+    reporting success while four tests failed elsewhere -- in good faith, having
+    done exactly what it was told.
+
+    Four and a half minutes against a broken `main` is not a close call.
+    """
+    out = subprocess.run([python, *SUITE], cwd=root, capture_output=True,
+                         text=True, encoding="utf-8", errors="replace",
+                         timeout=timeout)
+    lines = [line for line in out.stdout.splitlines() if line.strip()]
+    return out.returncode == 0, (lines[-1] if lines else "no pytest output")
+
+
+def commit_run(root: Path, number: int, identity: dict, run_id: str,
+               summary: str) -> tuple[str | None, str]:
+    """Stage what changed and commit it as the loop. (sha, note).
+
+    Named paths from `git status --porcelain`, never `git add -A`: CLAUDE.md's
+    rule, and it holds harder here, where nobody is watching what else the tree
+    picked up.
+
+    `Unattended-Run:` goes last and `Closes #N` above it. That order is not
+    cosmetic -- `Closes #N` has no colon, so git stops reading trailers at it,
+    which is how the first real unattended commit reported itself unattributed.
+    """
+    status = subprocess.run(["git", "status", "--porcelain"], cwd=root,
+                            capture_output=True, text=True,
+                            encoding="utf-8", errors="replace")
+    paths = [line[3:].strip().strip('"') for line in status.stdout.splitlines()
+             if line.strip()]
+    if not paths:
+        return None, "nothing to commit: the run changed no tracked file"
+
+    add = subprocess.run(["git", "add", "--", *paths], cwd=root,
+                         capture_output=True, text=True,
+                         encoding="utf-8", errors="replace")
+    if add.returncode != 0:
+        return None, f"could not stage: {add.stderr.strip()}"
+
+    message = (f"#{number}: {summary}\n\n"
+               f"Written by unattended run {run_id}. The suite passed before "
+               f"this was committed.\n\n"
+               f"Closes #{number}\n"
+               f"{TRAILER}: {run_id}\n")
+    out = subprocess.run(["git", "commit", "-q", "-F", "-"], cwd=root,
+                         input=message, capture_output=True, text=True,
+                         encoding="utf-8", errors="replace",
+                         env=signing_env(identity))
+    if out.returncode != 0:
+        return None, f"commit failed: {(out.stderr or out.stdout).strip()[:400]}"
+    sha = subprocess.run(["git", "rev-parse", "HEAD"], cwd=root,
+                         capture_output=True, text=True,
+                         encoding="utf-8", errors="replace").stdout.strip()
+    return sha, f"committed {sha[:7]} on {branch_for(number)}, {len(paths)} path(s)"
+
+
 # Numbers that appear in prose the run added, which #175 exists because of.
 # No trailing \b: the figures that went wrong were written `62.1ms` and
 # `156.8ms`, and a word boundary after the last digit does not exist there.
@@ -298,6 +385,15 @@ def audit_commits(root: Path, before: set[str], identity: dict | None,
 FIGURE = re.compile(r"\b\d[\d,]*\.\d+|\b\d[\d,]*\b")
 YEAR = re.compile(r"^(?:19|20)\d\d$")
 PROSE_SUFFIXES = (".md", ".html", ".txt", ".rst")
+
+# A line of generated data is not a claim, and treating it as one destroys the
+# check. Run 2 edited `docs/context-cost.html`, whose chart series are literal
+# arrays, and `figures_added` came back with roughly 600 numbers -- a list no
+# reviewer reads, which is worse than no list. A line is data rather than prose
+# when it is mostly digits and separators: a sentence carrying a measured figure
+# never is.
+DATA_LINE = re.compile(r"^[^A-Za-z]*[\d.,\s\[\]{}:\"'()-]{40,}[^A-Za-z]*$")
+MAX_FIGURES_PER_LINE = 6
 
 
 def _is_claim(text: str) -> bool:
@@ -421,13 +517,13 @@ def build_brief(number: int, title: str, body: str, may_commit: bool,
                 run_id: str = "") -> str:
     """The dispatch brief, carrying section 3's contract in as many words."""
     ending = (
-        f"Commit on a branch named `unattended/{number}`, one commit, message "
-        f"ending `Closes #{number}`, and a last line reading exactly "
-        f"`{TRAILER}: {run_id}` -- it is what resolves this commit to the run "
-        f"that priced it, and a commit without it is reported as unattributed. "
-        f"Do not push. Do not touch `main`. The signing key is already set for "
-        f"you and is not the operator's; do not pass `-S`, `--no-gpg-sign` or "
-        f"any `-c user.*` of your own (#171)."
+        f"**Do not commit, branch or push.** You are already on "
+        f"`{branch_for(number)}`, and this runner commits your work for you "
+        f"once the whole suite passes -- signed as the loop, with the run id "
+        f"in the message. Attempting it yourself only wastes turns: `git "
+        f"checkout -b`, `git switch -c` and `git branch` are all refused with "
+        f"'This command requires approval', because there is nobody here to "
+        f"approve them. Leave the change in the working tree and describe it."
         if may_commit else
         "Do NOT commit and do NOT push. Leave the change in the working tree; "
         "a human reviews it before anything is committed (#171)."
@@ -464,6 +560,9 @@ say so in one line rather than guessing.
 - Finish by printing: the files you changed, the exact pytest command you ran,
   and its final summary line. If you did not run it, say that instead of
   implying you did.
+- Make the LAST line of your reply `SUMMARY: <one clause, lower case, no
+  trailing full stop>` saying what the change does. It becomes the subject of
+  the commit this runner makes, so write it as the subject of a commit.
 """
 
 
@@ -519,11 +618,56 @@ def figures_added_to_prose(root: Path) -> list[str]:
         if line.startswith("+++ "):
             interesting = line.rstrip().endswith(PROSE_SUFFIXES)
         elif interesting and line.startswith("+"):
-            found.extend(f for f in FIGURE.findall(line) if _is_claim(f))
+            body = line[1:]
+            if DATA_LINE.match(body):
+                continue
+            claims = [f for f in FIGURE.findall(body) if _is_claim(f)]
+            # A prose line with seven figures on it is a table row, or it is a
+            # line no sentence structure survives. Either way it is not the
+            # thing #175 is about.
+            if len(claims) > MAX_FIGURES_PER_LINE:
+                continue
+            found.extend(claims)
     seen: dict[str, None] = {}
     for figure in found:
         seen.setdefault(figure, None)
     return list(seen)
+
+
+def _denied_as_text(denial: dict) -> str:
+    """`Bash: git checkout -b unattended/168`, not `Bash`.
+
+    Every tool names its subject differently and none of them is `subject`, so
+    the interesting field is looked up per tool rather than guessed. An unknown
+    shape degrades to the tool name, which is what run 2 recorded for all of
+    them.
+    """
+    tool = denial.get("tool_name") or "?"
+    payload = denial.get("tool_input") or {}
+    for field in ("command", "file_path", "path", "pattern", "url"):
+        value = payload.get(field)
+        if isinstance(value, str) and value.strip():
+            return f"{tool}: {' '.join(value.split())[:200]}"
+    return tool
+
+
+def summary_line(result: dict, fallback: str = "an unattended fix") -> str:
+    """The run's own one-clause summary, for the commit subject.
+
+    Asked for as the last line of the reply rather than inferred from the diff,
+    because the run knows what it was trying to do and a diff does not. A run
+    that ignores the instruction gets a flat subject rather than a wrong one.
+    """
+    text = result.get("result")
+    if not isinstance(text, str):
+        return fallback
+    for line in reversed(text.splitlines()):
+        line = line.strip()
+        if line.upper().startswith("SUMMARY:"):
+            claim = line.split(":", 1)[1].strip().rstrip(".")
+            if claim:
+                return claim[:100]
+    return fallback
 
 
 def summarise(result: dict) -> dict:
@@ -533,7 +677,13 @@ def summarise(result: dict) -> dict:
     return {
         # Non-empty exactly when the brief walked the run into the denylist,
         # which is a finding about the brief as much as about the guard.
-        "permission_denials": [d.get("tool_name") for d in denials
+        #
+        # The command, not only the tool name. Run 2 logged `"Bash"` thirteen
+        # times, and answering "denied what?" meant opening the transcript --
+        # by which point the run was over and the tree was dirty. The answer
+        # was `git checkout -b`, refused with "This command requires approval",
+        # which is the defect the parent-commits change exists for.
+        "permission_denials": [_denied_as_text(d) for d in denials
                                if isinstance(d, dict)],
         "session_id": result.get("session_id"),
         "num_turns": result.get("num_turns"),
@@ -631,6 +781,13 @@ def main(argv: list[str] | None = None) -> int:
     if claim_note:
         print(claim_note)
     print(f"#{number} {title}")
+    if may_commit:
+        refusal = start_branch(root, number)
+        if refusal:
+            lock.unlink(missing_ok=True)
+            print(f"refused: {refusal}")
+            return 1
+        print(f"on {branch_for(number)}")
     print(f"running claude -p, timeout {args.timeout}s, mode {args.permission_mode}")
     if may_commit:
         print(f"run {run_id}, committing as {SIGNING_NAME} "
@@ -643,14 +800,36 @@ def main(argv: list[str] | None = None) -> int:
     finally:
         lock.unlink(missing_ok=True)
 
-    committed, complaints = audit_commits(root, before, identity, run_id)
     figures = figures_added_to_prose(root)
+
+    # The parent's half, in the order a careless version would get wrong: the
+    # suite decides whether there is anything worth committing, so it runs
+    # first and a failure leaves the work in the tree for a human rather than
+    # on a branch wearing a passing message.
+    suite_line, commit_note = "", ""
+    if may_commit and not result.get("is_error"):
+        try:
+            passed, suite_line = run_suite(root, args.python)
+        except subprocess.TimeoutExpired:
+            passed, suite_line = False, "the suite timed out"
+        print(f"suite: {suite_line}")
+        if passed:
+            sha, commit_note = commit_run(root, number, identity, run_id,
+                                          summary_line(result))
+        else:
+            commit_note = ("not committed: the suite did not pass. The work is "
+                           "in the tree on " + branch_for(number))
+        print(commit_note)
+
+    committed, complaints = audit_commits(root, before, identity, run_id)
     row = {"started_at": started_at, "finished_at": now().isoformat(),
            "issue": number, "title": title, "committed": may_commit,
            "run_id": run_id, "signing_key": identity["key"] if identity else None,
            "commits": committed, "commit_problems": complaints,
            "permission_mode": args.permission_mode, "claim_note": claim_note,
            "brief_chars": len(brief), "figures_added": figures,
+           "suite": suite_line, "commit_note": commit_note,
+           "branch": branch_for(number) if may_commit else None,
            **summarise(result)}
     path = log_row(root, row)
 
