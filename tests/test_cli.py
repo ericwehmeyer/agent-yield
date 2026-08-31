@@ -31,8 +31,23 @@ def test_report_on_an_empty_ingest_says_so_rather_than_printing_zeroes(
     tmp_path, capsys
 ):
     assert main(["report", "--calls", str(tmp_path / "nothing.jsonl"),
-                 "--repo", str(tmp_path)]) == 0
+                 "--repo", str(tmp_path)]) == 3
     assert "no calls" in capsys.readouterr().out.lower()
+
+
+def test_changed_only_ingest_reports_no_data_before_a_full_walk(tmp_path, capsys):
+    root = tmp_path / "transcripts"
+    root.mkdir()
+    assert main(["ingest", "--changed-only", "--root", str(root),
+                 "--dest", str(tmp_path / "calls.jsonl")]) == 3
+    assert "ingest skipped" in capsys.readouterr().out
+
+
+def test_sessions_and_allowance_report_no_data(tmp_path, capsys):
+    assert main(["sessions", "--calls", str(tmp_path / "nothing.jsonl")]) == 3
+    capsys.readouterr()
+    assert main(["allowance", "--log", str(tmp_path / "nothing.jsonl")]) == 3
+    assert "no allowance snapshots" in capsys.readouterr().out
 
 
 def test_unknown_subcommand_is_an_error():
@@ -334,10 +349,10 @@ def test_status_exits_1_past_the_hard_growth_factor(tmp_path, capsys):
     assert "cost band       cheap" in out
 
 
-def test_status_with_no_transcript_says_so_and_exits_0(tmp_path, capsys):
+def test_status_with_no_transcript_says_so_and_exits_3(tmp_path, capsys):
     empty = tmp_path / "empty"
     empty.mkdir()
-    assert main(["status", "--transcripts", str(empty)]) == 0
+    assert main(["status", "--transcripts", str(empty)]) == 3
     assert "no session transcript found" in capsys.readouterr().out
 
 

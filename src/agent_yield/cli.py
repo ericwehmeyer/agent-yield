@@ -57,6 +57,7 @@ from .thresholds import (
 
 DEFAULT_CALLS_PATH = Path(".agent-yield") / "calls.jsonl"
 MODES_FILENAME = "session-modes.toml"
+EXIT_NO_DATA = 3
 
 
 def _cmd_ingest(args) -> int:
@@ -70,7 +71,7 @@ def _cmd_ingest(args) -> int:
         print("[agent-yield] ingest skipped: no usable record of what has "
               f"already been read beside {dest}. The corpus is not being "
               "updated until someone runs `agent-yield ingest --full` once.")
-        return 0
+        return EXIT_NO_DATA
     held = ingest(dest, roots, full=args.full)
     if not args.quiet:
         print(f"{held} calls held in {dest}")
@@ -118,7 +119,7 @@ def _cmd_report(args) -> int:
     records = load_ingested(anchored(args.calls))
     if not records:
         print(f"no calls recorded in {args.calls} -- run `agent-yield ingest` first")
-        return 0
+        return EXIT_NO_DATA
 
     days = sorted(r.day for r in records)
     since = dt.date.fromisoformat(args.since) if args.since else days[0]
@@ -177,7 +178,7 @@ def _cmd_sessions(args) -> int:
     records = load_ingested(path)
     print(sessions_module.render_window(records, str(args.calls)))
     if not records:
-        return 0
+        return EXIT_NO_DATA
 
     if args.all_projects:
         print(f"scope: all {len(records):,} records on this machine")
@@ -262,12 +263,12 @@ def _cmd_status(args) -> int:
     path = session_module.find_session(args.session_id, root)
     if path is None:
         print("no session transcript found -- nothing to measure")
-        return 0
+        return EXIT_NO_DATA
 
     stats = session_module.session_stats(path, args.baseline_calls)
     if stats.calls == 0:
         print(f"{path.stem}: no main-thread calls recorded yet")
-        return 0
+        return EXIT_NO_DATA
 
     usage = stats.total
     window = args.window
@@ -367,7 +368,7 @@ def _cmd_allowance(args) -> int:
     if not snapshots:
         print(f"no allowance snapshots at {args.log}")
         print("the status line records them; nothing has moved yet")
-        return 0
+        return EXIT_NO_DATA
 
     print(f"{len(snapshots)} snapshots, {snapshots[0].timestamp} to "
           f"{snapshots[-1].timestamp}")
@@ -382,7 +383,7 @@ def _cmd_allowance(args) -> int:
         print(f"  no calibration yet -- needs a pair inside one 7-day window "
               f"that moved at least {allowance_module.MIN_POINTS} points with "
               f"measured spend on both ends")
-        return 0
+        return EXIT_NO_DATA
     print(f"  {estimate.describe()}")
     return 0
 

@@ -357,7 +357,7 @@ def test_main_composes_from_argv_and_still_prints_exactly_one_line(tmp_path,
                                                                   capsys):
     from agent_yield.statusline import main
 
-    main(["--with", "echo alpha"], stdin=io.StringIO("{}"))
+    assert main(["--with", "echo alpha"], stdin=io.StringIO("{}")) == 0
     out = capsys.readouterr().out
     assert out.count("\n") == 1
     assert out.startswith("alpha")
@@ -430,6 +430,9 @@ def test_no_write_leaves_the_failure_path_alone(tmp_path, capsys, monkeypatch):
     """QUIET and exit 0, same as every other failure of this command."""
     monkeypatch.setattr(statusline, "SNAPSHOT_PATH", tmp_path / "allowance.jsonl")
     assert main(["--no-write"], stdin=io.StringIO("not json{")) == 0
+    assert capsys.readouterr().out.strip() == QUIET
+
+    assert main(["--no-write"], stdin=io.StringIO("{}")) == 3
     assert capsys.readouterr().out.strip() == QUIET
 
 
